@@ -202,13 +202,15 @@ function filtrar(f, ref, slugActual) {
   });
   return res;
 }
+// Las MEJORES 10 (tope). Los filtros NO son flexibles: se aflojan SOLO si hay
+// menos de 2 exactas, para no dejarte casi sin nada (de menor a mayor prioridad,
+// avisando cuál). Si hay 3 exactas → muestra 3; si hay 40 → las 10 más parecidas.
+var TOPE_RESULTADOS = 10;
 function buscar() {
   var f = leerFiltros();
   var ref = refDeBusqueda();
   var slugActual = window.__slugActual || null;
-  var res = filtrar(f, ref, slugActual);
-  // Flexibilidad "mínimo 2": si salen menos de 2, aflojo de MENOR a MAYOR
-  // prioridad hasta llegar a 2. NUNCA aflojo venta/alquiler ni muestro reservadas.
+  var res = filtrar(f, ref, slugActual);   // solo las que cumplen TODOS los filtros
   var pasos = [
     ["estado", function () { f.estado = ""; }],                          // 7
     ["cochera", function () { f.cochera = ""; }],                        // 6
@@ -219,11 +221,11 @@ function buscar() {
     ["zona", function () { f.grupo = null; }]                            // 2 (última)
   ];
   var aflojados = [], i = 0;
-  while (res.length < 2 && i < pasos.length) {
+  while (res.length < 2 && i < pasos.length) {   // mínimo 2, nunca menos
     aflojados.push(pasos[i][0]); pasos[i][1](); i++;
     res = filtrar(f, ref, slugActual);
   }
-  render(res, res.length ? aflojados : []);
+  render(res.slice(0, TOPE_RESULTADOS), res.length, aflojados);
 }
 
 // -------------------------- Dibujar resultados --------------------------
@@ -254,19 +256,23 @@ function actualizarMulticopy() {
   b.style.display = n ? "" : "none";
 }
 
-function render(res, aflojados) {
+function render(res, total, aflojados) {
   var f = leerFiltros();
   SEL = {}; actualizarMulticopy();
   $("resultados").style.display = "";
-  $("cuenta").textContent = res.length + (res.length === 1 ? " encontrada" : " encontradas")
-    + (aflojados && aflojados.length ? " · amplié: " + aflojados.join(", ") : "");
   var cont = $("cards");
-  if (!res.length) {
+  if (!total) {
+    $("cuenta").textContent = "0 encontradas";
     cont.innerHTML = '<div class="vacio">No hay parecidas con esos filtros. Probá aflojar alguno (dejalo vacío / “Da igual”).</div>';
     return;
   }
+  var txt = (total > res.length)                   // se aplicó el tope de 10
+    ? "las " + res.length + " más parecidas (de " + total + ")"
+    : total + (total === 1 ? " encontrada" : " encontradas");
+  if (aflojados && aflojados.length) txt += " · amplié: " + aflojados.join(", ");
+  $("cuenta").textContent = txt;
   cont.innerHTML = "";
-  res.forEach(function (c) {                       // TODAS (sin tope)
+  res.forEach(function (c) {                       // ya viene cortado al tope
     var card = document.createElement("div");
     card.className = "card";
     // Tilde para seleccionar y copiar varias juntas
@@ -345,7 +351,7 @@ function rellenar(c) {
   $("f-precio-min").value = "";
   $("f-precio-max").value = c.precio ? fmtMiles(String(Math.round(c.precio * 1.15))) : "";
   setRango("f-cub", c.m2_homog);
-  setRango("f-padron", c.m2_padron);
+  setRango("f-padron", tc === "apto" ? 0 : c.m2_padron);   // aptos: sin padrón (RE/MAX no lo usa)
   SELBARRIOS = c.barrio ? [c.barrio] : [];   // 1 barrio → busca similares (su grupo)
   $("f-barrio").value = ""; renderChips(); pintarGrupo();
   setStep("f-dmin", c.dorm != null ? c.dorm : null);
@@ -367,7 +373,7 @@ function rellenarExterno(d) {
   $("f-precio-min").value = "";
   $("f-precio-max").value = d.precio ? fmtMiles(String(Math.round(d.precio * 1.15))) : "";
   setRango("f-cub", d.m2_construidos);
-  setRango("f-padron", d.m2_totales);
+  setRango("f-padron", tc === "apto" ? 0 : d.m2_totales);   // aptos: sin padrón (RE/MAX no lo usa)
   // Barrio: si el del portal coincide con uno de RE/MAX, lo cargo (1 barrio = su grupo).
   SELBARRIOS = [];
   if (d.barrio) {
