@@ -5,6 +5,10 @@
 // Associate editable (cada usuario pone el suyo en Ajustes). Guardado en el celu.
 var ASSOCIATE = "940041154";
 try { ASSOCIATE = localStorage.getItem("parecidas_associate") || ASSOCIATE; } catch (e) {}
+// Motorcito (Cloudflare Worker) que lee InfoCasas / MercadoLibre. Vacío = apagado
+// (esos links se completan a mano). Se configura en Ajustes tras publicarlo.
+var MOTOR_URL = "";
+try { MOTOR_URL = localStorage.getItem("parecidas_motor") || ""; } catch (e) {}
 var DET_EP = "https://api-ar.redremax.com/remaxweb-uy/api/listings/findBySlug/";
 var CDN = "https://d1acdg20u0pmxj.cloudfront.net/";
 
@@ -353,6 +357,33 @@ function rellenar(c) {
   window.__slugActual = c.slug || null;
   window.__base = c;                       // referencia para ordenar "más parecida"
 }
+// Llena el formulario con lo que trajo el motorcito (InfoCasas / MercadoLibre).
+// El barrio NO se autocompleta: los nombres de esos portales no coinciden con los
+// de RE/MAX, así que Juan lo agrega a mano si quiere filtrar por zona.
+function rellenarExterno(d) {
+  setSeg("f-oper", d.operacion === "rent" ? "rent" : "sale");
+  var tc = tipoCat(d.tipo || "");
+  setSegMulti("f-tipo", tc === "otro" ? [] : [tc]);
+  $("f-precio-min").value = "";
+  $("f-precio-max").value = d.precio ? fmtMiles(String(Math.round(d.precio * 1.15))) : "";
+  setRango("f-cub", d.m2_construidos);
+  setRango("f-padron", d.m2_totales);
+  SELBARRIOS = []; $("f-barrio").value = ""; renderChips(); pintarGrupo();
+  setStep("f-dmin", d.dorm != null ? d.dorm : null);
+  setStep("f-dmax", d.dorm != null ? d.dorm : null);
+  setSeg("f-coch", d.cochera === true ? "si" : (d.cochera === false ? "no" : ""));
+  setSeg("f-estado", d.estado || "");
+  setSeg("f-renta", d.renta ? "con" : "sin");
+  window.__slugActual = null;                      // no es de RE/MAX: no me excluyo
+  var precioUsd = d.moneda === "UYU"
+    ? (USD_RATE && d.precio ? Math.round(d.precio / USD_RATE) : null)
+    : (d.precio ? Math.round(d.precio) : null);
+  window.__base = {                                // referencia para ordenar "más parecida"
+    operacion: d.operacion === "rent" ? "rent" : "sale", tipo: d.tipo || "",
+    precio_usd: precioUsd, dorm: d.dorm, cochera: d.cochera, estado: d.estado,
+    m2_homog: d.m2_construidos || null, barrio: ""
+  };
+}
 function etiquetaEstadoPub(e) {
   return e === "reserved" ? "Reservada" : (e === "negotiation" ? "En negociación" : "");
 }
@@ -390,7 +421,26 @@ function traer() {
   var enArchivo = DATA.filter(function (c) { return c.slug === slug; })[0];
   if (enArchivo) { rellenar(enArchivo); hint.innerHTML = avisoTraido(); return; }
   if (!esRemax) {
-    hint.innerHTML = "⚠️ Ese link no es de RE/MAX: no puedo leerlo solo. <b>Completá los datos a mano</b> y buscá igual.";
+    var esOtroPortal = /(infocasas\.|mercadolibre\.|mlibre\.)/i.test(link) || /\bMLU-/.test(link);
+    if (MOTOR_URL && esOtroPortal) {
+      hint.textContent = "Leyendo la propiedad…";
+      fetch(MOTOR_URL + (MOTOR_URL.indexOf("?") >= 0 ? "&" : "?") + "url=" + encodeURIComponent(link))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d || d.error || (d.precio == null && d.dorm == null && d.m2_construidos == null))
+            throw new Error(d && d.error || "vacío");
+          rellenarExterno(d);
+          hint.innerHTML = "✓ Datos traídos de <b>" + esc(d.fuente || "el portal") +
+            "</b>. Revisá (y agregá el barrio si querés) y tocá <b>Buscar parecidas</b>.";
+        })
+        .catch(function () {
+          hint.innerHTML = "No pude leer del todo ese link. <b>Completá lo que falte a mano</b> y buscá igual.";
+        });
+      return;
+    }
+    hint.innerHTML = esOtroPortal
+      ? "⚠️ Para leer InfoCasas/MercadoLibre falta prender el motorcito en <b>⚙️ Ajustes</b>. Por ahora, <b>completá a mano</b> y buscá igual."
+      : "⚠️ Ese link no es de RE/MAX: no puedo leerlo solo. <b>Completá los datos a mano</b> y buscá igual.";
     return;
   }
   // 2) link de RE/MAX no incluido (muy nueva): lo busco en vivo
@@ -680,7 +730,8 @@ function initSegs() {
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   // Ajustes (associate editable)
   $("btn-ajustes").addEventListener("click", function () {
-    $("in-associate").value = ASSOCIATE; $("ajustes-msg").textContent = "";
+    $("in-associate").value = ASSOCIATE; $("in-motor").value = MOTOR_URL;
+    $("ajustes-msg").textContent = "";
     $("ajustes").style.display = "flex";
   });
   $("btn-ajustes-cerrar").addEventListener("click", function () { $("ajustes").style.display = "none"; });
@@ -690,6 +741,8 @@ function initSegs() {
     if (!v) { $("ajustes-msg").textContent = "Poné tu código."; return; }
     ASSOCIATE = v;
     try { localStorage.setItem("parecidas_associate", v); } catch (e) {}
+    MOTOR_URL = ($("in-motor").value || "").trim().replace(/\/+$/, "");
+    try { localStorage.setItem("parecidas_motor", MOTOR_URL); } catch (e) {}
     $("ajustes-msg").textContent = "✓ Guardado";
   });
 

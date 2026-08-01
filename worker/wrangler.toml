@@ -1,0 +1,6 @@
+name = "parecidas-motor"
+main = "motor.js"
+compatibility_date = "2024-11-01"
+
+# Motorcito de Parecidas (lee InfoCasas + MercadoLibre). Sin secretos, sin llaves.
+# Se publica gratis con:  npx wrangler deploy   (desde esta carpeta worker/)
