@@ -132,9 +132,12 @@
     font-variant-numeric:tabular-nums}
   .card-check{width:22px;height:22px;flex-shrink:0;accent-color:var(--brand);cursor:pointer;margin:0}
   .card.sel{border-color:var(--brand);box-shadow:0 0 0 2px rgba(11,79,214,.25)}
-  .multicopy{position:fixed;left:50%;transform:translateX(-50%);
+  .multibar{position:fixed;left:50%;transform:translateX(-50%);
     bottom:calc(16px + env(safe-area-inset-bottom));width:calc(100% - 40px);max-width:400px;
-    z-index:20;box-shadow:0 8px 24px rgba(224,30,55,.4)}
+    z-index:20;display:flex;gap:8px;box-shadow:0 8px 24px rgba(16,35,63,.28);border-radius:11px}
+  .multibar .btn{flex:1;padding:14px 8px;font-size:14.5px}
+  .btn-enviar{background:#1fa855;color:#fff}
+  .btn-copiar-sel{background:var(--surface);color:var(--brand);border:1px solid var(--line)}
   .busq-btn{position:relative}
   .busq-badge{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;
     border-radius:9px;background:var(--red);color:#fff;font-size:10px;font-weight:800;
@@ -297,7 +300,10 @@
     </div>
   </div>
 </div>
-<button class="btn btn-red multicopy" id="btn-multicopy" style="display:none">📋 Copiar seleccionadas (0)</button>
+<div class="multibar" id="multibar" style="display:none">
+  <button class="btn btn-enviar" id="btn-multienviar">📲 Enviar (0)</button>
+  <button class="btn btn-copiar-sel" id="btn-multicopy">📋 Copiar (0)</button>
+</div>
 
 <script src="barrios.js"></script>
 <script src="app.js"></script>

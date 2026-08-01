@@ -282,9 +282,41 @@ function renumerar() {
 }
 function actualizarMulticopy() {
   var n = SEL.length;
-  var b = $("btn-multicopy");
-  b.textContent = "📋 Copiar seleccionadas (" + n + ")";
-  b.style.display = n ? "" : "none";
+  $("multibar").style.display = n ? "flex" : "none";
+  $("btn-multienviar").textContent = "📲 Enviar (" + n + ")";
+  $("btn-multicopy").textContent = "📋 Copiar (" + n + ")";
+}
+// Cliente activo = la búsqueda guardada que está abierta (si hay). Da su teléfono
+// y permite marcar enviadas.
+function busquedaActiva() {
+  if (!window.__busquedaActiva) return null;
+  var arr = cargarBusquedas();
+  return arr.filter(function (x) { return x.id === window.__busquedaActiva; })[0] || null;
+}
+function textoSeleccionadas() {
+  return SEL.map(function (c, i) {
+    return (i + 1) + ". " + resumen(c) + "\n" + linkAssoc(c.link);
+  }).join("\n\n");
+}
+// Enviar por WhatsApp: si hay cliente con número → abre su chat; si no → WhatsApp
+// para elegir contacto. Y suma 1 en enviadas (marca las propiedades como enviadas).
+function enviarSeleccionadas() {
+  if (!SEL.length) return;
+  var texto = textoSeleccionadas();
+  var b = busquedaActiva();
+  var wa = b ? waLink(b.tel) : null;
+  var url = (wa ? wa + "?text=" : "https://wa.me/?text=") + encodeURIComponent(texto);
+  if (b) {                                   // marca enviadas + cuenta la tanda
+    var arr = cargarBusquedas();
+    var bb = arr.filter(function (x) { return x.id === b.id; })[0];
+    if (bb) {
+      bb.enviadas = bb.enviadas || [];
+      SEL.forEach(function (c) { if (bb.enviadas.indexOf(c.slug) < 0) bb.enviadas.push(c.slug); });
+      bb.tandas = (bb.tandas || 0) + 1;
+      guardarBusquedas(arr); renderBadge();
+    }
+  }
+  window.open(url, "_blank");
 }
 
 function render(res, total, aflojados) {
@@ -361,12 +393,7 @@ function copiarTexto(texto, btn, vuelve) {
 }
 function copiarSeleccionadas() {
   if (!SEL.length) return;
-  // Lista numerada 1,2,3 (orden de tildado), con resumen y link listo para el cliente.
-  var texto = SEL.map(function (c, i) {
-    return (i + 1) + ". " + resumen(c) + "\n" + linkAssoc(c.link);
-  }).join("\n\n");
-  var b = $("btn-multicopy");
-  copiarTexto(texto, b, "📋 Copiar seleccionadas (" + SEL.length + ")");
+  copiarTexto(textoSeleccionadas(), $("btn-multicopy"), "📋 Copiar (" + SEL.length + ")");
 }
 
 // -------------------------- Traer datos de un link --------------------------
@@ -677,6 +704,7 @@ function abrirBusqueda(id) {
   arr.forEach(function (x) { if (x.id === id) b = x; });
   if (!b) return;
   restoreForm(b.form);
+  window.__busquedaActiva = b.id;                               // cliente activo (para Enviar)
   b.vistas = matchesDe(b).map(function (c) { return c.slug; });  // marca como visto → apaga el numerito
   guardarBusquedas(arr);
   cerrarOverlay("busquedas");
@@ -713,6 +741,8 @@ function renderBusquedas() {
       a.textContent = "💬 " + b.tel;
       sub.appendChild(a);
     } else { sub.textContent = matchesDe(b).length + " parecidas"; }
+    var env = (b.enviadas || []).length;
+    if (env) sub.appendChild(document.createTextNode("  ·  📤 " + env + " enviada" + (env === 1 ? "" : "s")));
     info.appendChild(sub);
     item.appendChild(info);
     if (nuevas > 0) {
@@ -771,8 +801,9 @@ function initSegs() {
   $("f-barrio").addEventListener("keydown", function (e) {
     if (e.key === "Enter") { e.preventDefault(); var s = primeraSug(); if (s) addBarrio(s); }
   });
-  // Si borra el link, olvido la propiedad base (para no ordenar/excluir con una vieja).
+  // Si toca el link, ya no está en el contexto de un cliente guardado.
   $("link").addEventListener("input", function () {
+    window.__busquedaActiva = null;
     if (!$("link").value.trim()) { window.__base = null; window.__slugActual = null; }
   });
   ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max"]
@@ -780,6 +811,7 @@ function initSegs() {
   $("btn-traer").addEventListener("click", traer);
   $("btn-buscar").addEventListener("click", buscar);
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
+  $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
   // Ajustes (associate editable)
   $("btn-ajustes").addEventListener("click", function () {
     $("in-associate").value = ASSOCIATE; $("in-motor").value = MOTOR_URL;
