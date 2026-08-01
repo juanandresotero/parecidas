@@ -390,11 +390,6 @@ function render(res, total, aflojados) {
       vb.onclick = function () { abrirValPicker(c.slug); };
       card.appendChild(vb);
     }
-    var btn = document.createElement("button");
-    btn.className = "copiar"; btn.textContent = "📋";
-    btn.title = "Copiar esta propiedad";
-    btn.onclick = function () { copiarTexto(resumen(c) + "\n" + linkAssoc(c.link), btn, "📋"); };
-    card.appendChild(btn);
     cont.appendChild(card);
   });
   renumerar();
