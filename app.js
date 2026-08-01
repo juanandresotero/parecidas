@@ -368,7 +368,13 @@ function rellenarExterno(d) {
   $("f-precio-max").value = d.precio ? fmtMiles(String(Math.round(d.precio * 1.15))) : "";
   setRango("f-cub", d.m2_construidos);
   setRango("f-padron", d.m2_totales);
-  SELBARRIOS = []; $("f-barrio").value = ""; renderChips(); pintarGrupo();
+  // Barrio: si el del portal coincide con uno de RE/MAX, lo cargo (1 barrio = su grupo).
+  SELBARRIOS = [];
+  if (d.barrio) {
+    var match = BARRIOS_ALL.filter(function (b) { return norm(b) === norm(d.barrio); })[0];
+    if (match) SELBARRIOS = [match];
+  }
+  $("f-barrio").value = ""; renderChips(); pintarGrupo();
   setStep("f-dmin", d.dorm != null ? d.dorm : null);
   setStep("f-dmax", d.dorm != null ? d.dorm : null);
   setSeg("f-coch", d.cochera === true ? "si" : (d.cochera === false ? "no" : ""));

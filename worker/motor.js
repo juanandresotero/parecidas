@@ -104,16 +104,17 @@ function cocheraDe(texto, cocheras) {
 }
 
 // ------------------------------ MercadoLibre ------------------------------
-// Precio/moneda del JSON-LD (limpio). Resto de la ficha técnica del texto.
+// Precio/moneda del JSON-LD; ficha técnica de los pares {"id":"X","text":"Y"} que
+// ML embebe (confiables). NO leer por texto suelto: agarra números de otras partes
+// (el precio caía en "dormitorios").
 function parseMercadoLibre(html) {
   const out = {
     tipo: "", operacion: "sale", precio: null, moneda: "USD", dorm: null,
-    m2_construidos: null, m2_totales: null, cochera: null, estado: "", renta: false,
+    m2_construidos: null, m2_totales: null, cochera: null, estado: "", renta: false, barrio: "",
   };
-  const texto = textoPlano(html);
-  const titulo = (html.match(/<title>([^<]*)<\/title>/i) || [])[1] || "";
+  const titulo = (html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || "";
 
-  // JSON-LD: precio, moneda, nombre (tipo)
+  // JSON-LD: precio y moneda
   const lds = html.match(/<script[^>]+application\/ld\+json[^>]*>[\s\S]*?<\/script>/gi) || [];
   for (const bloque of lds) {
     const raw = bloque.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "");
@@ -125,29 +126,32 @@ function parseMercadoLibre(html) {
         if (o && o.price && out.precio == null) out.precio = numUY(o.price);
         if (o && o.priceCurrency) out.moneda = o.priceCurrency === "UYU" ? "UYU" : "USD";
       }
-      if (node && node.name && !out.tipo) out.tipo = node.name;
     }
   }
-  if (!out.tipo) out.tipo = titulo;
 
-  // Operación (Venta / Alquiler) del título o del texto
-  out.operacion = /\balquiler\b|\balquila\b|\barrienda\b/i.test(titulo + " " + texto.slice(0, 400))
-    ? "rent" : "sale";
+  // Ficha técnica: pares {"id":"Etiqueta","text":"Valor"} (primera aparición gana)
+  const esp = {};
+  for (const m of html.matchAll(/\{"id":"([^"]{1,40})","text":"([^"]{1,60})"\}/g)) {
+    if (!(m[1] in esp)) esp[m[1]] = m[2];
+  }
+  out.m2_totales = numUY(esp["Superficie total"]);
+  out.m2_construidos = numUY(esp["Área privada"]) || numUY(esp["Superficie cubierta"]) || out.m2_totales;
+  out.dorm = toInt(esp["Dormitorios"]);
+  // Cochera: si el TÍTULO dice cochera → con cochera (manda el título, pedido de Juan).
+  // Si no, uso la ficha técnica (Cocheras: N).
+  const coch = numUY(esp["Cocheras"]);
+  if (cocheraDe(titulo, null) === true) out.cochera = true;
+  else if (coch != null) out.cochera = coch > 0;
+  else out.cochera = null;
+  out.estado = estadoDe(titulo, numUY(esp["Antigüedad"]));   // "0 años" → a estrenar
+  out.tipo = esp["Tipo de departamento"] || esp["Tipo de casa"] ||
+    esp["Tipo de inmueble"] || titulo;
 
-  // Ficha técnica (andes-table): pares "Etiqueta 123"
-  const totales = specNum(texto, "Superficie total");
-  const cub = specNum(texto, "Superficie cubierta") ||
-    specNum(texto, "Superficie construida") || specNum(texto, "Área privada") ||
-    specNum(texto, "Area privada");
-  out.m2_totales = totales;
-  out.m2_construidos = cub || totales;
-  out.dorm = specNum(texto, "Dormitorios") || specNum(texto, "Habitaciones");
-  const cocheras = specNum(texto, "Cocheras") != null ? specNum(texto, "Cocheras")
-    : specNum(texto, "Estacionamientos");
-  out.cochera = cocheraDe(texto, cocheras);
-  const antig = specNum(texto, "Antigüedad") != null ? specNum(texto, "Antigüedad")
-    : specNum(texto, "Antiguedad");
-  out.estado = estadoDe(texto, antig);
+  // Barrio: ML lo guarda como "city" en la ficha (o dentro de item_location)
+  const bm = html.match(/"city":"([^"]{2,40})"/) || html.match(/"item_location":"([^",]{2,40})/);
+  if (bm) out.barrio = bm[1].trim();
+
+  out.operacion = /\balquiler\b|\balquila\b|\barrienda\b/i.test(titulo) ? "rent" : "sale";
   out.renta = RENTA_RE.test(titulo);
   return out;
 }
@@ -160,10 +164,10 @@ function parseMercadoLibre(html) {
 function parseInfoCasas(html) {
   const out = {
     tipo: "", operacion: "sale", precio: null, moneda: "USD", dorm: null,
-    m2_construidos: null, m2_totales: null, cochera: null, estado: "", renta: false,
+    m2_construidos: null, m2_totales: null, cochera: null, estado: "", renta: false, barrio: "",
   };
   const texto = textoPlano(html);
-  const titulo = (html.match(/<title>([^<]*)<\/title>/i) || [])[1] || "";
+  const titulo = (html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || "";
 
   let root = null;
   const m = html.match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
@@ -197,6 +201,8 @@ function parseInfoCasas(html) {
   if (!out.m2_construidos) out.m2_construidos = specNum(texto, "Superficie edificada") || specNum(texto, "Edificado") || null;
   if (!out.dorm) out.dorm = specNum(texto, "Dormitorios") || specNum(texto, "Habitaciones");
   if (out.cochera == null) out.cochera = cocheraDe(texto, null);
+  // Si el TÍTULO dice cochera → con cochera (manda el título, pedido de Juan).
+  if (cocheraDe(titulo, null) === true) out.cochera = true;
   if (!out.tipo) out.tipo = titulo;
   if (out.operacion === "sale" && /\balquiler\b|\balquila\b/i.test(titulo)) out.operacion = "rent";
   out.renta = RENTA_RE.test(titulo);
