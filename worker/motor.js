@@ -187,17 +187,17 @@ function parseInfoCasas(html) {
     const op = String(pick(nodo, ["operationType", "operation_type", "operation"]) ||
       pickDeep(nodo, ["operation_type", "name"]) || "").toLowerCase();
     out.operacion = /alqui|arrend|rent/.test(op) ? "rent" : "sale";
+    // Estado SOLO del campo del nodo (escanear toda la página da falsos "a estrenar").
     const est = String(pick(nodo, ["construction_state_name", "constructionState", "condition"]) || "");
-    out.estado = estadoDe(texto + " " + est, null);
+    out.estado = estadoDe(est, null);
   }
 
-  // Respaldo por texto si el JSON no trajo lo básico
-  if (out.m2_totales == null) out.m2_totales = specNum(texto, "Superficie del terreno") || specNum(texto, "Terreno");
-  if (out.m2_construidos == null) out.m2_construidos = specNum(texto, "Superficie edificada") || specNum(texto, "Edificado") || out.m2_totales;
-  if (out.dorm == null) out.dorm = specNum(texto, "Dormitorios") || specNum(texto, "Habitaciones");
+  // Respaldo por texto si el JSON no trajo lo básico (0 cuenta como "no vino").
+  if (!out.m2_totales) out.m2_totales = specNum(texto, "Superficie del terreno") || specNum(texto, "Terreno");
+  if (!out.m2_construidos) out.m2_construidos = specNum(texto, "Superficie edificada") || specNum(texto, "Edificado") || null;
+  if (!out.dorm) out.dorm = specNum(texto, "Dormitorios") || specNum(texto, "Habitaciones");
   if (out.cochera == null) out.cochera = cocheraDe(texto, null);
   if (!out.tipo) out.tipo = titulo;
-  if (!out.estado) out.estado = estadoDe(texto, null);
   if (out.operacion === "sale" && /\balquiler\b|\balquila\b/i.test(titulo)) out.operacion = "rent";
   out.renta = RENTA_RE.test(titulo);
   return out;

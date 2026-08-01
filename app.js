@@ -5,10 +5,10 @@
 // Associate editable (cada usuario pone el suyo en Ajustes). Guardado en el celu.
 var ASSOCIATE = "940041154";
 try { ASSOCIATE = localStorage.getItem("parecidas_associate") || ASSOCIATE; } catch (e) {}
-// Motorcito (Cloudflare Worker) que lee InfoCasas / MercadoLibre. Vacío = apagado
-// (esos links se completan a mano). Se configura en Ajustes tras publicarlo.
-var MOTOR_URL = "";
-try { MOTOR_URL = localStorage.getItem("parecidas_motor") || ""; } catch (e) {}
+// Motorcito (Cloudflare Worker) que lee InfoCasas / MercadoLibre. Ya publicado y
+// prendido por defecto; cada usuario puede poner el suyo en Ajustes (lo pisa).
+var MOTOR_URL = "https://parecidas-motor.cualcaxsiempre.workers.dev";
+try { MOTOR_URL = localStorage.getItem("parecidas_motor") || MOTOR_URL; } catch (e) {}
 var DET_EP = "https://api-ar.redremax.com/remaxweb-uy/api/listings/findBySlug/";
 var CDN = "https://d1acdg20u0pmxj.cloudfront.net/";
 
