@@ -22,9 +22,14 @@ function soloNum(s) {
 function tipoCat(t) {
   t = norm(t);
   if (t.indexOf("departamento") >= 0 || t.indexOf("penthouse") >= 0 || t.indexOf("apart") >= 0) return "apto";
-  if (t.indexOf("casa") >= 0) return "casa";
+  if (t.indexOf("casa") >= 0 || t === "ph") return "casa";   // PH cuenta como casa
   if (t.indexOf("terreno") >= 0 || t.indexOf("lote") >= 0) return "terreno";
   return "otro";
+}
+function esc(s) {   // blinda innerHTML contra caracteres raros en los datos de RE/MAX
+  return (s == null ? "" : String(s)).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
 }
 
 // Grupo (lista de barrios normalizados) al que pertenece un barrio. Si no está en
@@ -203,7 +208,7 @@ function buscar() {
 function fmtPrecio(c) {
   if (!c.precio) return "Consultar";
   var s = new Intl.NumberFormat("es-UY").format(Math.round(c.precio));
-  return (c.moneda || "USD") + " " + s;
+  return esc(c.moneda || "USD") + " " + s;
 }
 function porque(c, f) {
   var b = [];
@@ -251,7 +256,7 @@ function render(res, aflojado) {
       actualizarMulticopy();
     };
     card.appendChild(chk);
-    var foto = c.foto ? '<img class="foto" src="' + c.foto + '" alt="" loading="lazy">'
+    var foto = c.foto ? '<img class="foto" src="' + esc(c.foto) + '" alt="" loading="lazy">'
                       : '<div class="foto ph">🏠</div>';
     var chips = [];
     if (c.dorm) chips.push(c.dorm + " dorm");
@@ -265,7 +270,7 @@ function render(res, aflojado) {
     link.innerHTML = foto +
       '<div class="info">' +
         '<div class="precio">' + fmtPrecio(c) + '</div>' +
-        '<div class="barrio">' + (c.barrio || "") + '</div>' +
+        '<div class="barrio">' + esc(c.barrio || "") + '</div>' +
         '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + '</div>' +
         (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +
       '</div>';
@@ -423,6 +428,10 @@ function initSegs() {
     });
   });
   $("f-barrio").addEventListener("input", pintarGrupo);
+  // Si borra el link, olvido la propiedad base (para no ordenar/excluir con una vieja).
+  $("link").addEventListener("input", function () {
+    if (!$("link").value.trim()) { window.__base = null; window.__slugActual = null; }
+  });
   attachMiles("f-precio", true);
   attachMiles("f-cub", false);
   attachMiles("f-padron", false);
