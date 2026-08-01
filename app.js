@@ -361,6 +361,8 @@ function render(res, total, aflojados) {
       else if (!chk.checked && i >= 0) SEL.splice(i, 1);
       renumerar();
     };
+    // ⭐ "Para enviar" = queda auto-seleccionada (aparece el botón Enviar).
+    if (bAct && valDe(bAct, c.slug) === "a_enviar") { SEL.push(c); chk.checked = true; }
     col.appendChild(num); col.appendChild(chk);
     card.appendChild(col);
     CARDS.push({ slug: c.slug, numEl: num, card: card });
