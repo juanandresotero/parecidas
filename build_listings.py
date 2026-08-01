@@ -23,10 +23,19 @@ import urllib.request
 # "Con renta" (vendida con inquilino) no es un campo de RE/MAX: viene en el título
 # ("con renta", "renta 6%", "rentado", "alquilada", "ocupada"…).
 RENTA_RE = re.compile(r"(renta|rentad|alquilad|ocupad)", re.I)
+# Cochera: RE/MAX carga mal parkingSpaces (muchos ponen 0 teniendo cochera). Se
+# refuerza con el texto ("lo positivo gana"), cuidando el "sin cochera/garaje".
+COCHERA_RE = re.compile(r"(cochera|garaj|garage|\bgge\b)", re.I)
+SIN_COCHERA_RE = re.compile(r"sin\s+(cochera|garaj|garage)", re.I)
 
 
 def _tiene_renta(titulo: str) -> bool:
     return bool(RENTA_RE.search(titulo or ""))
+
+
+def _dice_cochera(texto: str) -> bool:
+    t = texto or ""
+    return bool(COCHERA_RE.search(t)) and not SIN_COCHERA_RE.search(t)
 
 API = "https://api-ar.redremax.com/remaxweb-uy/api/listings"
 LIST_EP = API + "/findAllWithEntrepreneurships"
@@ -164,10 +173,14 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     conds = [str((c or {}).get("value", "")).lower()
              for c in (det.get("conditions") or [])] if det else []
     a_estrenar = any("estrenar" in c or "construccion" in c for c in conds)
+    texto = (it.get("title") or "") + " " + ((det.get("description") or "") if det else "")
+    dice_coch = _dice_cochera(texto)
     cochera = None
     if det is not None:
         park = det.get("parkingSpaces")
-        cochera = bool(park and park > 0)
+        cochera = bool(park and park > 0) or dice_coch
+    elif dice_coch:
+        cochera = True   # sin detalle, pero el texto dice cochera
     return {
         "id": it.get("id"),
         "slug": slug,

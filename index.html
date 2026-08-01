@@ -34,6 +34,19 @@
   .barra .logo{font-size:20px}
   .barra h1{font-size:17px;margin:0;font-weight:800}
   .barra small{display:block;font-weight:500;opacity:.85;font-size:11px}
+  .ajustes-btn{margin-left:auto;border:none;background:rgba(255,255,255,.2);color:#fff;
+    width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:17px;line-height:1}
+  .ajustes{position:fixed;inset:0;z-index:50;background:rgba(16,35,63,.45);
+    display:flex;align-items:flex-start;justify-content:center;padding:60px 16px}
+  .ajustes-card{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);
+    width:100%;max-width:380px;padding:16px}
+  .ajustes-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .ajustes-head b{font-size:16px}
+  .ajustes-head button{border:none;background:var(--surface-2);width:28px;height:28px;
+    border-radius:50%;cursor:pointer;font-size:14px;color:var(--ink)}
+  .ajustes-lbl{font-size:13px;font-weight:700;color:var(--ink);display:block;margin-bottom:6px}
+  .ajustes-lbl span{font-weight:500;color:var(--muted);font-size:12px}
+  .ajustes-msg{font-size:12px;color:var(--ok);font-weight:700;margin:8px 0 0;min-height:14px}
   .cuerpo{padding:15px;display:flex;flex-direction:column;gap:15px}
   .bloque{background:var(--surface-2);border:1px solid var(--line);
     border-radius:var(--radius);padding:13px}
@@ -125,6 +138,17 @@
   <div class="barra">
     <span class="logo">🏠</span>
     <h1>Parecidas</h1>
+    <button class="ajustes-btn" id="btn-ajustes" title="Ajustes" aria-label="Ajustes">⚙️</button>
+  </div>
+
+  <div class="ajustes" id="ajustes" style="display:none">
+    <div class="ajustes-card">
+      <div class="ajustes-head"><b>Ajustes</b><button id="btn-ajustes-cerrar" aria-label="Cerrar">✕</button></div>
+      <label class="ajustes-lbl">Tu código de associate<br><span>Se agrega a los links que copiás, para que las propiedades figuren tuyas.</span></label>
+      <input class="in" id="in-associate" inputmode="numeric">
+      <button class="btn btn-brand" id="btn-associate-guardar" style="margin-top:10px;width:100%">Guardar</button>
+      <p class="ajustes-msg" id="ajustes-msg"></p>
+    </div>
   </div>
   <div class="cuerpo">
 

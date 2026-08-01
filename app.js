@@ -2,7 +2,9 @@
 // Buscador de parecidas — toda la lógica corre en el celu. Lee listings.json
 // (que arma el robot 1 vez por día) y filtra. Sin servidor.
 
+// Associate editable (cada usuario pone el suyo en Ajustes). Guardado en el celu.
 var ASSOCIATE = "940041154";
+try { ASSOCIATE = localStorage.getItem("parecidas_associate") || ASSOCIATE; } catch (e) {}
 var DET_EP = "https://api-ar.redremax.com/remaxweb-uy/api/listings/findBySlug/";
 var CDN = "https://d1acdg20u0pmxj.cloudfront.net/";
 
@@ -204,20 +206,20 @@ function buscar() {
   // Flexibilidad "mínimo 2": si salen menos de 2, aflojo de MENOR a MAYOR
   // prioridad hasta llegar a 2. NUNCA aflojo venta/alquiler ni muestro reservadas.
   var pasos = [
-    function () { f.estado = ""; },                                       // 7 usado/a estrenar
-    function () { f.cochera = ""; },                                      // 6 cochera
-    function () { f.dmin = null; f.dmax = null; },                        // 5 dormitorios
-    function () { f.cubMin = null; f.cubMax = null; f.padronMin = null; f.padronMax = null; }, // m²
-    function () { f.precioMinUsd = null; f.precioMaxUsd = null; },        // 4 precio
-    function () { f.tipos = []; },                                        // 3 tipo
-    function () { f.grupo = null; }                                       // 2 ubicación (última)
+    ["estado", function () { f.estado = ""; }],                          // 7
+    ["cochera", function () { f.cochera = ""; }],                        // 6
+    ["dormitorios", function () { f.dmin = null; f.dmax = null; }],      // 5
+    ["m²", function () { f.cubMin = null; f.cubMax = null; f.padronMin = null; f.padronMax = null; }],
+    ["precio", function () { f.precioMinUsd = null; f.precioMaxUsd = null; }], // 4
+    ["tipo", function () { f.tipos = []; }],                             // 3
+    ["zona", function () { f.grupo = null; }]                            // 2 (última)
   ];
-  var aflojado = false, i = 0;
+  var aflojados = [], i = 0;
   while (res.length < 2 && i < pasos.length) {
-    pasos[i](); i++; aflojado = true;
+    aflojados.push(pasos[i][0]); pasos[i][1](); i++;
     res = filtrar(f, ref, slugActual);
   }
-  render(res, aflojado && res.length > 0);
+  render(res, res.length ? aflojados : []);
 }
 
 // -------------------------- Dibujar resultados --------------------------
@@ -248,12 +250,12 @@ function actualizarMulticopy() {
   b.style.display = n ? "" : "none";
 }
 
-function render(res, aflojado) {
+function render(res, aflojados) {
   var f = leerFiltros();
   SEL = {}; actualizarMulticopy();
   $("resultados").style.display = "";
   $("cuenta").textContent = res.length + (res.length === 1 ? " encontrada" : " encontradas")
-    + (aflojado ? " · búsqueda ampliada" : "");
+    + (aflojados && aflojados.length ? " · amplié: " + aflojados.join(", ") : "");
   var cont = $("cards");
   if (!res.length) {
     cont.innerHTML = '<div class="vacio">No hay parecidas con esos filtros. Probá aflojar alguno (dejalo vacío / “Da igual”).</div>';
@@ -527,6 +529,20 @@ function initSegs() {
   $("btn-traer").addEventListener("click", traer);
   $("btn-buscar").addEventListener("click", buscar);
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
+  // Ajustes (associate editable)
+  $("btn-ajustes").addEventListener("click", function () {
+    $("in-associate").value = ASSOCIATE; $("ajustes-msg").textContent = "";
+    $("ajustes").style.display = "flex";
+  });
+  $("btn-ajustes-cerrar").addEventListener("click", function () { $("ajustes").style.display = "none"; });
+  $("ajustes").addEventListener("click", function (e) { if (e.target === $("ajustes")) $("ajustes").style.display = "none"; });
+  $("btn-associate-guardar").addEventListener("click", function () {
+    var v = ($("in-associate").value || "").trim();
+    if (!v) { $("ajustes-msg").textContent = "Poné tu código."; return; }
+    ASSOCIATE = v;
+    try { localStorage.setItem("parecidas_associate", v); } catch (e) {}
+    $("ajustes-msg").textContent = "✓ Guardado";
+  });
 }
 
 function cargar() {
