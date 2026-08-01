@@ -69,9 +69,17 @@ def _foto(photos):
     if not photos:
         return ""
     p0 = photos[0]
-    raw = p0.get("rawValue") if isinstance(p0, dict) else (p0 if isinstance(p0, str) else "")
+    if isinstance(p0, dict):
+        raw = p0.get("value") or p0.get("rawValue") or p0.get("url") or ""
+    elif isinstance(p0, str):
+        raw = p0
+    else:
+        raw = ""
     if not raw:
         return ""
+    # El CDN necesita la extensión: `value` ya trae .jpg; `rawValue` no → se la agrego.
+    if not raw.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+        raw += ".jpg"
     return raw if raw.startswith("http") else CDN + raw.lstrip("/")
 
 
