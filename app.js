@@ -306,17 +306,21 @@ function enviarSeleccionadas() {
   var b = busquedaActiva();
   var wa = b ? waLink(b.tel) : null;
   var url = (wa ? wa + "?text=" : "https://wa.me/?text=") + encodeURIComponent(texto);
-  if (b) {                                   // marca enviadas + cuenta la tanda
+  window.open(url, "_blank");                 // abrir WhatsApp PRIMERO (gesto del usuario)
+  if (b) {                                    // marca enviadas + cuenta la tanda
     var arr = cargarBusquedas();
     var bb = arr.filter(function (x) { return x.id === b.id; })[0];
     if (bb) {
       bb.enviadas = bb.enviadas || [];
-      SEL.forEach(function (c) { if (bb.enviadas.indexOf(c.slug) < 0) bb.enviadas.push(c.slug); });
+      bb.estados = bb.estados || {};
+      SEL.forEach(function (c) {
+        if (bb.enviadas.indexOf(c.slug) < 0) bb.enviadas.push(c.slug);
+        bb.estados[c.slug] = "enviada";           // queda marcada como enviada
+      });
       bb.tandas = (bb.tandas || 0) + 1;
-      guardarBusquedas(arr); renderBadge();
+      guardarBusquedas(arr); renderBadge(); buscar();   // refresca la lista (marca 📤)
     }
   }
-  window.open(url, "_blank");
 }
 
 function render(res, total, aflojados) {
@@ -335,9 +339,16 @@ function render(res, total, aflojados) {
   if (aflojados && aflojados.length) txt += " · amplié: " + aflojados.join(", ");
   $("cuenta").textContent = txt;
   cont.innerHTML = "";
+  // Con cliente activo (búsqueda guardada abierta): reordeno por estado
+  // (sin valorar y lo bueno arriba, descartes al fondo). Sin cliente: como siempre.
+  var bAct = busquedaActiva();
+  if (bAct) res = res.slice().sort(function (a, b) {
+    return VAL_ESTADOS[valDe(bAct, a.slug)].orden - VAL_ESTADOS[valDe(bAct, b.slug)].orden;
+  });
   res.forEach(function (c) {                       // ya viene cortado al tope
     var card = document.createElement("div");
     card.className = "card";
+    if (bAct) card.classList.add("val-" + valDe(bAct, c.slug));
     // Columna izquierda: número (cuando está tildada) + tilde para seleccionar
     var col = document.createElement("div"); col.className = "card-col";
     var num = document.createElement("span"); num.className = "card-num"; num.style.display = "none";
@@ -372,6 +383,13 @@ function render(res, total, aflojados) {
         (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +
       '</div>';
     card.appendChild(link);
+    if (bAct) {
+      var vb = document.createElement("button");
+      vb.className = "val-btn"; vb.textContent = VAL_ESTADOS[valDe(bAct, c.slug)].icono;
+      vb.title = "Valorar para este cliente";
+      vb.onclick = function () { abrirValPicker(c.slug); };
+      card.appendChild(vb);
+    }
     var btn = document.createElement("button");
     btn.className = "copiar"; btn.textContent = "📋";
     btn.title = "Copiar esta propiedad";
@@ -773,6 +791,47 @@ function renderBadge() {
 function abrirOverlay(id) { $(id).style.display = "flex"; }
 function cerrarOverlay(id) { $(id).style.display = "none"; }
 
+// -------------------------- Valoraciones (por cliente) --------------------------
+// El estado es POR CLIENTE (vive dentro de la búsqueda guardada). Orden en la lista:
+// menor arriba (sin valorar y lo bueno arriba, descartes al fondo).
+var VAL_ESTADOS = {
+  sin_valorar: { orden: 1, icono: "⚪", label: "Sin valorar" },
+  a_enviar:    { orden: 2, icono: "⭐", label: "Para enviar" },
+  favorita:    { orden: 3, icono: "💚", label: "Le gustó al cliente" },
+  enviada:     { orden: 4, icono: "📤", label: "Enviada" },
+  pendiente:   { orden: 5, icono: "⏳", label: "Pendiente / revisar" },
+  descarte_1:  { orden: 6, icono: "🔴", label: "No me gustó" },
+  descarte_2:  { orden: 7, icono: "🔴🔴", label: "La descartó (por la foto)" },
+  descarte_3:  { orden: 8, icono: "🔴🔴🔴", label: "La descartó (tras la visita)" }
+};
+var VAL_ORDEN = ["sin_valorar", "a_enviar", "favorita", "enviada", "pendiente",
+                 "descarte_1", "descarte_2", "descarte_3"];
+
+function valDe(busq, slug) { return (busq && busq.estados && busq.estados[slug]) || "sin_valorar"; }
+function setVal(slug, clave) {
+  var b = busquedaActiva(); if (!b) return;
+  var arr = cargarBusquedas();
+  var bb = arr.filter(function (x) { return x.id === b.id; })[0]; if (!bb) return;
+  bb.estados = bb.estados || {};
+  if (clave === "sin_valorar") delete bb.estados[slug]; else bb.estados[slug] = clave;
+  guardarBusquedas(arr);
+}
+// Menú para elegir el estado de una propiedad (solo con cliente activo).
+function abrirValPicker(slug) {
+  var b = busquedaActiva(); if (!b) return;
+  var actual = valDe(b, slug);
+  var cont = $("val-lista"); cont.innerHTML = "";
+  VAL_ORDEN.forEach(function (clave) {
+    var e = VAL_ESTADOS[clave];
+    var it = document.createElement("button");
+    it.className = "val-opt" + (clave === actual ? " sel" : "");
+    it.innerHTML = '<span class="val-ic">' + e.icono + "</span> " + esc(e.label);
+    it.onclick = function () { setVal(slug, clave); cerrarOverlay("val-picker"); buscar(); };
+    cont.appendChild(it);
+  });
+  abrirOverlay("val-picker");
+}
+
 // -------------------------- Arranque + eventos --------------------------
 function initSegs() {
   ["f-oper", "f-coch", "f-estado", "f-renta"].forEach(function (id) {   // una sola opción
@@ -812,6 +871,8 @@ function initSegs() {
   $("btn-buscar").addEventListener("click", buscar);
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
+  $("btn-val-cerrar").addEventListener("click", function () { cerrarOverlay("val-picker"); });
+  $("val-picker").addEventListener("click", function (e) { if (e.target === $("val-picker")) cerrarOverlay("val-picker"); });
   // Ajustes (associate editable)
   $("btn-ajustes").addEventListener("click", function () {
     $("in-associate").value = ASSOCIATE; $("in-motor").value = MOTOR_URL;

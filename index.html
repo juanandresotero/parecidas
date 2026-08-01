@@ -138,6 +138,19 @@
   .multibar .btn{flex:1;padding:14px 8px;font-size:14.5px}
   .btn-enviar{background:#1fa855;color:#fff}
   .btn-copiar-sel{background:var(--surface);color:var(--brand);border:1px solid var(--line)}
+  .val-btn{border:1px solid var(--line);background:var(--surface-2);border-radius:10px;
+    padding:8px 9px;font-size:15px;cursor:pointer;line-height:1;white-space:nowrap}
+  .val-lista{display:flex;flex-direction:column;gap:6px}
+  .val-opt{display:flex;align-items:center;gap:10px;padding:11px;border:1px solid var(--line);
+    border-radius:11px;background:var(--surface);font-family:inherit;font-size:14px;font-weight:600;
+    color:var(--ink);cursor:pointer;text-align:left}
+  .val-opt.sel{border-color:var(--brand);background:var(--ok-bg)}
+  .val-ic{font-size:15px;min-width:44px}
+  .card.val-a_enviar{border-left:4px solid #f5b301}
+  .card.val-favorita{border-left:4px solid #12a150}
+  .card.val-enviada{border-left:4px solid #7a8aa0}
+  .card.val-pendiente{border-left:4px solid #12a150}
+  .card.val-descarte_1,.card.val-descarte_2,.card.val-descarte_3{border-left:4px solid var(--red);opacity:.72}
   .busq-btn{position:relative}
   .busq-badge{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;
     border-radius:9px;background:var(--red);color:#fff;font-size:10px;font-weight:800;
@@ -196,6 +209,12 @@
       <input class="in" id="gb-tel" inputmode="tel" placeholder="Ej: 099 123 456">
       <button class="btn btn-brand" id="btn-guardar-ok" style="margin-top:12px;width:100%">Guardar búsqueda</button>
       <p class="ajustes-msg" id="gb-msg"></p>
+    </div>
+  </div>
+  <div class="ajustes" id="val-picker" style="display:none">
+    <div class="ajustes-card">
+      <div class="ajustes-head"><b>Valorar propiedad</b><button id="btn-val-cerrar" aria-label="Cerrar">✕</button></div>
+      <div class="val-lista" id="val-lista"></div>
     </div>
   </div>
   <div class="cuerpo">
