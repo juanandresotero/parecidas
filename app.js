@@ -733,7 +733,16 @@ function guardarBusquedaActual(nombre, tel) {
     form: snapshotForm(), filtro: f, slugActual: slugActual,
     vistas: matches.map(function (c) { return c.slug; })   // lo que ya vio hoy
   };
+  // Si hay seleccionadas al guardar: esas quedan ENVIADAS y el resto de las que
+  // estaban en la lista, DESCARTADAS (🔴 descarte_1).
+  if (SEL.length) {
+    b.estados = {}; b.enviadas = []; b.tandas = 1;
+    var sel = {};
+    SEL.forEach(function (c) { sel[c.slug] = 1; b.estados[c.slug] = "enviada"; b.enviadas.push(c.slug); });
+    CARDS.forEach(function (o) { if (!sel[o.slug]) b.estados[o.slug] = "descarte_1"; });
+  }
   var arr = cargarBusquedas(); arr.unshift(b); guardarBusquedas(arr);
+  window.__busquedaActiva = b.id;   // el cliente recién guardado queda activo
 }
 
 function abrirBusqueda(id) {
@@ -929,6 +938,7 @@ function initSegs() {
     guardarBusquedaActual(nombre, tel);
     cerrarOverlay("guardar-busq");
     renderBadge();
+    buscar();   // refresca: muestra enviadas 📤 y descartadas 🔴
   });
 }
 
