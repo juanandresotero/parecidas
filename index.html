@@ -131,6 +131,25 @@
   .multicopy{position:fixed;left:50%;transform:translateX(-50%);
     bottom:calc(16px + env(safe-area-inset-bottom));width:calc(100% - 40px);max-width:400px;
     z-index:20;box-shadow:0 8px 24px rgba(224,30,55,.4)}
+  .busq-btn{position:relative}
+  .busq-badge{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;
+    border-radius:9px;background:var(--red);color:#fff;font-size:10px;font-weight:800;
+    display:flex;align-items:center;justify-content:center;line-height:1}
+  .btn-guardar-busq{width:100%;margin-top:10px;background:var(--ok-bg);color:var(--brand);
+    border:1px solid var(--line);padding:11px}
+  .busq-lista{display:flex;flex-direction:column;gap:9px;max-height:62vh;overflow-y:auto}
+  .busq-item{display:flex;align-items:center;gap:9px;padding:10px;border:1px solid var(--line);
+    border-radius:12px;background:var(--surface-2)}
+  .bi-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .bi-nom{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bi-sub{font-size:12px;color:var(--muted)}
+  .bi-tel{color:var(--brand);font-weight:700;text-decoration:none}
+  .bi-nuevas{background:var(--red);color:#fff;border-radius:999px;padding:2px 8px;
+    font-size:11px;font-weight:800;white-space:nowrap;flex-shrink:0}
+  .bi-btn{border:none;background:var(--brand);color:#fff;border-radius:9px;
+    padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0}
+  .bi-del{border:none;background:transparent;color:var(--muted);cursor:pointer;
+    font-size:16px;padding:4px;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -138,6 +157,7 @@
   <div class="barra">
     <span class="logo">🏠</span>
     <h1>Parecidas</h1>
+    <button class="ajustes-btn busq-btn" id="btn-busquedas" title="Búsquedas guardadas" aria-label="Búsquedas guardadas">🔖<span class="busq-badge" id="busq-badge" style="display:none">0</span></button>
     <button class="ajustes-btn" id="btn-ajustes" title="Ajustes" aria-label="Ajustes">⚙️</button>
   </div>
 
@@ -148,6 +168,25 @@
       <input class="in" id="in-associate" inputmode="numeric">
       <button class="btn btn-brand" id="btn-associate-guardar" style="margin-top:10px;width:100%">Guardar</button>
       <p class="ajustes-msg" id="ajustes-msg"></p>
+    </div>
+  </div>
+
+  <div class="ajustes" id="busquedas" style="display:none">
+    <div class="ajustes-card">
+      <div class="ajustes-head"><b>Búsquedas guardadas</b><button id="btn-busq-cerrar" aria-label="Cerrar">✕</button></div>
+      <div class="busq-lista" id="busq-lista"></div>
+    </div>
+  </div>
+
+  <div class="ajustes" id="guardar-busq" style="display:none">
+    <div class="ajustes-card">
+      <div class="ajustes-head"><b>Guardar búsqueda</b><button id="btn-guardar-cerrar" aria-label="Cerrar">✕</button></div>
+      <label class="ajustes-lbl">Nombre del cliente</label>
+      <input class="in" id="gb-nombre" placeholder="Ej: Ana Pérez">
+      <label class="ajustes-lbl" style="margin-top:10px">Celular (WhatsApp)<br><span>Para escribirle al toque cuando aparezcan nuevas.</span></label>
+      <input class="in" id="gb-tel" inputmode="tel" placeholder="Ej: 099 123 456">
+      <button class="btn btn-brand" id="btn-guardar-ok" style="margin-top:12px;width:100%">Guardar búsqueda</button>
+      <p class="ajustes-msg" id="gb-msg"></p>
     </div>
   </div>
   <div class="cuerpo">
@@ -247,6 +286,7 @@
 
     <div id="resultados" style="display:none">
       <div class="res-head"><h2>Parecidas</h2><span class="n" id="cuenta"></span></div>
+      <button class="btn btn-guardar-busq" id="btn-guardar-busq">🔖 Guardar esta búsqueda</button>
       <div class="cards" id="cards"></div>
     </div>
   </div>

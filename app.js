@@ -492,6 +492,155 @@ function pintarGrupo() {
   }
 }
 
+// -------------------------- Búsquedas guardadas --------------------------
+// Todo vive en el celu (localStorage). Cada búsqueda guarda: nombre + celular del
+// cliente, una foto del formulario (para reabrirla) y el filtro (para contar
+// cuántas parecidas NUEVAS aparecieron desde la última vez que la miró.
+var BUSQ_KEY = "parecidas_busquedas";
+function cargarBusquedas() {
+  try { return JSON.parse(localStorage.getItem(BUSQ_KEY) || "[]"); } catch (e) { return []; }
+}
+function guardarBusquedas(arr) {
+  try { localStorage.setItem(BUSQ_KEY, JSON.stringify(arr)); } catch (e) {}
+}
+
+// Foto del formulario tal cual está, para poder reabrir la búsqueda idéntica.
+function snapshotForm() {
+  return {
+    link: $("link").value,
+    oper: segVal("f-oper"), tipos: segMulti("f-tipo"),
+    precioMin: $("f-precio-min").value, precioMax: $("f-precio-max").value,
+    cubMin: $("f-cub-min").value, cubMax: $("f-cub-max").value,
+    padronMin: $("f-padron-min").value, padronMax: $("f-padron-max").value,
+    barrios: SELBARRIOS.slice(),
+    dmin: stepVal("f-dmin"), dmax: stepVal("f-dmax"),
+    coch: segVal("f-coch"), estado: segVal("f-estado"), renta: segVal("f-renta"),
+    base: window.__base || null, slugActual: window.__slugActual || null
+  };
+}
+function restoreForm(s) {
+  $("link").value = s.link || "";
+  setSeg("f-oper", s.oper || "sale");
+  setSegMulti("f-tipo", s.tipos || []);
+  $("f-precio-min").value = s.precioMin || ""; $("f-precio-max").value = s.precioMax || "";
+  $("f-cub-min").value = s.cubMin || ""; $("f-cub-max").value = s.cubMax || "";
+  $("f-padron-min").value = s.padronMin || ""; $("f-padron-max").value = s.padronMax || "";
+  SELBARRIOS = (s.barrios || []).slice(); $("f-barrio").value = ""; renderChips(); pintarGrupo();
+  setStep("f-dmin", s.dmin != null ? s.dmin : null);
+  setStep("f-dmax", s.dmax != null ? s.dmax : null);
+  setSeg("f-coch", s.coch || ""); setSeg("f-estado", s.estado || ""); setSeg("f-renta", s.renta || "");
+  window.__base = s.base || null; window.__slugActual = s.slugActual || null;
+}
+
+// Las parecidas que hoy cumplen el filtro guardado (mismas reglas que la búsqueda).
+function matchesDe(b) {
+  return DATA.filter(function (c) { return pasa(c, b.filtro, b.slugActual); });
+}
+// Cuántas de esas NO estaban la última vez que Juan miró esta búsqueda.
+function nuevasDe(b) {
+  var visto = {}; (b.vistas || []).forEach(function (s) { visto[s] = 1; });
+  var n = 0;
+  matchesDe(b).forEach(function (c) { if (!visto[c.slug]) n++; });
+  return n;
+}
+function totalNuevas() {
+  return cargarBusquedas().reduce(function (a, b) { return a + nuevasDe(b); }, 0);
+}
+
+// Número del cliente → link de WhatsApp (arma el 598… de Uruguay).
+function waLink(tel) {
+  var d = (tel || "").replace(/[^\d]/g, "");
+  if (!d) return null;
+  if (d.charAt(0) === "0") d = "598" + d.slice(1);          // 099… → 59899…
+  else if (d.indexOf("598") !== 0 && (d.length === 8 || d.length === 9)) d = "598" + d;
+  return "https://wa.me/" + d;
+}
+
+function guardarBusquedaActual(nombre, tel) {
+  var f = leerFiltros();
+  var slugActual = window.__slugActual || null;
+  var matches = DATA.filter(function (c) { return pasa(c, f, slugActual); });
+  var b = {
+    id: String(Date.now()) + Math.random().toString(36).slice(2, 7),
+    nombre: nombre, tel: tel, creada: new Date().toISOString(),
+    form: snapshotForm(), filtro: f, slugActual: slugActual,
+    vistas: matches.map(function (c) { return c.slug; })   // lo que ya vio hoy
+  };
+  var arr = cargarBusquedas(); arr.unshift(b); guardarBusquedas(arr);
+}
+
+function abrirBusqueda(id) {
+  var arr = cargarBusquedas();
+  var b = null;
+  arr.forEach(function (x) { if (x.id === id) b = x; });
+  if (!b) return;
+  restoreForm(b.form);
+  b.vistas = matchesDe(b).map(function (c) { return c.slug; });  // marca como visto → apaga el numerito
+  guardarBusquedas(arr);
+  cerrarOverlay("busquedas");
+  buscar();
+  renderBadge();
+  $("resultados").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function borrarBusqueda(id) {
+  var arr = cargarBusquedas().filter(function (x) { return x.id !== id; });
+  guardarBusquedas(arr); renderBusquedas(); renderBadge();
+}
+
+function renderBusquedas() {
+  var cont = $("busq-lista");
+  var arr = cargarBusquedas();
+  if (!arr.length) {
+    cont.innerHTML = '<div class="vacio">Todavía no guardaste ninguna búsqueda.<br>Buscá parecidas y tocá “Guardar esta búsqueda”.</div>';
+    return;
+  }
+  cont.innerHTML = "";
+  arr.forEach(function (b) {
+    var nuevas = nuevasDe(b);
+    var item = document.createElement("div"); item.className = "busq-item";
+    var info = document.createElement("div"); info.className = "bi-info";
+    var nom = document.createElement("div"); nom.className = "bi-nom";
+    nom.textContent = b.nombre || "Sin nombre";
+    info.appendChild(nom);
+    var sub = document.createElement("div"); sub.className = "bi-sub";
+    var wa = waLink(b.tel);
+    if (b.tel && wa) {
+      var a = document.createElement("a");
+      a.className = "bi-tel"; a.href = wa; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = "💬 " + b.tel;
+      sub.appendChild(a);
+    } else { sub.textContent = matchesDe(b).length + " parecidas"; }
+    info.appendChild(sub);
+    item.appendChild(info);
+    if (nuevas > 0) {
+      var badge = document.createElement("span"); badge.className = "bi-nuevas";
+      badge.textContent = "+" + nuevas + " nueva" + (nuevas === 1 ? "" : "s");
+      item.appendChild(badge);
+    }
+    var abrir = document.createElement("button"); abrir.className = "bi-btn";
+    abrir.textContent = "Abrir"; abrir.onclick = function () { abrirBusqueda(b.id); };
+    item.appendChild(abrir);
+    var del = document.createElement("button"); del.className = "bi-del";
+    del.textContent = "🗑"; del.title = "Borrar"; del.setAttribute("aria-label", "Borrar");
+    del.onclick = function () {
+      if (confirm("¿Borrar la búsqueda de " + (b.nombre || "este cliente") + "?")) borrarBusqueda(b.id);
+    };
+    item.appendChild(del);
+    cont.appendChild(item);
+  });
+}
+
+// El numerito rojo en el 🔖 de arriba = total de nuevas en todas las búsquedas.
+function renderBadge() {
+  var n = totalNuevas(), el = $("busq-badge");
+  if (n > 0) { el.textContent = n > 99 ? "99+" : n; el.style.display = ""; }
+  else el.style.display = "none";
+}
+
+function abrirOverlay(id) { $(id).style.display = "flex"; }
+function cerrarOverlay(id) { $(id).style.display = "none"; }
+
 // -------------------------- Arranque + eventos --------------------------
 function initSegs() {
   ["f-oper", "f-coch", "f-estado", "f-renta"].forEach(function (id) {   // una sola opción
@@ -543,6 +692,26 @@ function initSegs() {
     try { localStorage.setItem("parecidas_associate", v); } catch (e) {}
     $("ajustes-msg").textContent = "✓ Guardado";
   });
+
+  // Búsquedas guardadas (menú nuevo)
+  $("btn-busquedas").addEventListener("click", function () { renderBusquedas(); abrirOverlay("busquedas"); });
+  $("btn-busq-cerrar").addEventListener("click", function () { cerrarOverlay("busquedas"); });
+  $("busquedas").addEventListener("click", function (e) { if (e.target === $("busquedas")) cerrarOverlay("busquedas"); });
+  // Botón "Guardar esta búsqueda" (dentro de los resultados) → pide nombre + celu
+  $("btn-guardar-busq").addEventListener("click", function () {
+    $("gb-nombre").value = ""; $("gb-tel").value = ""; $("gb-msg").textContent = "";
+    abrirOverlay("guardar-busq"); $("gb-nombre").focus();
+  });
+  $("btn-guardar-cerrar").addEventListener("click", function () { cerrarOverlay("guardar-busq"); });
+  $("guardar-busq").addEventListener("click", function (e) { if (e.target === $("guardar-busq")) cerrarOverlay("guardar-busq"); });
+  $("btn-guardar-ok").addEventListener("click", function () {
+    var nombre = ($("gb-nombre").value || "").trim();
+    var tel = ($("gb-tel").value || "").trim();
+    if (!nombre) { $("gb-msg").textContent = "Poné un nombre para reconocerla."; return; }
+    guardarBusquedaActual(nombre, tel);
+    cerrarOverlay("guardar-busq");
+    renderBadge();
+  });
 }
 
 function cargar() {
@@ -558,6 +727,7 @@ function cargar() {
     });
     BARRIOS_ALL.sort(function (a, b) { return norm(a) < norm(b) ? -1 : 1; });
     $("estado").textContent = "";
+    renderBadge();   // numerito de parecidas nuevas en el 🔖
   }).catch(function () {
     $("estado").textContent = "No pude cargar las propiedades. Revisá la conexión y recargá.";
   });
