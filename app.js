@@ -193,6 +193,10 @@ function puntaje(c, ref) {
   return p;
 }
 
+function propPorSlug(slug) {
+  for (var i = 0; i < DATA.length; i++) if (DATA[i].slug === slug) return DATA[i];
+  return null;
+}
 function filtrar(f, ref, slugActual) {
   var res = DATA.filter(function (c) { return pasa(c, f, slugActual); });
   res.sort(function (a, b) {
@@ -225,7 +229,23 @@ function buscar() {
     aflojados.push(pasos[i][0]); pasos[i][1](); i++;
     res = filtrar(f, ref, slugActual);
   }
-  render(res.slice(0, TOPE_RESULTADOS), res.length, aflojados);
+  var lista = res.slice(0, TOPE_RESULTADOS);
+  // Fase C — PRESERVAR: lo que marcaste a favor (⭐/💚/📤) para este cliente NO se
+  // pierde aunque deje de cumplir los criterios. Se suma y se marca "fuera de criterios".
+  var fuera = {};
+  var b = busquedaActiva();
+  if (b && b.estados) {
+    var ya = {}; lista.forEach(function (c) { ya[c.slug] = 1; });
+    var aFavor = { a_enviar: 1, favorita: 1, enviada: 1 };
+    Object.keys(b.estados).forEach(function (slug) {
+      if (!aFavor[b.estados[slug]] || ya[slug]) return;
+      var prop = propPorSlug(slug);
+      if (!prop) return;
+      if (!pasa(prop, f, slugActual)) fuera[slug] = 1;   // ya no cumple → fuera de criterios
+      lista.push(prop);
+    });
+  }
+  render(lista, res.length, aflojados, fuera);
 }
 
 // -------------------------- Dibujar resultados --------------------------
@@ -323,7 +343,8 @@ function enviarSeleccionadas() {
   }
 }
 
-function render(res, total, aflojados) {
+function render(res, total, aflojados, fuera) {
+  fuera = fuera || {};
   var f = leerFiltros();
   SEL = []; CARDS = []; actualizarMulticopy();
   $("resultados").style.display = "";
@@ -349,6 +370,7 @@ function render(res, total, aflojados) {
     var card = document.createElement("div");
     card.className = "card";
     if (bAct) card.classList.add("val-" + valDe(bAct, c.slug));
+    if (fuera[c.slug]) card.classList.add("fuera");
     // Columna izquierda: número (cuando está tildada) + tilde para seleccionar
     var col = document.createElement("div"); col.className = "card-col";
     var num = document.createElement("span"); num.className = "card-num"; num.style.display = "none";
@@ -381,6 +403,7 @@ function render(res, total, aflojados) {
       '<div class="info">' +
         '<div class="precio">' + fmtPrecio(c) + '</div>' +
         '<div class="barrio">' + esc(c.barrio || "") + '</div>' +
+        (fuera[c.slug] ? '<span class="fuera-tag">⚠ fuera de criterios</span>' : "") +
         '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + '</div>' +
         (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +
       '</div>';
