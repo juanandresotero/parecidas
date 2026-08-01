@@ -76,6 +76,18 @@ function setSeg(id, val) {
     b.setAttribute("aria-pressed", b.getAttribute("data-v") === (val || "") ? "true" : "false");
   });
 }
+function segMulti(id) {   // varios botones prendidos → array de valores
+  var out = [];
+  $(id).querySelectorAll('button[aria-pressed="true"]').forEach(function (b) {
+    var v = b.getAttribute("data-v"); if (v) out.push(v);
+  });
+  return out;
+}
+function setSegMulti(id, arr) {
+  $(id).querySelectorAll("button").forEach(function (b) {
+    b.setAttribute("aria-pressed", arr.indexOf(b.getAttribute("data-v")) >= 0 ? "true" : "false");
+  });
+}
 function stepVal(id) {
   var t = $(id).querySelector("span").textContent;
   return t === "—" ? null : parseInt(t, 10);
@@ -85,51 +97,52 @@ function setStep(id, v) {
 }
 
 function leerFiltros() {
-  var precioMonto = soloNum($("f-precio").value);
   // 1 barrio → su grupo (similares). 2+ → solo esos exactos. 0 → da igual.
   var grupo = SELBARRIOS.length === 1 ? grupoDe(SELBARRIOS[0])
             : (SELBARRIOS.length > 1 ? barriosSel() : null);
   return {
-    operacion: segVal("f-oper"),
-    tipo: segVal("f-tipo"),
+    operacion: segVal("f-oper"),                 // siempre 'sale' o 'rent'
+    tipos: segMulti("f-tipo"),                    // casa/apto/terreno (vacío = cualquiera)
     grupo: grupo,
     dmin: stepVal("f-dmin"),
     dmax: stepVal("f-dmax"),
-    precioUsd: precioMonto ? aUsd(precioMonto, monedaDe($("f-precio").value)) : null,
-    cub: soloNum($("f-cub").value),
-    padron: soloNum($("f-padron").value),
+    precioMinUsd: precioAUsd(soloNum($("f-precio-min").value)),
+    precioMaxUsd: precioAUsd(soloNum($("f-precio-max").value)),
+    cubMin: soloNum($("f-cub-min").value),
+    cubMax: soloNum($("f-cub-max").value),
+    padronMin: soloNum($("f-padron-min").value),
+    padronMax: soloNum($("f-padron-max").value),
     cochera: segVal("f-coch"),
     estado: segVal("f-estado"),
     renta: segVal("f-renta")
   };
-}
-function monedaDe(txt) {
-  var t = (txt || "").toLowerCase();
-  if (t.indexOf("u$") >= 0 || t.indexOf("usd") >= 0 || t.indexOf("dol") >= 0) return "USD";
-  if (t.indexOf("$u") >= 0 || t.indexOf("uyu") >= 0 || t.indexOf("peso") >= 0) return "UYU";
-  return "USD"; // por defecto, dólares (lo más común en venta)
 }
 function aUsd(monto, moneda) {
   if (!monto) return null;
   if ((moneda || "USD") === "USD") return Math.round(monto);
   return USD_RATE ? Math.round(monto / USD_RATE) : null;
 }
+// Precio a USD según la operación: venta = dólares, alquiler = pesos.
+function precioAUsd(monto) {
+  if (!monto) return null;
+  return segVal("f-oper") === "rent" ? aUsd(monto, "UYU") : aUsd(monto, "USD");
+}
 
 // -------------------------- El filtro en sí --------------------------
-function cerca(valor, objetivo) { // ±25%
-  return valor && objetivo && valor >= objetivo * 0.75 && valor <= objetivo * 1.25;
-}
 function pasa(c, f, slugActual) {
   if (slugActual && c.slug === slugActual) return false;            // no me devuelvo a mí mismo
   if (c.estado_pub && c.estado_pub !== "active") return false;      // reservada/negociación: no se ofrece
   if (f.operacion && c.operacion !== f.operacion) return false;
-  if (f.tipo && tipoCat(c.tipo) !== f.tipo) return false;
+  if (f.tipos.length && f.tipos.indexOf(tipoCat(c.tipo)) < 0) return false;
   if (f.grupo && f.grupo.indexOf(norm(c.barrio)) < 0) return false;
   if (f.dmin != null && (c.dorm == null || c.dorm < f.dmin)) return false;
   if (f.dmax != null && (c.dorm == null || c.dorm > f.dmax)) return false;
-  if (f.precioUsd != null && (c.precio_usd == null || c.precio_usd > f.precioUsd * (f.precioFactor || 1.15))) return false;
-  if (f.cub != null && !cerca(c.m2_homog, f.cub)) return false;
-  if (f.padron != null && !cerca(c.m2_padron, f.padron)) return false;
+  if (f.precioMinUsd != null && (c.precio_usd == null || c.precio_usd < f.precioMinUsd)) return false;
+  if (f.precioMaxUsd != null && (c.precio_usd == null || c.precio_usd > f.precioMaxUsd)) return false;
+  if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
+  if (f.cubMax != null && (c.m2_homog == null || c.m2_homog > f.cubMax)) return false;
+  if (f.padronMin != null && (c.m2_padron == null || c.m2_padron < f.padronMin)) return false;
+  if (f.padronMax != null && (c.m2_padron == null || c.m2_padron > f.padronMax)) return false;
   if (f.cochera === "si" && c.cochera !== true) return false;
   if (f.cochera === "no" && c.cochera !== false) return false;
   if (f.estado && c.estado !== f.estado) return false;
@@ -144,11 +157,14 @@ function refDeBusqueda() {
   var b = window.__base;
   var dorm = b ? b.dorm : ((f.dmin != null && f.dmax != null) ? Math.round((f.dmin + f.dmax) / 2)
            : (f.dmin != null ? f.dmin : f.dmax));
+  var precioUsd = b ? b.precio_usd
+    : (f.precioMinUsd != null && f.precioMaxUsd != null ? Math.round((f.precioMinUsd + f.precioMaxUsd) / 2)
+       : (f.precioMaxUsd != null ? f.precioMaxUsd : f.precioMinUsd));
   return {
     operacion: b ? b.operacion : f.operacion,
-    tipoC: b ? tipoCat(b.tipo) : f.tipo,
+    tipos: b ? [tipoCat(b.tipo)] : f.tipos,
     barrios: barriosSel(),                     // barrios elegidos (normalizados)
-    precio_usd: b ? b.precio_usd : f.precioUsd,
+    precio_usd: precioUsd,
     dorm: dorm,
     cochera: b ? b.cochera : (f.cochera === "si" ? true : (f.cochera === "no" ? false : null)),
     estado: b ? b.estado : f.estado
@@ -161,9 +177,9 @@ function puntaje(c, ref) {
   var w = [64, 32, 16, 8, 4, 2, 1], p = 0;
   if (ref.operacion && c.operacion !== ref.operacion) p += w[0];
   if (ref.barrios.length) p += w[1] * (ref.barrios.indexOf(norm(c.barrio)) >= 0 ? 0 : 0.5);
-  if (ref.tipoC && tipoCat(c.tipo) !== ref.tipoC) p += w[2];
+  if (ref.tipos && ref.tipos.length && ref.tipos.indexOf(tipoCat(c.tipo)) < 0) p += w[2];
   if (ref.precio_usd && c.precio_usd)
-    p += w[3] * Math.min(1, Math.abs(c.precio_usd - ref.precio_usd) / ref.precio_usd / 0.15);
+    p += w[3] * Math.min(1, Math.abs(c.precio_usd - ref.precio_usd) / ref.precio_usd);
   if (ref.dorm != null && c.dorm != null)
     p += w[4] * Math.min(1, Math.abs(c.dorm - ref.dorm) / 3);
   if (ref.cochera != null && c.cochera != null && c.cochera !== ref.cochera) p += w[5];
@@ -188,14 +204,13 @@ function buscar() {
   // Flexibilidad "mínimo 2": si salen menos de 2, aflojo de MENOR a MAYOR
   // prioridad hasta llegar a 2. NUNCA aflojo venta/alquiler ni muestro reservadas.
   var pasos = [
-    function () { f.estado = ""; },                    // 7 usado/a estrenar
-    function () { f.cochera = ""; },                   // 6 cochera
-    function () { f.dmin = null; f.dmax = null; },     // 5 dormitorios
-    function () { f.precioFactor = 1.5; },             // 4 precio hasta +50%
-    function () { f.cub = null; f.padron = null; },    // m²
-    function () { f.precioUsd = null; },               // 4 sacar precio
-    function () { f.tipo = ""; },                      // 3 tipo
-    function () { f.grupo = null; }                    // 2 ubicación (última)
+    function () { f.estado = ""; },                                       // 7 usado/a estrenar
+    function () { f.cochera = ""; },                                      // 6 cochera
+    function () { f.dmin = null; f.dmax = null; },                        // 5 dormitorios
+    function () { f.cubMin = null; f.cubMax = null; f.padronMin = null; f.padronMax = null; }, // m²
+    function () { f.precioMinUsd = null; f.precioMaxUsd = null; },        // 4 precio
+    function () { f.tipos = []; },                                        // 3 tipo
+    function () { f.grupo = null; }                                       // 2 ubicación (última)
   ];
   var aflojado = false, i = 0;
   while (res.length < 2 && i < pasos.length) {
@@ -214,8 +229,9 @@ function fmtPrecio(c) {
 function porque(c, f) {
   var b = [];
   if (f.grupo) b.push(barriosSel().indexOf(norm(c.barrio)) >= 0 ? "mismo barrio" : "mismo grupo");
-  if (f.cub && c.m2_homog) {
-    var dif = Math.round((c.m2_homog - f.cub) / f.cub * 100);
+  var base = window.__base;
+  if (base && base.m2_homog && c.m2_homog) {
+    var dif = Math.round((c.m2_homog - base.m2_homog) / base.m2_homog * 100);
     b.push((dif >= 0 ? "+" : "") + dif + "% m²");
   }
   return b.join(" · ");
@@ -309,12 +325,21 @@ function slugDeLink(link) {
   var parts = t.split("/");
   return parts.length ? parts[parts.length - 1] : "";
 }
+function setRango(id, val) {   // llena mín/máx con ±25% del valor del link
+  if (val) {
+    $(id + "-min").value = fmtMiles(String(Math.round(val * 0.75)));
+    $(id + "-max").value = fmtMiles(String(Math.round(val * 1.25)));
+  } else { $(id + "-min").value = ""; $(id + "-max").value = ""; }
+}
 function rellenar(c) {
-  setSeg("f-oper", c.operacion || "");
-  setSeg("f-tipo", tipoCat(c.tipo) === "otro" ? "" : tipoCat(c.tipo));
-  $("f-precio").value = c.precio ? ((c.moneda || "USD") + " " + new Intl.NumberFormat("es-UY").format(Math.round(c.precio))) : "";
-  $("f-cub").value = c.m2_homog || "";
-  $("f-padron").value = c.m2_padron || "";
+  setSeg("f-oper", c.operacion === "rent" ? "rent" : "sale");
+  var tc = tipoCat(c.tipo);
+  setSegMulti("f-tipo", tc === "otro" ? [] : [tc]);
+  // precio: sin mínimo (más barato sirve), máximo +15%. m²: ±25%.
+  $("f-precio-min").value = "";
+  $("f-precio-max").value = c.precio ? fmtMiles(String(Math.round(c.precio * 1.15))) : "";
+  setRango("f-cub", c.m2_homog);
+  setRango("f-padron", c.m2_padron);
   SELBARRIOS = c.barrio ? [c.barrio] : [];   // 1 barrio → busca similares (su grupo)
   $("f-barrio").value = ""; renderChips(); pintarGrupo();
   setStep("f-dmin", c.dorm != null ? c.dorm : null);
@@ -467,11 +492,17 @@ function pintarGrupo() {
 
 // -------------------------- Arranque + eventos --------------------------
 function initSegs() {
-  ["f-oper", "f-tipo", "f-coch", "f-estado", "f-renta"].forEach(function (id) {
+  ["f-oper", "f-coch", "f-estado", "f-renta"].forEach(function (id) {   // una sola opción
     $(id).addEventListener("click", function (e) {
       if (e.target.tagName !== "BUTTON") return;
       setSeg(id, e.target.getAttribute("data-v"));
     });
+  });
+  // Tipo: varios a la vez (toggle independiente por botón)
+  $("f-tipo").addEventListener("click", function (e) {
+    if (e.target.tagName !== "BUTTON") return;
+    var b = e.target;
+    b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") === "true" ? "false" : "true");
   });
   ["f-dmin", "f-dmax"].forEach(function (id) {
     $(id).addEventListener("click", function (e) {
@@ -491,9 +522,8 @@ function initSegs() {
   $("link").addEventListener("input", function () {
     if (!$("link").value.trim()) { window.__base = null; window.__slugActual = null; }
   });
-  attachMiles("f-precio", true);
-  attachMiles("f-cub", false);
-  attachMiles("f-padron", false);
+  ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max"]
+    .forEach(function (id) { attachMiles(id, false); });
   $("btn-traer").addEventListener("click", traer);
   $("btn-buscar").addEventListener("click", buscar);
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);

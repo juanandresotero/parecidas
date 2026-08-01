@@ -64,6 +64,7 @@
   .in{padding:10px 11px;border:1px solid var(--line);border-radius:10px;
     background:var(--surface);color:var(--ink);font-size:14px;font-family:inherit;
     font-variant-numeric:tabular-nums;width:100%}
+  .duo{display:flex;gap:8px}
   .grupo-chip{font-size:11px;color:var(--brand);font-weight:700;min-height:14px}
   .barrio-box{display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:6px;
     border:1px solid var(--line);border-radius:10px;background:var(--surface)}
@@ -142,29 +143,36 @@
           <div class="seg" id="f-oper">
             <button data-v="sale" aria-pressed="true">Venta</button>
             <button data-v="rent" aria-pressed="false">Alquiler</button>
-            <button data-v="" aria-pressed="false">Da igual</button>
           </div>
         </div>
         <div class="f">
-          <label>Tipo</label>
-          <div class="seg" id="f-tipo">
+          <label>Tipo (uno o varios)</label>
+          <div class="seg seg-multi" id="f-tipo">
             <button data-v="casa" aria-pressed="false">Casa</button>
             <button data-v="apto" aria-pressed="false">Apto</button>
             <button data-v="terreno" aria-pressed="false">Terreno</button>
-            <button data-v="" aria-pressed="true">Da igual</button>
           </div>
         </div>
         <div class="f full">
-          <label>Precio</label>
-          <input class="in" id="f-precio" inputmode="numeric">
+          <label>Precio (mín – máx)</label>
+          <div class="duo">
+            <input class="in" id="f-precio-min" inputmode="numeric" placeholder="mín">
+            <input class="in" id="f-precio-max" inputmode="numeric" placeholder="máx">
+          </div>
         </div>
-        <div class="f">
-          <label>m² construidos</label>
-          <input class="in" id="f-cub" inputmode="numeric">
+        <div class="f full">
+          <label>m² construidos (mín – máx)</label>
+          <div class="duo">
+            <input class="in" id="f-cub-min" inputmode="numeric" placeholder="mín">
+            <input class="in" id="f-cub-max" inputmode="numeric" placeholder="máx">
+          </div>
         </div>
-        <div class="f">
-          <label>m² totales (padrón)</label>
-          <input class="in" id="f-padron" inputmode="numeric">
+        <div class="f full">
+          <label>m² totales / padrón (mín – máx)</label>
+          <div class="duo">
+            <input class="in" id="f-padron-min" inputmode="numeric" placeholder="mín">
+            <input class="in" id="f-padron-max" inputmode="numeric" placeholder="máx">
+          </div>
         </div>
         <div class="f full">
           <label>Barrio</label>
