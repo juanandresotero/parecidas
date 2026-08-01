@@ -21,8 +21,8 @@ function soloNum(s) {
 }
 function tipoCat(t) {
   t = norm(t);
-  if (t.indexOf("departamento") >= 0 || t.indexOf("penthouse") >= 0 || t.indexOf("apart") >= 0) return "apto";
-  if (t.indexOf("casa") >= 0 || t === "ph") return "casa";   // PH cuenta como casa
+  if (t.indexOf("departamento") >= 0 || t.indexOf("penthouse") >= 0 || t.indexOf("apart") >= 0 || t === "ph") return "apto";   // PH = apartamento
+  if (t.indexOf("casa") >= 0) return "casa";
   if (t.indexOf("terreno") >= 0 || t.indexOf("lote") >= 0) return "terreno";
   return "otro";
 }
@@ -86,11 +86,13 @@ function setStep(id, v) {
 
 function leerFiltros() {
   var precioMonto = soloNum($("f-precio").value);
-  var barrio = $("f-barrio").value;
+  // 1 barrio → su grupo (similares). 2+ → solo esos exactos. 0 → da igual.
+  var grupo = SELBARRIOS.length === 1 ? grupoDe(SELBARRIOS[0])
+            : (SELBARRIOS.length > 1 ? barriosSel() : null);
   return {
     operacion: segVal("f-oper"),
     tipo: segVal("f-tipo"),
-    grupo: barrio.trim() ? grupoDe(barrio) : null,
+    grupo: grupo,
     dmin: stepVal("f-dmin"),
     dmax: stepVal("f-dmax"),
     precioUsd: precioMonto ? aUsd(precioMonto, monedaDe($("f-precio").value)) : null,
@@ -138,16 +140,18 @@ function pasa(c, f, slugActual) {
 // Referencia para ordenar "más parecida": la propiedad del link (window.__base),
 // o si no hay link, lo que esté cargado en los filtros.
 function refDeBusqueda() {
-  if (window.__base) return window.__base;
   var f = leerFiltros();
-  var dorm = (f.dmin != null && f.dmax != null) ? Math.round((f.dmin + f.dmax) / 2)
-           : (f.dmin != null ? f.dmin : f.dmax);
+  var b = window.__base;
+  var dorm = b ? b.dorm : ((f.dmin != null && f.dmax != null) ? Math.round((f.dmin + f.dmax) / 2)
+           : (f.dmin != null ? f.dmin : f.dmax));
   return {
-    _esFiltro: true,
-    operacion: segVal("f-oper"), tipo: segVal("f-tipo"),
-    barrio: $("f-barrio").value.trim(), precio_usd: f.precioUsd, dorm: dorm,
-    cochera: f.cochera === "si" ? true : (f.cochera === "no" ? false : null),
-    estado: segVal("f-estado")
+    operacion: b ? b.operacion : f.operacion,
+    tipoC: b ? tipoCat(b.tipo) : f.tipo,
+    barrios: barriosSel(),                     // barrios elegidos (normalizados)
+    precio_usd: b ? b.precio_usd : f.precioUsd,
+    dorm: dorm,
+    cochera: b ? b.cochera : (f.cochera === "si" ? true : (f.cochera === "no" ? false : null)),
+    estado: b ? b.estado : f.estado
   };
 }
 // Puntaje por PRIORIDAD (más chico = más parecida). Pesos decrecientes según el
@@ -155,12 +159,9 @@ function refDeBusqueda() {
 // 6)cochera 7)usado/a estrenar.
 function puntaje(c, ref) {
   var w = [64, 32, 16, 8, 4, 2, 1], p = 0;
-  var refOp = ref.operacion || "";
-  if (refOp && c.operacion !== refOp) p += w[0];
-  var refBarrio = norm(ref.barrio || "");
-  if (refBarrio) p += w[1] * (norm(c.barrio) === refBarrio ? 0 : 0.5);
-  var refTipo = ref._esFiltro ? (ref.tipo || "") : tipoCat(ref.tipo);
-  if (refTipo && tipoCat(c.tipo) !== refTipo) p += w[2];
+  if (ref.operacion && c.operacion !== ref.operacion) p += w[0];
+  if (ref.barrios.length) p += w[1] * (ref.barrios.indexOf(norm(c.barrio)) >= 0 ? 0 : 0.5);
+  if (ref.tipoC && tipoCat(c.tipo) !== ref.tipoC) p += w[2];
   if (ref.precio_usd && c.precio_usd)
     p += w[3] * Math.min(1, Math.abs(c.precio_usd - ref.precio_usd) / ref.precio_usd / 0.15);
   if (ref.dorm != null && c.dorm != null)
@@ -212,7 +213,7 @@ function fmtPrecio(c) {
 }
 function porque(c, f) {
   var b = [];
-  if (f.grupo) b.push(norm(c.barrio) === norm($("f-barrio").value) ? "mismo barrio" : "mismo grupo");
+  if (f.grupo) b.push(barriosSel().indexOf(norm(c.barrio)) >= 0 ? "mismo barrio" : "mismo grupo");
   if (f.cub && c.m2_homog) {
     var dif = Math.round((c.m2_homog - f.cub) / f.cub * 100);
     b.push((dif >= 0 ? "+" : "") + dif + "% m²");
@@ -314,8 +315,8 @@ function rellenar(c) {
   $("f-precio").value = c.precio ? ((c.moneda || "USD") + " " + new Intl.NumberFormat("es-UY").format(Math.round(c.precio))) : "";
   $("f-cub").value = c.m2_homog || "";
   $("f-padron").value = c.m2_padron || "";
-  $("f-barrio").value = c.barrio || "";
-  pintarGrupo();
+  SELBARRIOS = c.barrio ? [c.barrio] : [];   // 1 barrio → busca similares (su grupo)
+  $("f-barrio").value = ""; renderChips(); pintarGrupo();
   setStep("f-dmin", c.dorm != null ? c.dorm : null);
   setStep("f-dmax", c.dorm != null ? c.dorm : null);
   setSeg("f-coch", c.cochera === true ? "si" : (c.cochera === false ? "no" : ""));
@@ -340,6 +341,8 @@ function fromDetalle(det, slug) {
     tipo: tipo,
     operacion: (det.operation || {}).value || "",
     precio: det.price, moneda: (det.currency || {}).value || "",
+    precio_usd: (det.currency || {}).value === "USD" ? (det.price ? Math.round(det.price) : null)
+              : (USD_RATE && det.price ? Math.round(det.price / USD_RATE) : null),
     dorm: det.bedrooms,
     barrio: (det.geoLabel || "").split(",")[0].trim(),
     m2_homog: homog(det.dimensionCovered, det.dimensionTotalBuilt, det.dimensionLand, esApto, det.dimensionSemicovered, det.dimensionUncovered),
@@ -400,14 +403,66 @@ function attachMiles(id, conPrefijo) {
   });
 }
 
-// -------------------------- Grupo de barrio en vivo --------------------------
+// -------------------------- Barrios (multi-select con sugerencias) --------------------------
+// 1 barrio = busca en su GRUPO (similares). 2+ barrios = SOLO esos exactos. Máx 10.
+var BARRIOS_ALL = [];     // todos los barrios reales (para sugerir)
+var SELBARRIOS = [];      // barrios elegidos (nombres para mostrar)
+
+function cap(x) { return x.replace(/\b\w/g, function (m) { return m.toUpperCase(); }); }
+function barriosSel() { return SELBARRIOS.map(norm); }
+
+function renderChips() {
+  var cont = $("barrio-chips"); cont.innerHTML = "";
+  SELBARRIOS.forEach(function (nm) {
+    var chip = document.createElement("span"); chip.className = "barrio-chip";
+    chip.appendChild(document.createTextNode(nm));
+    var x = document.createElement("button"); x.type = "button"; x.textContent = "✕";
+    x.setAttribute("aria-label", "Sacar"); x.onclick = function () { delBarrio(nm); };
+    chip.appendChild(x); cont.appendChild(chip);
+  });
+}
+function addBarrio(nm) {
+  if (SELBARRIOS.length >= 10) return;
+  if (barriosSel().indexOf(norm(nm)) >= 0) return;
+  SELBARRIOS.push(nm);
+  renderChips(); pintarGrupo();
+  $("f-barrio").value = ""; cerrarSug(); $("f-barrio").focus();
+}
+function delBarrio(nm) {
+  SELBARRIOS = SELBARRIOS.filter(function (x) { return norm(x) !== norm(nm); });
+  renderChips(); pintarGrupo();
+}
+function mostrarSug() {
+  var q = norm($("f-barrio").value);
+  if (!q) { cerrarSug(); return; }
+  var ya = barriosSel();
+  var m = BARRIOS_ALL.filter(function (b) { return norm(b).indexOf(q) >= 0 && ya.indexOf(norm(b)) < 0; }).slice(0, 8);
+  if (!m.length) { cerrarSug(); return; }
+  var list = document.createElement("div"); list.className = "barrio-sug-list";
+  m.forEach(function (b) {
+    var it = document.createElement("div"); it.className = "barrio-sug-item"; it.textContent = b;
+    it.onmousedown = function (e) { e.preventDefault(); addBarrio(b); };
+    list.appendChild(it);
+  });
+  var cont = $("barrio-sug"); cont.innerHTML = ""; cont.appendChild(list);
+}
+function cerrarSug() { $("barrio-sug").innerHTML = ""; }
+function primeraSug() {
+  var q = norm($("f-barrio").value); if (!q) return null;
+  var ya = barriosSel();
+  return BARRIOS_ALL.filter(function (b) { return norm(b).indexOf(q) >= 0 && ya.indexOf(norm(b)) < 0; })[0] || null;
+}
 function pintarGrupo() {
-  var b = $("f-barrio").value.trim();
-  if (!b) { $("f-grupo").textContent = ""; return; }
-  var g = grupoDe(b);
-  $("f-grupo").textContent = g && g.length > 1
-    ? "Grupo: " + g.map(function (x) { return x.replace(/\b\w/g, function (m) { return m.toUpperCase(); }); }).slice(0, 6).join(" · ")
-    : "Barrio solo (no está en un grupo)";
+  var el = $("f-grupo");
+  if (!SELBARRIOS.length) { el.textContent = ""; return; }
+  if (SELBARRIOS.length === 1) {
+    var g = grupoDe(SELBARRIOS[0]);
+    el.textContent = (g && g.length > 1)
+      ? "Busca similares: " + g.map(cap).slice(0, 6).join(" · ") + (g.length > 6 ? "…" : "")
+      : "Solo este barrio";
+  } else {
+    el.textContent = "Solo estos " + SELBARRIOS.length + " barrios (exacto)";
+  }
 }
 
 // -------------------------- Arranque + eventos --------------------------
@@ -427,7 +482,11 @@ function initSegs() {
       setStep(id, v < 0 ? null : v);
     });
   });
-  $("f-barrio").addEventListener("input", pintarGrupo);
+  $("f-barrio").addEventListener("input", mostrarSug);
+  $("f-barrio").addEventListener("blur", function () { setTimeout(cerrarSug, 150); });
+  $("f-barrio").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); var s = primeraSug(); if (s) addBarrio(s); }
+  });
   // Si borra el link, olvido la propiedad base (para no ordenar/excluir con una vieja).
   $("link").addEventListener("input", function () {
     if (!$("link").value.trim()) { window.__base = null; window.__slugActual = null; }
@@ -444,6 +503,14 @@ function cargar() {
   fetch("listings.json").then(function (r) { return r.json(); }).then(function (d) {
     DATA = d.listings || [];
     USD_RATE = d.usd_rate || null;
+    // Lista de barrios reales para el autocompletar (sin repetir, ordenados).
+    var vistos = {};
+    BARRIOS_ALL = [];
+    DATA.forEach(function (c) {
+      var b = (c.barrio || "").trim();
+      if (b && !vistos[norm(b)]) { vistos[norm(b)] = 1; BARRIOS_ALL.push(b); }
+    });
+    BARRIOS_ALL.sort(function (a, b) { return norm(a) < norm(b) ? -1 : 1; });
     $("estado").textContent = "";
   }).catch(function () {
     $("estado").textContent = "No pude cargar las propiedades. Revisá la conexión y recargá.";

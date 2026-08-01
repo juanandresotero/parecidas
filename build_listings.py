@@ -145,7 +145,7 @@ def _fetch_detalle(slug: str):
 
 def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     tipo = (it.get("type") or {}).get("value") or ""
-    es_apto = tipo.startswith("departamento")
+    es_apto = tipo.startswith("departamento") or tipo == "ph" or "penthouse" in tipo
     slug = it.get("slug") or ""
     src = det or it   # el detalle es más completo; si falló, uso el listón
     cubiertos = src.get("dimensionCovered")
