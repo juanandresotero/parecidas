@@ -248,9 +248,40 @@ function linkAssoc(link) {
   return link + (link.indexOf("?") >= 0 ? "&" : "?") + "associate=" + ASSOCIATE;
 }
 
-var SEL = {};   // slug -> link de las propiedades tildadas (para copiar juntas)
+// Precio en "k": desde 10k va entero (corta para abajo); abajo de 10k, 1 decimal.
+// U$S para dólares, $ para pesos. Ej: 180.000→"U$S 180 k", 35.500→"$ 35 k", 1.100→"U$S 1.1 k".
+function fmtK(precio, moneda) {
+  if (!precio) return "";
+  var sym = (String(moneda).toUpperCase() === "UYU" || moneda === "$") ? "$" : "U$S";
+  var k = precio / 1000;
+  var num = k >= 10 ? String(Math.floor(k)) : String(Math.round(k * 10) / 10);
+  return sym + " " + num + " k";
+}
+// Resumen corto del título: Operación · tipo · (dorm o m²) · precio.
+// Terreno usa m² totales (padrón); casa/apto usan dormitorios.
+function resumen(c) {
+  var oper = c.operacion === "rent" ? "Alquiler" : "Venta";
+  var t = tipoCat(c.tipo);
+  var tipoTxt = t === "apto" ? "apto" : (t === "casa" ? "casa" : (t === "terreno" ? "terreno" : "propiedad"));
+  var med;
+  if (t === "terreno") med = c.m2_padron ? c.m2_padron + " m²" : (c.m2_homog ? c.m2_homog + " m²" : "");
+  else med = (c.dorm != null) ? c.dorm + " dorm" : (c.m2_homog ? c.m2_homog + " m²" : "");
+  return [oper, tipoTxt, med, fmtK(c.precio, c.moneda)].filter(Boolean).join(" · ");
+}
+
+var SEL = [];      // propiedades tildadas, EN ORDEN de tildado (para numerar 1,2,3)
+var CARDS = [];    // {slug, numEl, card} de lo dibujado, para renumerar en pantalla
+function idxSel(slug) { for (var i = 0; i < SEL.length; i++) if (SEL[i].slug === slug) return i; return -1; }
+function renumerar() {
+  CARDS.forEach(function (o) {
+    var i = idxSel(o.slug);
+    if (i >= 0) { o.numEl.textContent = i + 1; o.numEl.style.display = ""; o.card.classList.add("sel"); }
+    else { o.numEl.style.display = "none"; o.card.classList.remove("sel"); }
+  });
+  actualizarMulticopy();
+}
 function actualizarMulticopy() {
-  var n = Object.keys(SEL).length;
+  var n = SEL.length;
   var b = $("btn-multicopy");
   b.textContent = "📋 Copiar seleccionadas (" + n + ")";
   b.style.display = n ? "" : "none";
@@ -258,7 +289,7 @@ function actualizarMulticopy() {
 
 function render(res, total, aflojados) {
   var f = leerFiltros();
-  SEL = {}; actualizarMulticopy();
+  SEL = []; CARDS = []; actualizarMulticopy();
   $("resultados").style.display = "";
   var cont = $("cards");
   if (!total) {
@@ -275,16 +306,21 @@ function render(res, total, aflojados) {
   res.forEach(function (c) {                       // ya viene cortado al tope
     var card = document.createElement("div");
     card.className = "card";
-    // Tilde para seleccionar y copiar varias juntas
+    // Columna izquierda: número (cuando está tildada) + tilde para seleccionar
+    var col = document.createElement("div"); col.className = "card-col";
+    var num = document.createElement("span"); num.className = "card-num"; num.style.display = "none";
     var chk = document.createElement("input");
     chk.type = "checkbox"; chk.className = "card-check";
     chk.setAttribute("aria-label", "Seleccionar");
     chk.onchange = function () {
-      if (chk.checked) SEL[c.slug] = c.link; else delete SEL[c.slug];
-      card.classList.toggle("sel", chk.checked);
-      actualizarMulticopy();
+      var i = idxSel(c.slug);
+      if (chk.checked && i < 0) SEL.push(c);
+      else if (!chk.checked && i >= 0) SEL.splice(i, 1);
+      renumerar();
     };
-    card.appendChild(chk);
+    col.appendChild(num); col.appendChild(chk);
+    card.appendChild(col);
+    CARDS.push({ slug: c.slug, numEl: num, card: card });
     var foto = c.foto ? '<img class="foto" src="' + esc(c.foto) + '" alt="" loading="lazy">'
                       : '<div class="foto ph">🏠</div>';
     var chips = [];
@@ -306,11 +342,12 @@ function render(res, total, aflojados) {
     card.appendChild(link);
     var btn = document.createElement("button");
     btn.className = "copiar"; btn.textContent = "📋";
-    btn.title = "Copiar este link";
-    btn.onclick = function () { copiarTexto(linkAssoc(c.link), btn, "📋"); };
+    btn.title = "Copiar esta propiedad";
+    btn.onclick = function () { copiarTexto(resumen(c) + "\n" + linkAssoc(c.link), btn, "📋"); };
     card.appendChild(btn);
     cont.appendChild(card);
   });
+  renumerar();
 }
 
 function copiarTexto(texto, btn, vuelve) {
@@ -323,10 +360,13 @@ function copiarTexto(texto, btn, vuelve) {
   else prompt("Copiá:", texto);
 }
 function copiarSeleccionadas() {
-  var links = Object.keys(SEL).map(function (s) { return linkAssoc(SEL[s]); });
-  if (!links.length) return;
-  var b = $("btn-multicopy"), n = links.length;
-  copiarTexto(links.join("\n"), b, "📋 Copiar seleccionadas (" + n + ")");
+  if (!SEL.length) return;
+  // Lista numerada 1,2,3 (orden de tildado), con resumen y link listo para el cliente.
+  var texto = SEL.map(function (c, i) {
+    return (i + 1) + ". " + resumen(c) + "\n" + linkAssoc(c.link);
+  }).join("\n\n");
+  var b = $("btn-multicopy");
+  copiarTexto(texto, b, "📋 Copiar seleccionadas (" + SEL.length + ")");
 }
 
 // -------------------------- Traer datos de un link --------------------------
