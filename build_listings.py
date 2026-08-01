@@ -181,6 +181,9 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "agente_id": (it.get("associate") or {}).get("id") or "",
         "agente": (it.get("associate") or {}).get("name") or "",
         "estado": "a_estrenar" if a_estrenar else ("usada" if det else ""),
+        # Estado de publicación: active | reserved | negotiation. Solo 'active' se
+        # ofrece como parecida (reservada/en negociación NO están habilitadas).
+        "estado_pub": (it.get("listingStatus") or {}).get("value") or "active",
         "renta": _tiene_renta(it.get("title") or ""),   # vendida con inquilino
         "cochera": cochera,          # True/False, o None si no se pudo leer el detalle
         "detalle_ok": det is not None,

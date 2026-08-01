@@ -114,6 +114,7 @@ function cerca(valor, objetivo) { // ±25%
 }
 function pasa(c, f, slugActual) {
   if (slugActual && c.slug === slugActual) return false;            // no me devuelvo a mí mismo
+  if (c.estado_pub && c.estado_pub !== "active") return false;      // reservada/negociación: no se ofrece
   if (f.operacion && c.operacion !== f.operacion) return false;
   if (f.tipo && tipoCat(c.tipo) !== f.tipo) return false;
   if (f.grupo && f.grupo.indexOf(norm(c.barrio)) < 0) return false;
@@ -129,21 +130,50 @@ function pasa(c, f, slugActual) {
   if (f.renta === "sin" && c.renta !== false) return false;
   return true;
 }
-function puntaje(c, f) { // más chico = más parecido
-  var p = 0;
-  if (f.cub && c.m2_homog) p += Math.abs(c.m2_homog - f.cub) / f.cub;
-  if (f.precioUsd && c.precio_usd) p += Math.abs(c.precio_usd - f.precioUsd) / f.precioUsd;
+// Referencia para ordenar "más parecida": la propiedad del link (window.__base),
+// o si no hay link, lo que esté cargado en los filtros.
+function refDeBusqueda() {
+  if (window.__base) return window.__base;
+  var f = leerFiltros();
+  var dorm = (f.dmin != null && f.dmax != null) ? Math.round((f.dmin + f.dmax) / 2)
+           : (f.dmin != null ? f.dmin : f.dmax);
+  return {
+    _esFiltro: true,
+    operacion: segVal("f-oper"), tipo: segVal("f-tipo"),
+    barrio: $("f-barrio").value.trim(), precio_usd: f.precioUsd, dorm: dorm,
+    cochera: f.cochera === "si" ? true : (f.cochera === "no" ? false : null),
+    estado: segVal("f-estado")
+  };
+}
+// Puntaje por PRIORIDAD (más chico = más parecida). Pesos decrecientes según el
+// orden que pidió Juan: 1)venta/alquiler 2)ubicación 3)tipo 4)precio 5)dorm
+// 6)cochera 7)usado/a estrenar.
+function puntaje(c, ref) {
+  var w = [64, 32, 16, 8, 4, 2, 1], p = 0;
+  var refOp = ref.operacion || "";
+  if (refOp && c.operacion !== refOp) p += w[0];
+  var refBarrio = norm(ref.barrio || "");
+  if (refBarrio) p += w[1] * (norm(c.barrio) === refBarrio ? 0 : 0.5);
+  var refTipo = ref._esFiltro ? (ref.tipo || "") : tipoCat(ref.tipo);
+  if (refTipo && tipoCat(c.tipo) !== refTipo) p += w[2];
+  if (ref.precio_usd && c.precio_usd)
+    p += w[3] * Math.min(1, Math.abs(c.precio_usd - ref.precio_usd) / ref.precio_usd / 0.15);
+  if (ref.dorm != null && c.dorm != null)
+    p += w[4] * Math.min(1, Math.abs(c.dorm - ref.dorm) / 3);
+  if (ref.cochera != null && c.cochera != null && c.cochera !== ref.cochera) p += w[5];
+  if (ref.estado && c.estado && c.estado !== ref.estado) p += w[6];
   return p;
 }
 
 function buscar() {
   var f = leerFiltros();
+  var ref = refDeBusqueda();
   var slugActual = window.__slugActual || null;
   var res = DATA.filter(function (c) { return pasa(c, f, slugActual); });
   res.sort(function (a, b) {
-    var d = puntaje(a, f) - puntaje(b, f);
+    var d = puntaje(a, ref) - puntaje(b, ref);
     if (Math.abs(d) > 1e-9) return d;
-    return (a.precio_usd || 1e12) - (b.precio_usd || 1e12);
+    return (a.precio_usd || 1e12) - (b.precio_usd || 1e12);   // desempate: más barata
   });
   render(res);
 }
@@ -266,6 +296,10 @@ function rellenar(c) {
   // Regla de Juan: si el link tiene renta → parecidas con renta; si no → sin renta.
   setSeg("f-renta", c.renta ? "con" : "sin");
   window.__slugActual = c.slug || null;
+  window.__base = c;                       // referencia para ordenar "más parecida"
+}
+function etiquetaEstadoPub(e) {
+  return e === "reserved" ? "Reservada" : (e === "negotiation" ? "En negociación" : "");
 }
 function fromDetalle(det, slug) {
   var tipo = (det.type || {}).value || "";
@@ -285,6 +319,7 @@ function fromDetalle(det, slug) {
     m2_padron: Math.round(det.dimensionLand || 0),
     cochera: (park != null) ? (park > 0) : null,
     estado: aEstrenar ? "a_estrenar" : "usada",
+    estado_pub: (det.listingStatus || {}).value || "active",
     renta: /(renta|rentad|alquilad|ocupad)/i.test(det.title || "")
   };
 }
@@ -296,7 +331,7 @@ function traer() {
   var slug = slugDeLink(link);
   // 1) ¿está en el archivo del día? (lo más rápido)
   var enArchivo = DATA.filter(function (c) { return c.slug === slug; })[0];
-  if (enArchivo) { rellenar(enArchivo); hint.innerHTML = "✓ Datos traídos. Revisá y tocá <b>Buscar parecidas</b>."; return; }
+  if (enArchivo) { rellenar(enArchivo); hint.innerHTML = avisoTraido(); return; }
   if (!esRemax) {
     hint.innerHTML = "⚠️ Ese link no es de RE/MAX: no puedo leerlo solo. <b>Completá los datos a mano</b> y buscá igual.";
     return;
@@ -307,9 +342,34 @@ function traer() {
     var det = d && d.data ? (d.data.data || d.data) : d;
     if (!det || !det.slug) throw new Error("no");
     rellenar(fromDetalle(det, det.slug));
-    hint.innerHTML = "✓ Datos traídos de RE/MAX. Revisá y tocá <b>Buscar parecidas</b>.";
+    hint.innerHTML = avisoTraido();
   }).catch(function () {
     hint.innerHTML = "No pude leer ese link. <b>Completá los datos a mano</b> y buscá igual.";
+  });
+}
+
+function avisoTraido() {
+  var b = window.__base;
+  if (b && b.estado_pub && b.estado_pub !== "active")
+    return "⚠️ Esta propiedad está <b>" + etiquetaEstadoPub(b.estado_pub) +
+           "</b> (no habilitada para ofrecer). Igual podés buscar parecidas.";
+  return "✓ Datos traídos. Revisá y tocá <b>Buscar parecidas</b>.";
+}
+
+// -------------------------- Formato de miles en los campos --------------------------
+function fmtMiles(digits) {                       // "100000" -> "100.000"
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+function attachMiles(id, conPrefijo) {
+  var el = $(id);
+  el.addEventListener("input", function () {
+    if (conPrefijo) {                             // precio: conserva "USD " si lo hay
+      var pref = (el.value.match(/^[^\d]*/) || [""])[0];
+      var dig = el.value.replace(/\D/g, "");
+      el.value = dig ? pref + fmtMiles(dig) : pref;
+    } else {
+      el.value = fmtMiles(el.value.replace(/\D/g, ""));
+    }
   });
 }
 
@@ -341,6 +401,9 @@ function initSegs() {
     });
   });
   $("f-barrio").addEventListener("input", pintarGrupo);
+  attachMiles("f-precio", true);
+  attachMiles("f-cub", false);
+  attachMiles("f-padron", false);
   $("btn-traer").addEventListener("click", traer);
   $("btn-buscar").addEventListener("click", buscar);
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
