@@ -15,9 +15,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
+
+# "Con renta" (vendida con inquilino) no es un campo de RE/MAX: viene en el título
+# ("con renta", "renta 6%", "rentado", "alquilada", "ocupada"…).
+RENTA_RE = re.compile(r"(renta|rentad|alquilad|ocupad)", re.I)
+
+
+def _tiene_renta(titulo: str) -> bool:
+    return bool(RENTA_RE.search(titulo or ""))
 
 API = "https://api-ar.redremax.com/remaxweb-uy/api/listings"
 LIST_EP = API + "/findAllWithEntrepreneurships"
@@ -172,6 +181,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "agente_id": (it.get("associate") or {}).get("id") or "",
         "agente": (it.get("associate") or {}).get("name") or "",
         "estado": "a_estrenar" if a_estrenar else ("usada" if det else ""),
+        "renta": _tiene_renta(it.get("title") or ""),   # vendida con inquilino
         "cochera": cochera,          # True/False, o None si no se pudo leer el detalle
         "detalle_ok": det is not None,
     }

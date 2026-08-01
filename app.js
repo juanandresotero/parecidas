@@ -92,7 +92,8 @@ function leerFiltros() {
     cub: soloNum($("f-cub").value),
     padron: soloNum($("f-padron").value),
     cochera: segVal("f-coch"),
-    estado: segVal("f-estado")
+    estado: segVal("f-estado"),
+    renta: segVal("f-renta")
   };
 }
 function monedaDe(txt) {
@@ -124,6 +125,8 @@ function pasa(c, f, slugActual) {
   if (f.cochera === "si" && c.cochera !== true) return false;
   if (f.cochera === "no" && c.cochera !== false) return false;
   if (f.estado && c.estado !== f.estado) return false;
+  if (f.renta === "con" && c.renta !== true) return false;
+  if (f.renta === "sin" && c.renta !== false) return false;
   return true;
 }
 function puntaje(c, f) { // más chico = más parecido
@@ -160,8 +163,21 @@ function porque(c, f) {
   }
   return b.join(" · ");
 }
+function linkAssoc(link) {
+  return link + (link.indexOf("?") >= 0 ? "&" : "?") + "associate=" + ASSOCIATE;
+}
+
+var SEL = {};   // slug -> link de las propiedades tildadas (para copiar juntas)
+function actualizarMulticopy() {
+  var n = Object.keys(SEL).length;
+  var b = $("btn-multicopy");
+  b.textContent = "📋 Copiar seleccionadas (" + n + ")";
+  b.style.display = n ? "" : "none";
+}
+
 function render(res) {
   var f = leerFiltros();
+  SEL = {}; actualizarMulticopy();
   $("resultados").style.display = "";
   $("cuenta").textContent = res.length + (res.length === 1 ? " encontrada" : " encontradas");
   var cont = $("cards");
@@ -170,9 +186,19 @@ function render(res) {
     return;
   }
   cont.innerHTML = "";
-  res.slice(0, 60).forEach(function (c) {
+  res.forEach(function (c) {                       // TODAS (sin tope)
     var card = document.createElement("div");
     card.className = "card";
+    // Tilde para seleccionar y copiar varias juntas
+    var chk = document.createElement("input");
+    chk.type = "checkbox"; chk.className = "card-check";
+    chk.setAttribute("aria-label", "Seleccionar");
+    chk.onchange = function () {
+      if (chk.checked) SEL[c.slug] = c.link; else delete SEL[c.slug];
+      card.classList.toggle("sel", chk.checked);
+      actualizarMulticopy();
+    };
+    card.appendChild(chk);
     var foto = c.foto ? '<img class="foto" src="' + c.foto + '" alt="" loading="lazy">'
                       : '<div class="foto ph">🏠</div>';
     var chips = [];
@@ -180,30 +206,41 @@ function render(res) {
     if (c.m2_homog) chips.push(c.m2_homog + " m²");
     if (c.cochera === true) chips.push("🚗 cochera");
     if (c.estado === "a_estrenar") chips.push("a estrenar");
-    card.innerHTML =
-      '<a class="card-link" href="' + c.link + '" target="_blank" rel="noopener" style="display:flex;gap:11px;flex:1;min-width:0;align-items:center">' +
-        foto +
-        '<div class="info">' +
-          '<div class="precio">' + fmtPrecio(c) + '</div>' +
-          '<div class="barrio">' + (c.barrio || "") + '</div>' +
-          '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + '</div>' +
-          (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +
-        '</div>' +
-      '</a>';
+    if (c.renta === true) chips.push("con renta");
+    var link = document.createElement("a");
+    link.className = "card-link"; link.href = c.link; link.target = "_blank"; link.rel = "noopener";
+    link.style.cssText = "display:flex;gap:11px;flex:1;min-width:0;align-items:center";
+    link.innerHTML = foto +
+      '<div class="info">' +
+        '<div class="precio">' + fmtPrecio(c) + '</div>' +
+        '<div class="barrio">' + (c.barrio || "") + '</div>' +
+        '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + '</div>' +
+        (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +
+      '</div>';
+    card.appendChild(link);
     var btn = document.createElement("button");
-    btn.className = "copiar";
-    btn.textContent = "📋 Copiar";
-    btn.onclick = function () { copiar(c.link, btn); };
+    btn.className = "copiar"; btn.textContent = "📋";
+    btn.title = "Copiar este link";
+    btn.onclick = function () { copiarTexto(linkAssoc(c.link), btn, "📋"); };
     card.appendChild(btn);
     cont.appendChild(card);
   });
 }
-function copiar(link, btn) {
-  var url = link + (link.indexOf("?") >= 0 ? "&" : "?") + "associate=" + ASSOCIATE;
-  var done = function () { btn.classList.add("ok"); btn.textContent = "✓ Copiado";
-    setTimeout(function () { btn.classList.remove("ok"); btn.textContent = "📋 Copiar"; }, 1500); };
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function(){ prompt("Copiá:", url); });
-  else prompt("Copiá:", url);
+
+function copiarTexto(texto, btn, vuelve) {
+  var done = function () {
+    btn.classList.add("ok"); btn.textContent = "✓";
+    setTimeout(function () { btn.classList.remove("ok"); btn.textContent = vuelve; }, 1500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(texto).then(done, function () { prompt("Copiá:", texto); });
+  else prompt("Copiá:", texto);
+}
+function copiarSeleccionadas() {
+  var links = Object.keys(SEL).map(function (s) { return linkAssoc(SEL[s]); });
+  if (!links.length) return;
+  var b = $("btn-multicopy"), n = links.length;
+  copiarTexto(links.join("\n"), b, "📋 Copiar seleccionadas (" + n + ")");
 }
 
 // -------------------------- Traer datos de un link --------------------------
@@ -226,6 +263,8 @@ function rellenar(c) {
   setStep("f-dmax", c.dorm != null ? c.dorm : null);
   setSeg("f-coch", c.cochera === true ? "si" : (c.cochera === false ? "no" : ""));
   setSeg("f-estado", c.estado || "");
+  // Regla de Juan: si el link tiene renta → parecidas con renta; si no → sin renta.
+  setSeg("f-renta", c.renta ? "con" : "sin");
   window.__slugActual = c.slug || null;
 }
 function fromDetalle(det, slug) {
@@ -245,7 +284,8 @@ function fromDetalle(det, slug) {
     m2_homog: homog(det.dimensionCovered, det.dimensionTotalBuilt, det.dimensionLand, esApto, det.dimensionSemicovered, det.dimensionUncovered),
     m2_padron: Math.round(det.dimensionLand || 0),
     cochera: (park != null) ? (park > 0) : null,
-    estado: aEstrenar ? "a_estrenar" : "usada"
+    estado: aEstrenar ? "a_estrenar" : "usada",
+    renta: /(renta|rentad|alquilad|ocupad)/i.test(det.title || "")
   };
 }
 function traer() {
@@ -285,7 +325,7 @@ function pintarGrupo() {
 
 // -------------------------- Arranque + eventos --------------------------
 function initSegs() {
-  ["f-oper", "f-tipo", "f-coch", "f-estado"].forEach(function (id) {
+  ["f-oper", "f-tipo", "f-coch", "f-estado", "f-renta"].forEach(function (id) {
     $(id).addEventListener("click", function (e) {
       if (e.target.tagName !== "BUTTON") return;
       setSeg(id, e.target.getAttribute("data-v"));
@@ -303,6 +343,7 @@ function initSegs() {
   $("f-barrio").addEventListener("input", pintarGrupo);
   $("btn-traer").addEventListener("click", traer);
   $("btn-buscar").addEventListener("click", buscar);
+  $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
 }
 
 function cargar() {
