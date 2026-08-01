@@ -207,7 +207,14 @@
 <script src="app.js"></script>
 <script>
   if("serviceWorker" in navigator){
-    window.addEventListener("load",function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
+    var recargando=false;
+    // Cuando entra una versión nueva de la app, recarga sola una vez (auto-cura el caché).
+    navigator.serviceWorker.addEventListener("controllerchange",function(){
+      if(recargando) return; recargando=true; location.reload();
+    });
+    window.addEventListener("load",function(){
+      navigator.serviceWorker.register("sw.js").then(function(reg){ reg.update(); }).catch(function(){});
+    });
   }
 </script>
 </body>
