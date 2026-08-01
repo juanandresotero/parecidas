@@ -120,7 +120,7 @@ function pasa(c, f, slugActual) {
   if (f.grupo && f.grupo.indexOf(norm(c.barrio)) < 0) return false;
   if (f.dmin != null && (c.dorm == null || c.dorm < f.dmin)) return false;
   if (f.dmax != null && (c.dorm == null || c.dorm > f.dmax)) return false;
-  if (f.precioUsd != null && (c.precio_usd == null || c.precio_usd > f.precioUsd * 1.15)) return false;
+  if (f.precioUsd != null && (c.precio_usd == null || c.precio_usd > f.precioUsd * (f.precioFactor || 1.15))) return false;
   if (f.cub != null && !cerca(c.m2_homog, f.cub)) return false;
   if (f.padron != null && !cerca(c.m2_padron, f.padron)) return false;
   if (f.cochera === "si" && c.cochera !== true) return false;
@@ -165,17 +165,38 @@ function puntaje(c, ref) {
   return p;
 }
 
-function buscar() {
-  var f = leerFiltros();
-  var ref = refDeBusqueda();
-  var slugActual = window.__slugActual || null;
+function filtrar(f, ref, slugActual) {
   var res = DATA.filter(function (c) { return pasa(c, f, slugActual); });
   res.sort(function (a, b) {
     var d = puntaje(a, ref) - puntaje(b, ref);
     if (Math.abs(d) > 1e-9) return d;
     return (a.precio_usd || 1e12) - (b.precio_usd || 1e12);   // desempate: más barata
   });
-  render(res);
+  return res;
+}
+function buscar() {
+  var f = leerFiltros();
+  var ref = refDeBusqueda();
+  var slugActual = window.__slugActual || null;
+  var res = filtrar(f, ref, slugActual);
+  // Flexibilidad "mínimo 2": si salen menos de 2, aflojo de MENOR a MAYOR
+  // prioridad hasta llegar a 2. NUNCA aflojo venta/alquiler ni muestro reservadas.
+  var pasos = [
+    function () { f.estado = ""; },                    // 7 usado/a estrenar
+    function () { f.cochera = ""; },                   // 6 cochera
+    function () { f.dmin = null; f.dmax = null; },     // 5 dormitorios
+    function () { f.precioFactor = 1.5; },             // 4 precio hasta +50%
+    function () { f.cub = null; f.padron = null; },    // m²
+    function () { f.precioUsd = null; },               // 4 sacar precio
+    function () { f.tipo = ""; },                      // 3 tipo
+    function () { f.grupo = null; }                    // 2 ubicación (última)
+  ];
+  var aflojado = false, i = 0;
+  while (res.length < 2 && i < pasos.length) {
+    pasos[i](); i++; aflojado = true;
+    res = filtrar(f, ref, slugActual);
+  }
+  render(res, aflojado && res.length > 0);
 }
 
 // -------------------------- Dibujar resultados --------------------------
@@ -205,11 +226,12 @@ function actualizarMulticopy() {
   b.style.display = n ? "" : "none";
 }
 
-function render(res) {
+function render(res, aflojado) {
   var f = leerFiltros();
   SEL = {}; actualizarMulticopy();
   $("resultados").style.display = "";
-  $("cuenta").textContent = res.length + (res.length === 1 ? " encontrada" : " encontradas");
+  $("cuenta").textContent = res.length + (res.length === 1 ? " encontrada" : " encontradas")
+    + (aflojado ? " · búsqueda ampliada" : "");
   var cont = $("cards");
   if (!res.length) {
     cont.innerHTML = '<div class="vacio">No hay parecidas con esos filtros. Probá aflojar alguno (dejalo vacío / “Da igual”).</div>';
