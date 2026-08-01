@@ -1,5 +1,5 @@
 // Service worker: deja andar la app sin conexión y sirve los datos frescos.
-var CACHE = "parecidas-v1";
+var CACHE = "parecidas-v2";
 var SHELL = ["./", "index.html", "app.js", "barrios.js",
              "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
@@ -22,14 +22,12 @@ self.addEventListener("activate", function (e) {
 self.addEventListener("fetch", function (e) {
   if (e.request.method !== "GET") return;
   var u = new URL(e.request.url);
-  if (u.pathname.endsWith("listings.json")) {
-    // Datos: red primero (frescos), y si no hay conexión, lo último guardado.
-    e.respondWith(fetch(e.request).then(function (r) {
-      var cp = r.clone(); caches.open(CACHE).then(function (c) { c.put(e.request, cp); });
-      return r;
-    }).catch(function () { return caches.match(e.request); }));
-  } else if (u.origin === location.origin) {
-    // App: lo guardado primero (rápido), y si no está, la red.
-    e.respondWith(caches.match(e.request).then(function (r) { return r || fetch(e.request); }));
-  }
+  var propia = u.origin === location.origin;
+  if (!propia && !u.pathname.endsWith("listings.json")) return;
+  // Red PRIMERO (siempre lo más fresco: los cambios se ven al toque). Si no hay
+  // señal, sirve lo último guardado (anda offline). Guarda cada respuesta buena.
+  e.respondWith(fetch(e.request).then(function (r) {
+    var cp = r.clone(); caches.open(CACHE).then(function (c) { c.put(e.request, cp); });
+    return r;
+  }).catch(function () { return caches.match(e.request); }));
 });
