@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2456e6">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Parecidas">
+<title>Parecidas</title>
+<style>
+  :root{
+    --ground:#eef1f8; --surface:#ffffff; --surface-2:#f7f9fd;
+    --ink:#16202e; --muted:#64748b; --line:#e2e8f2;
+    --brand:#2456e6; --brand-2:#1a41b8; --brand-ink:#ffffff;
+    --ok:#15803d; --ok-bg:rgba(22,163,74,.13);
+    --shadow:0 6px 24px rgba(20,32,60,.12); --radius:16px;
+    --fs:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--ground:#0d1219;--surface:#151d29;--surface-2:#111925;--ink:#e7edf6;
+      --muted:#93a1b5;--line:#26313f;--brand:#4f7cff;--brand-2:#3d63e0;
+      --brand-ink:#0d1219;--ok:#4ade80;--ok-bg:rgba(34,197,94,.16);
+      --shadow:0 8px 28px rgba(0,0,0,.4);}
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:var(--fs);color:var(--ink);background:var(--ground);
+    min-height:100vh;padding:0 0 40px;-webkit-text-size-adjust:100%}
+  .wrap{max-width:440px;margin:0 auto;background:var(--surface);min-height:100vh;
+    box-shadow:var(--shadow)}
+  .barra{display:flex;align-items:center;gap:9px;padding:15px 17px;
+    padding-top:calc(15px + env(safe-area-inset-top));
+    background:linear-gradient(120deg,var(--brand),var(--brand-2));color:#fff;
+    position:sticky;top:0;z-index:5}
+  .barra .logo{font-size:20px}
+  .barra h1{font-size:17px;margin:0;font-weight:800}
+  .barra small{display:block;font-weight:500;opacity:.85;font-size:11px}
+  .cuerpo{padding:15px;display:flex;flex-direction:column;gap:15px}
+  .bloque{background:var(--surface-2);border:1px solid var(--line);
+    border-radius:var(--radius);padding:13px}
+  .bloque>.titulo{font-size:11px;font-weight:800;text-transform:uppercase;
+    letter-spacing:.6px;color:var(--muted);margin:0 0 9px}
+  .link-row{display:flex;gap:8px}
+  .campo{flex:1;min-width:0;padding:11px 12px;border:1px solid var(--line);
+    border-radius:11px;background:var(--surface);color:var(--ink);font-size:14px;
+    font-family:inherit}
+  .campo::placeholder{color:var(--muted)}
+  .btn{border:none;cursor:pointer;font-family:inherit;font-weight:700;
+    border-radius:11px;font-size:14px}
+  .btn:disabled{opacity:.55;cursor:default}
+  .btn-brand{background:var(--brand);color:var(--brand-ink);padding:11px 14px}
+  .hint{font-size:12px;color:var(--muted);margin:8px 2px 0;line-height:1.5}
+  .regla-vacio{font-size:12px;line-height:1.5;color:var(--ink);margin:0 0 11px;
+    background:color-mix(in srgb,var(--brand) 12%,transparent);
+    border:1px solid color-mix(in srgb,var(--brand) 30%,transparent);
+    border-radius:10px;padding:8px 10px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .f{display:flex;flex-direction:column;gap:5px}
+  .f.full{grid-column:1/-1}
+  .f label{font-size:11px;font-weight:700;color:var(--muted)}
+  .seg{display:flex;background:var(--surface);border:1px solid var(--line);
+    border-radius:10px;padding:3px;gap:3px}
+  .seg button{flex:1;border:none;background:transparent;color:var(--muted);
+    font-family:inherit;font-weight:700;font-size:12px;padding:7px 3px;
+    border-radius:8px;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--brand);color:var(--brand-ink)}
+  .in{padding:10px 11px;border:1px solid var(--line);border-radius:10px;
+    background:var(--surface);color:var(--ink);font-size:14px;font-family:inherit;
+    font-variant-numeric:tabular-nums;width:100%}
+  .grupo-chip{font-size:11px;color:var(--brand);font-weight:700;min-height:14px}
+  .stepper{display:flex;align-items:center;justify-content:space-between;
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px}
+  .stepper button{width:30px;height:30px;border:none;border-radius:8px;
+    background:var(--surface-2);color:var(--ink);font-size:17px;font-weight:800;cursor:pointer}
+  .stepper span{font-weight:800;font-size:15px;font-variant-numeric:tabular-nums}
+  .buscar{width:100%;padding:14px;font-size:15.5px}
+  .estado-carga{font-size:12px;color:var(--muted);text-align:center;padding:4px}
+  .res-head{display:flex;align-items:baseline;justify-content:space-between;padding:0 2px}
+  .res-head h2{font-size:15px;margin:0;font-weight:800}
+  .res-head .n{color:var(--muted);font-size:12.5px;font-weight:600}
+  .cards{display:flex;flex-direction:column;gap:11px;margin-top:10px}
+  .vacio{color:var(--muted);font-size:13px;text-align:center;padding:18px}
+  .card{display:flex;gap:11px;background:var(--surface);border:1px solid var(--line);
+    border-radius:14px;padding:10px;align-items:center}
+  .foto{width:70px;height:70px;border-radius:10px;flex-shrink:0;object-fit:cover;
+    background:var(--surface-2);border:1px solid var(--line)}
+  .foto.ph{display:flex;align-items:center;justify-content:center;font-size:24px}
+  .card .info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .precio{font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
+  .barrio{font-size:13px;color:var(--ink);font-weight:600;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .chips{display:flex;gap:5px;flex-wrap:wrap}
+  .chip{font-size:11px;color:var(--muted);background:var(--surface-2);
+    border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-weight:600}
+  .porque{font-size:11px;color:var(--ok);background:var(--ok-bg);align-self:flex-start;
+    border-radius:999px;padding:1px 8px;font-weight:700}
+  .copiar{background:var(--surface-2);color:var(--brand);border:1px solid var(--line);
+    padding:9px 11px;font-size:12.5px;white-space:nowrap;border-radius:10px;
+    cursor:pointer;font-weight:700}
+  .copiar.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+  a.card-link{text-decoration:none;color:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="barra">
+    <span class="logo">🏠</span>
+    <div><h1>Parecidas</h1><small>Similares en todo RE/MAX Mvd + Canelones</small></div>
+  </div>
+  <div class="cuerpo">
+
+    <div class="bloque">
+      <p class="titulo">1 · Pegá el link (o completá a mano)</p>
+      <div class="link-row">
+        <input class="campo" id="link" placeholder="Pegá un link de la propiedad…" inputmode="url">
+        <button class="btn btn-brand" id="btn-traer">Traer datos</button>
+      </div>
+      <p class="hint" id="hint">Link de <b>RE/MAX</b> → se llenan solos. De otro lado o sin link → completá a mano.</p>
+    </div>
+
+    <div class="bloque">
+      <p class="titulo">2 · Datos de la propiedad (editables)</p>
+      <p class="regla-vacio">💡 Lo que dejes <b>vacío</b> (o en “Da igual”) se <b>ignora</b>: busca sin tener en cuenta ese dato.</p>
+      <div class="grid">
+        <div class="f">
+          <label>Operación</label>
+          <div class="seg" id="f-oper">
+            <button data-v="sale" aria-pressed="true">Venta</button>
+            <button data-v="rent" aria-pressed="false">Alquiler</button>
+            <button data-v="" aria-pressed="false">Da igual</button>
+          </div>
+        </div>
+        <div class="f">
+          <label>Tipo</label>
+          <div class="seg" id="f-tipo">
+            <button data-v="casa" aria-pressed="false">Casa</button>
+            <button data-v="apto" aria-pressed="false">Apto</button>
+            <button data-v="terreno" aria-pressed="false">Terreno</button>
+            <button data-v="" aria-pressed="true">Da igual</button>
+          </div>
+        </div>
+        <div class="f full">
+          <label>Precio</label>
+          <input class="in" id="f-precio" inputmode="numeric" placeholder="(vacío = da igual)">
+        </div>
+        <div class="f">
+          <label>m² construidos</label>
+          <input class="in" id="f-cub" inputmode="numeric" placeholder="(da igual)">
+        </div>
+        <div class="f">
+          <label>m² totales (padrón)</label>
+          <input class="in" id="f-padron" inputmode="numeric" placeholder="(da igual)">
+        </div>
+        <div class="f full">
+          <label>Barrio</label>
+          <input class="in" id="f-barrio" placeholder="(da igual)">
+          <span class="grupo-chip" id="f-grupo"></span>
+        </div>
+        <div class="f">
+          <label>Dorm. (mín.)</label>
+          <div class="stepper" id="f-dmin"><button data-d="-1">–</button><span>—</span><button data-d="1">+</button></div>
+        </div>
+        <div class="f">
+          <label>Dorm. (máx.)</label>
+          <div class="stepper" id="f-dmax"><button data-d="-1">–</button><span>—</span><button data-d="1">+</button></div>
+        </div>
+        <div class="f full">
+          <label>Cochera</label>
+          <div class="seg" id="f-coch">
+            <button data-v="si" aria-pressed="false">Sí</button>
+            <button data-v="no" aria-pressed="false">No</button>
+            <button data-v="" aria-pressed="true">Da igual</button>
+          </div>
+        </div>
+        <div class="f full">
+          <label>Estado</label>
+          <div class="seg" id="f-estado">
+            <button data-v="usada" aria-pressed="false">Usada</button>
+            <button data-v="a_estrenar" aria-pressed="false">A estrenar</button>
+            <button data-v="" aria-pressed="true">Da igual</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-brand buscar" id="btn-buscar">🔎 Buscar parecidas</button>
+    <div class="estado-carga" id="estado">Cargando propiedades…</div>
+
+    <div id="resultados" style="display:none">
+      <div class="res-head"><h2>Parecidas</h2><span class="n" id="cuenta"></span></div>
+      <div class="cards" id="cards"></div>
+    </div>
+  </div>
+</div>
+
+<script src="barrios.js"></script>
+<script src="app.js"></script>
+<script>
+  if("serviceWorker" in navigator){
+    window.addEventListener("load",function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+name: Actualizar propiedades
+
+# Corre 1 vez por día (y se puede correr a mano desde la pestaña Actions).
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 09:00 UTC ≈ 06:00 Uruguay
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Bajar propiedades de RE/MAX
+        run: python build_listings.py
+      - name: Guardar el archivo actualizado
+        run: |
+          git config user.name "parecidas-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add listings.json
+          git commit -m "datos: actualizar propiedades ($(date -u +%F))" || echo "sin cambios"
+          git push
