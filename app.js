@@ -309,7 +309,7 @@ function cargar() {
   fetch("listings.json").then(function (r) { return r.json(); }).then(function (d) {
     DATA = d.listings || [];
     USD_RATE = d.usd_rate || null;
-    $("estado").textContent = DATA.length + " propiedades cargadas (Mvd + Canelones).";
+    $("estado").textContent = "";
   }).catch(function () {
     $("estado").textContent = "No pude cargar las propiedades. Revisá la conexión y recargá.";
   });

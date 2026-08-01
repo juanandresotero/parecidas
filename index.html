@@ -54,10 +54,8 @@
   .btn:disabled{opacity:.55;cursor:default}
   .btn-brand{background:var(--brand);color:var(--brand-ink);padding:11px 14px}
   .hint{font-size:12px;color:var(--muted);margin:8px 2px 0;line-height:1.5}
-  .regla-vacio{font-size:12px;line-height:1.5;color:var(--ink);margin:0 0 11px;
-    background:color-mix(in srgb,var(--brand) 12%,transparent);
-    border:1px solid color-mix(in srgb,var(--brand) 30%,transparent);
-    border-radius:10px;padding:8px 10px}
+  .hint:empty{display:none}
+  .estado-carga:empty{display:none}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .f{display:flex;flex-direction:column;gap:5px}
   .f.full{grid-column:1/-1}
@@ -109,22 +107,19 @@
 <div class="wrap">
   <div class="barra">
     <span class="logo">🏠</span>
-    <div><h1>Parecidas</h1><small>Similares en todo RE/MAX Mvd + Canelones</small></div>
+    <h1>Parecidas</h1>
   </div>
   <div class="cuerpo">
 
     <div class="bloque">
-      <p class="titulo">1 · Pegá el link (o completá a mano)</p>
       <div class="link-row">
-        <input class="campo" id="link" placeholder="Pegá un link de la propiedad…" inputmode="url">
-        <button class="btn btn-brand" id="btn-traer">Traer datos</button>
+        <input class="campo" id="link" placeholder="Pegá el link de la propiedad" inputmode="url">
+        <button class="btn btn-brand" id="btn-traer">Traer</button>
       </div>
-      <p class="hint" id="hint">Link de <b>RE/MAX</b> → se llenan solos. De otro lado o sin link → completá a mano.</p>
+      <p class="hint" id="hint"></p>
     </div>
 
     <div class="bloque">
-      <p class="titulo">2 · Datos de la propiedad (editables)</p>
-      <p class="regla-vacio">💡 Lo que dejes <b>vacío</b> (o en “Da igual”) se <b>ignora</b>: busca sin tener en cuenta ese dato.</p>
       <div class="grid">
         <div class="f">
           <label>Operación</label>
@@ -145,19 +140,19 @@
         </div>
         <div class="f full">
           <label>Precio</label>
-          <input class="in" id="f-precio" inputmode="numeric" placeholder="(vacío = da igual)">
+          <input class="in" id="f-precio" inputmode="numeric">
         </div>
         <div class="f">
           <label>m² construidos</label>
-          <input class="in" id="f-cub" inputmode="numeric" placeholder="(da igual)">
+          <input class="in" id="f-cub" inputmode="numeric">
         </div>
         <div class="f">
           <label>m² totales (padrón)</label>
-          <input class="in" id="f-padron" inputmode="numeric" placeholder="(da igual)">
+          <input class="in" id="f-padron" inputmode="numeric">
         </div>
         <div class="f full">
           <label>Barrio</label>
-          <input class="in" id="f-barrio" placeholder="(da igual)">
+          <input class="in" id="f-barrio">
           <span class="grupo-chip" id="f-grupo"></span>
         </div>
         <div class="f">
@@ -188,7 +183,7 @@
     </div>
 
     <button class="btn btn-brand buscar" id="btn-buscar">🔎 Buscar parecidas</button>
-    <div class="estado-carga" id="estado">Cargando propiedades…</div>
+    <div class="estado-carga" id="estado">Cargando…</div>
 
     <div id="resultados" style="display:none">
       <div class="res-head"><h2>Parecidas</h2><span class="n" id="cuenta"></span></div>
