@@ -374,18 +374,23 @@ function render(res, total, aflojados, fuera) {
     // Columna izquierda: número (cuando está tildada) + tilde para seleccionar
     var col = document.createElement("div"); col.className = "card-col";
     var num = document.createElement("span"); num.className = "card-num"; num.style.display = "none";
-    var chk = document.createElement("input");
-    chk.type = "checkbox"; chk.className = "card-check";
-    chk.setAttribute("aria-label", "Seleccionar");
-    chk.onchange = function () {
-      var i = idxSel(c.slug);
-      if (chk.checked && i < 0) SEL.push(c);
-      else if (!chk.checked && i >= 0) SEL.splice(i, 1);
-      renumerar();
-    };
-    // ⭐ "Para enviar" = queda auto-seleccionada (aparece el botón Enviar).
-    if (bAct && valDe(bAct, c.slug) === "a_enviar") { SEL.push(c); chk.checked = true; }
-    col.appendChild(num); col.appendChild(chk);
+    col.appendChild(num);
+    if (bAct) {
+      // Con cliente: la ⭐ "Para enviar" ES la selección (sin casillero).
+      if (valDe(bAct, c.slug) === "a_enviar") SEL.push(c);
+    } else {
+      // Sin cliente: casillero para seleccionar y copiar.
+      var chk = document.createElement("input");
+      chk.type = "checkbox"; chk.className = "card-check";
+      chk.setAttribute("aria-label", "Seleccionar");
+      chk.onchange = function () {
+        var i = idxSel(c.slug);
+        if (chk.checked && i < 0) SEL.push(c);
+        else if (!chk.checked && i >= 0) SEL.splice(i, 1);
+        renumerar();
+      };
+      col.appendChild(chk);
+    }
     card.appendChild(col);
     CARDS.push({ slug: c.slug, numEl: num, card: card });
     var foto = c.foto ? '<img class="foto" src="' + esc(c.foto) + '" alt="" loading="lazy">'
