@@ -871,6 +871,19 @@ function abrirValPicker(slug) {
   abrirOverlay("val-picker");
 }
 
+// -------------------------- Botón Instalar (Android/Chrome) --------------------------
+// Chrome ya no muestra un botón grande solo: capturamos su evento y mostramos el nuestro.
+var deferredInstall = null;
+window.addEventListener("beforeinstallprompt", function (e) {
+  e.preventDefault();
+  deferredInstall = e;
+  var b = $("btn-instalar"); if (b) b.style.display = "";
+});
+window.addEventListener("appinstalled", function () {
+  deferredInstall = null;
+  var b = $("btn-instalar"); if (b) b.style.display = "none";
+});
+
 // -------------------------- Arranque + eventos --------------------------
 function initSegs() {
   ["f-oper", "f-coch", "f-estado", "f-renta"].forEach(function (id) {   // una sola opción
@@ -910,6 +923,13 @@ function initSegs() {
   $("btn-buscar").addEventListener("click", buscar);
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
+  $("btn-instalar").addEventListener("click", function () {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    deferredInstall.userChoice.then(function () {
+      deferredInstall = null; $("btn-instalar").style.display = "none";
+    });
+  });
   $("btn-val-cerrar").addEventListener("click", function () { cerrarOverlay("val-picker"); });
   $("val-picker").addEventListener("click", function (e) { if (e.target === $("val-picker")) cerrarOverlay("val-picker"); });
   // Ajustes (associate editable)
