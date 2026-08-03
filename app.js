@@ -820,6 +820,11 @@ function renderBadge() {
   var n = totalNuevas(), el = $("busq-badge");
   if (n > 0) { el.textContent = n > 99 ? "99+" : n; el.style.display = ""; }
   else el.style.display = "none";
+  // Numerito (silencioso) en el ícono de la app instalada. Se refresca al abrir la app.
+  try {
+    if (n > 0 && navigator.setAppBadge) navigator.setAppBadge(n);
+    else if (navigator.clearAppBadge) navigator.clearAppBadge();
+  } catch (e) {}
 }
 
 function abrirOverlay(id) { $(id).style.display = "flex"; }
