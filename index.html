@@ -31,8 +31,12 @@
     padding-top:calc(15px + env(safe-area-inset-top));
     background:linear-gradient(120deg,var(--brand),var(--brand-2));color:#fff;
     position:sticky;top:0;z-index:5}
-  .barra .logo{font-size:20px}
-  .barra h1{font-size:17px;margin:0;font-weight:800}
+  .marca{display:flex;align-items:center;gap:7px;border:none;cursor:pointer;
+    background:rgba(255,255,255,.15);color:#fff;border-radius:12px;padding:6px 12px;
+    font-family:inherit;-webkit-tap-highlight-color:transparent}
+  .marca:active{background:rgba(255,255,255,.28)}
+  .marca .logo{font-size:19px;line-height:1}
+  .marca-txt{font-size:17px;font-weight:800;letter-spacing:.2px}
   .barra small{display:block;font-weight:500;opacity:.85;font-size:11px}
   .ajustes-btn{margin-left:auto;border:none;background:rgba(255,255,255,.2);color:#fff;
     width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:17px;line-height:1}
@@ -195,8 +199,9 @@
 <body>
 <div class="wrap">
   <div class="barra">
-    <span class="logo" id="titulo-app" style="cursor:pointer">🏠</span>
-    <h1 id="titulo-app2" style="cursor:pointer" title="Tocá para empezar de cero">Parecidas</h1>
+    <button class="marca" id="marca" title="Tocá para empezar de cero">
+      <span class="logo">🏠</span><span class="marca-txt">Parecidas</span>
+    </button>
     <button class="ajustes-btn busq-btn" id="btn-busquedas" title="Búsquedas guardadas" aria-label="Búsquedas guardadas">🔖<span class="busq-badge" id="busq-badge" style="display:none">0</span></button>
     <button class="ajustes-btn" id="btn-ajustes" title="Ajustes" aria-label="Ajustes">⚙️</button>
   </div>

@@ -376,6 +376,8 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
   var f = leerFiltros();
   SEL = []; CARDS = []; actualizarMulticopy();
   $("resultados").style.display = "";
+  // Si la búsqueda ya está guardada (cliente activo), no ofrezco "Guardar" de nuevo.
+  $("btn-guardar-busq").style.display = window.__busquedaActiva ? "none" : "";
   var cont = $("cards");
   if (!total) {
     $("cuenta").textContent = "0 encontradas";
@@ -1089,8 +1091,7 @@ function initSegs() {
   toggleGastos();
   $("btn-traer").addEventListener("click", traer);
   $("btn-buscar").addEventListener("click", buscar);
-  $("titulo-app").addEventListener("click", limpiarTodo);   // tocar 🏠/Parecidas = empezar de cero
-  $("titulo-app2").addEventListener("click", limpiarTodo);
+  $("marca").addEventListener("click", limpiarTodo);   // tocar 🏠 Parecidas = empezar de cero
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
   // Notas del cliente
