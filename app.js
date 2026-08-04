@@ -224,27 +224,55 @@ function buscar() {
   var f = leerFiltros();
   var ref = refDeBusqueda();
   var slugActual = window.__slugActual || null;
-  // Respeta TODOS los filtros al 100%: NO afloja nada. Si da pocas o ninguna,
-  // se muestra tal cual (y el vacío avisa que aflojes a mano). Las mejores 10.
+  // Respeta TODOS los filtros al 100%: NO afloja nada. Las mejores 10.
   var res = filtrar(f, ref, slugActual);
   var lista = res.slice(0, TOPE_RESULTADOS);
-  // Fase C — PRESERVAR: lo que marcaste a favor (⭐/💚/📤) para este cliente NO se
-  // pierde aunque deje de cumplir los criterios. Se suma y se marca "fuera de criterios".
-  var fuera = {};
+  var fuera = {}, yaNoEntra = {};
   var b = busquedaActiva();
-  if (b && b.estados) {
-    var ya = {}; lista.forEach(function (c) { ya[c.slug] = 1; });
-    var aFavor = { a_enviar: 1, favorita: 1, enviada: 1 };
-    Object.keys(b.estados).forEach(function (slug) {
-      if (!aFavor[b.estados[slug]] || ya[slug]) return;
+  if (b) {
+    // Re-buscar: lo que estaba antes y ya no coincide → 🚫 "ya no entra en el filtro".
+    reconciliarDescartes(res, b).forEach(function (slug) {
       var prop = propPorSlug(slug);
-      if (!prop) return;
-      if (!pasa(prop, f, slugActual)) fuera[slug] = 1;   // ya no cumple → fuera de criterios
-      lista.push(prop);
+      if (prop) { yaNoEntra[slug] = 1; lista.push(prop); }
     });
+    // Fase C — PRESERVAR: lo marcado a favor (⭐/💚/📤) no se pierde aunque no cumpla.
+    if (b.estados) {
+      var ya = {}; lista.forEach(function (c) { ya[c.slug] = 1; });
+      var aFavor = { a_enviar: 1, favorita: 1, enviada: 1 };
+      Object.keys(b.estados).forEach(function (slug) {
+        if (!aFavor[b.estados[slug]] || ya[slug]) return;
+        var prop = propPorSlug(slug);
+        if (!prop) return;
+        if (!pasa(prop, f, slugActual)) fuera[slug] = 1;   // ya no cumple → fuera de criterios
+        lista.push(prop);
+      });
+    }
   }
-  render(lista, res.length, [], fuera);
+  render(lista, res.length, [], fuera, yaNoEntra);
   guardarEstadoActual();   // recordar lo que se está viendo (sobrevive a recargar)
+}
+// Al re-buscar: las que estaban en la vista anterior y ya no coinciden pasan a
+// "descartada por filtro" (🚫). Las favoritas NO se tocan (se preservan).
+function reconciliarDescartes(res, b) {
+  var nuevos = res.map(function (c) { return c.slug; });
+  if (!window.__ultimaVista) { window.__ultimaVista = nuevos; return []; }
+  var enNuevo = {}; nuevos.forEach(function (s) { enNuevo[s] = 1; });
+  var arr = cargarBusquedas();
+  var bb = arr.filter(function (x) { return x.id === b.id; })[0];
+  var dropped = [];
+  if (bb) {
+    bb.estados = bb.estados || {};
+    var aFavor = { a_enviar: 1, favorita: 1, enviada: 1 };
+    var cambio = false;
+    window.__ultimaVista.forEach(function (slug) {
+      if (enNuevo[slug] || aFavor[bb.estados[slug]]) return;
+      bb.estados[slug] = "descartada_filtro";
+      dropped.push(slug); cambio = true;
+    });
+    if (cambio) guardarBusquedas(arr);
+  }
+  window.__ultimaVista = nuevos;
+  return dropped;
 }
 
 // -------------------------- Dibujar resultados --------------------------
@@ -343,8 +371,8 @@ function enviarSeleccionadas() {
   }
 }
 
-function render(res, total, aflojados, fuera) {
-  fuera = fuera || {};
+function render(res, total, aflojados, fuera, yaNoEntra) {
+  fuera = fuera || {}; yaNoEntra = yaNoEntra || {};
   var f = leerFiltros();
   SEL = []; CARDS = []; actualizarMulticopy();
   $("resultados").style.display = "";
@@ -409,6 +437,7 @@ function render(res, total, aflojados, fuera) {
         '<div class="precio">' + fmtPrecio(c) + '</div>' +
         '<div class="barrio">' + esc(c.barrio || "") + '</div>' +
         (fuera[c.slug] ? '<span class="fuera-tag">⚠ fuera de criterios</span>' : "") +
+        (yaNoEntra[c.slug] ? '<span class="fuera-tag">🚫 ya no entra en el filtro</span>' : "") +
         '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + '</div>' +
         (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +
       '</div>';
@@ -763,6 +792,7 @@ function abrirBusqueda(id) {
   if (!b) return;
   restoreForm(b.form);
   window.__busquedaActiva = b.id;                               // cliente activo (para Enviar)
+  window.__ultimaVista = null;                                  // baseline nuevo (no descarta al abrir)
   b.vistas = matchesDe(b).map(function (c) { return c.slug; });  // marca como visto → apaga el numerito
   guardarBusquedas(arr);
   cerrarOverlay("busquedas");
@@ -889,6 +919,7 @@ function limpiarTodo() {
   setStep("f-dmin", null); setStep("f-dmax", null);
   setSeg("f-coch", ""); setSeg("f-estado", ""); setSeg("f-renta", ""); toggleGastos();
   window.__base = null; window.__slugActual = null; window.__busquedaActiva = null;
+  window.__ultimaVista = null;
   SEL = []; CARDS = []; actualizarMulticopy();
   $("cards").innerHTML = ""; $("resultados").style.display = "none"; $("hint").innerHTML = "";
 }
@@ -967,12 +998,13 @@ var VAL_ESTADOS = {
   favorita:    { orden: 3, icono: "💚", label: "Le gustó al cliente" },
   enviada:     { orden: 4, icono: "📤", label: "Enviada" },
   pendiente:   { orden: 5, icono: "⏳", label: "Pendiente / revisar" },
+  descartada_filtro: { orden: 5.5, icono: "🚫", label: "Ya no entra en el filtro" },
   descarte_1:  { orden: 6, icono: "🔴", label: "No me gustó" },
   descarte_2:  { orden: 7, icono: "🔴🔴", label: "La descartó (por la foto)" },
   descarte_3:  { orden: 8, icono: "🔴🔴🔴", label: "La descartó (tras la visita)" }
 };
 var VAL_ORDEN = ["sin_valorar", "a_enviar", "favorita", "enviada", "pendiente",
-                 "descarte_1", "descarte_2", "descarte_3"];
+                 "descartada_filtro", "descarte_1", "descarte_2", "descarte_3"];
 
 function valDe(busq, slug) { return (busq && busq.estados && busq.estados[slug]) || "sin_valorar"; }
 function setVal(slug, clave) {
@@ -1048,7 +1080,7 @@ function initSegs() {
   });
   // Si toca el link, ya no está en el contexto de un cliente guardado.
   $("link").addEventListener("input", function () {
-    window.__busquedaActiva = null;
+    window.__busquedaActiva = null; window.__ultimaVista = null;
     if (!$("link").value.trim()) { window.__base = null; window.__slugActual = null; }
   });
   ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max",
