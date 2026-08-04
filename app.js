@@ -784,7 +784,7 @@ function renderBusquedas() {
     var item = document.createElement("div"); item.className = "busq-item";
     var info = document.createElement("div"); info.className = "bi-info";
     var nom = document.createElement("div"); nom.className = "bi-nom bi-clic";
-    nom.textContent = "✎ " + (b.nombre || "Sin nombre");
+    nom.textContent = b.nombre || "Sin nombre";
     nom.title = "Notas del cliente";
     nom.onclick = function () { abrirClienteEditor(b.id); };
     info.appendChild(nom);
@@ -822,6 +822,11 @@ function renderBusquedas() {
       badge.textContent = "+" + nuevas + " nueva" + (nuevas === 1 ? "" : "s");
       item.appendChild(badge);
     }
+    var edit = document.createElement("button"); edit.className = "bi-edit";
+    edit.textContent = "✎"; edit.title = "Notas y recordatorio";
+    edit.setAttribute("aria-label", "Notas y recordatorio");
+    edit.onclick = function () { abrirClienteEditor(b.id); };
+    item.appendChild(edit);
     var abrir = document.createElement("button"); abrir.className = "bi-btn";
     abrir.textContent = "Abrir"; abrir.onclick = function () { abrirBusqueda(b.id); };
     item.appendChild(abrir);
@@ -869,6 +874,7 @@ function abrirClienteEditor(id) {
   __clienteEdit = id;
   $("ce-nombre").textContent = b.nombre || "Cliente";
   $("ce-notas").value = b.notas || "";
+  $("ce-recdias").value = "";
   pintarContactoCE(b);
   pintarRecordatorioCE(b);
   abrirOverlay("cliente-editor");
@@ -1013,11 +1019,12 @@ function initSegs() {
   $("btn-ce-guardar").addEventListener("click", cerrarCE);
   $("cliente-editor").addEventListener("click", function (e) { if (e.target === $("cliente-editor")) cerrarCE(); });
   $("btn-ce-contactado").addEventListener("click", marcarContactado);
-  $("ce-recordar").addEventListener("click", function (e) {
-    var d = e.target.getAttribute("data-d"); if (!d) return;
-    setRecordatorio(parseInt(d, 10));
+  $("btn-ce-recponer").addEventListener("click", function () {
+    var n = soloNum($("ce-recdias").value);
+    if (!n || n < 1) { $("ce-recordatorio").textContent = "Poné un número de días."; return; }
+    setRecordatorio(n);
   });
-  $("btn-ce-sinrec").addEventListener("click", function () { setRecordatorio(null); });
+  $("btn-ce-sinrec").addEventListener("click", function () { $("ce-recdias").value = ""; setRecordatorio(null); });
   $("btn-instalar").addEventListener("click", function () {
     if (!deferredInstall) return;
     deferredInstall.prompt();
