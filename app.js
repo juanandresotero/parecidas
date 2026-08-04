@@ -338,6 +338,7 @@ function enviarSeleccionadas() {
         bb.estados[c.slug] = "enviada";           // queda marcada como enviada
       });
       bb.tandas = (bb.tandas || 0) + 1;
+      bb.ultimoContacto = new Date().toISOString();      // enviar = contacto de hoy
       guardarBusquedas(arr); renderBadge(); buscar();   // refresca la lista (marca 📤)
     }
   }
@@ -782,8 +783,10 @@ function renderBusquedas() {
     var nuevas = nuevasDe(b);
     var item = document.createElement("div"); item.className = "busq-item";
     var info = document.createElement("div"); info.className = "bi-info";
-    var nom = document.createElement("div"); nom.className = "bi-nom";
-    nom.textContent = b.nombre || "Sin nombre";
+    var nom = document.createElement("div"); nom.className = "bi-nom bi-clic";
+    nom.textContent = "✎ " + (b.nombre || "Sin nombre");
+    nom.title = "Notas del cliente";
+    nom.onclick = function () { abrirClienteEditor(b.id); };
     info.appendChild(nom);
     var sub = document.createElement("div"); sub.className = "bi-sub";
     var wa = waLink(b.tel);
@@ -796,6 +799,16 @@ function renderBusquedas() {
     var env = (b.enviadas || []).length;
     if (env) sub.appendChild(document.createTextNode("  ·  📤 " + env + " enviada" + (env === 1 ? "" : "s")));
     info.appendChild(sub);
+    var c = textoContacto(b);
+    var cont2 = document.createElement("div");
+    cont2.className = "bi-contacto" + (c.tarde ? " tarde" : "");
+    cont2.textContent = (c.tarde ? "⏰ " : "💬 ") + "Últ. contacto: " + c.txt;
+    info.appendChild(cont2);
+    if (b.notas) {
+      var np = document.createElement("div"); np.className = "bi-nota";
+      np.textContent = "📝 " + b.notas;
+      info.appendChild(np);
+    }
     item.appendChild(info);
     if (nuevas > 0) {
       var badge = document.createElement("span"); badge.className = "bi-nuevas";
@@ -829,6 +842,46 @@ function renderBadge() {
 
 function abrirOverlay(id) { $(id).style.display = "flex"; }
 function cerrarOverlay(id) { $(id).style.display = "none"; }
+
+// -------------------------- Notas + recordatorio por cliente --------------------------
+function diasDesde(iso) {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+// Texto "hace N días" del último contacto (o de cuando se creó). tarde = 7+ días.
+function textoContacto(b) {
+  var d = diasDesde(b.ultimoContacto || b.creada);
+  if (d == null) return { txt: "—", tarde: false };
+  if (d <= 0) return { txt: "hoy", tarde: false };
+  return { txt: "hace " + d + (d === 1 ? " día" : " días"), tarde: d >= 7 };
+}
+var __clienteEdit = null;
+function abrirClienteEditor(id) {
+  var b = cargarBusquedas().filter(function (x) { return x.id === id; })[0];
+  if (!b) return;
+  __clienteEdit = id;
+  $("ce-nombre").textContent = b.nombre || "Cliente";
+  $("ce-notas").value = b.notas || "";
+  pintarContactoCE(b);
+  abrirOverlay("cliente-editor");
+}
+function pintarContactoCE(b) {
+  var c = textoContacto(b);
+  $("ce-contacto").textContent = "Último contacto: " + c.txt;
+  $("ce-contacto").className = "ce-contacto" + (c.tarde ? " tarde" : "");
+}
+function guardarNotasCliente() {
+  if (!__clienteEdit) return;
+  var arr = cargarBusquedas();
+  var b = arr.filter(function (x) { return x.id === __clienteEdit; })[0];
+  if (b) { b.notas = ($("ce-notas").value || "").trim(); guardarBusquedas(arr); }
+}
+function marcarContactado() {
+  if (!__clienteEdit) return;
+  var arr = cargarBusquedas();
+  var b = arr.filter(function (x) { return x.id === __clienteEdit; })[0];
+  if (b) { b.ultimoContacto = new Date().toISOString(); guardarBusquedas(arr); pintarContactoCE(b); }
+}
 
 // -------------------------- Valoraciones (por cliente) --------------------------
 // El estado es POR CLIENTE (vive dentro de la búsqueda guardada). Orden en la lista:
@@ -923,6 +976,12 @@ function initSegs() {
   $("btn-buscar").addEventListener("click", buscar);
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
+  // Notas del cliente
+  var cerrarCE = function () { guardarNotasCliente(); cerrarOverlay("cliente-editor"); renderBusquedas(); };
+  $("btn-ce-cerrar").addEventListener("click", cerrarCE);
+  $("btn-ce-guardar").addEventListener("click", cerrarCE);
+  $("cliente-editor").addEventListener("click", function (e) { if (e.target === $("cliente-editor")) cerrarCE(); });
+  $("btn-ce-contactado").addEventListener("click", marcarContactado);
   $("btn-instalar").addEventListener("click", function () {
     if (!deferredInstall) return;
     deferredInstall.prompt();

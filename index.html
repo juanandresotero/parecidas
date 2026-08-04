@@ -170,6 +170,13 @@
   .bi-tel{color:var(--brand);font-weight:700;text-decoration:none}
   .bi-nuevas{background:var(--red);color:#fff;border-radius:999px;padding:2px 8px;
     font-size:11px;font-weight:800;white-space:nowrap;flex-shrink:0}
+  .bi-clic{cursor:pointer}
+  .bi-contacto{font-size:11.5px;color:var(--muted);margin-top:1px}
+  .bi-contacto.tarde{color:#b45309;font-weight:700}
+  .bi-nota{font-size:11.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line);
+    border-radius:8px;padding:3px 7px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ce-contacto{font-size:13px;color:var(--muted);margin:12px 0 0}
+  .ce-contacto.tarde{color:#b45309;font-weight:700}
   .bi-btn{border:none;background:var(--brand);color:#fff;border-radius:9px;
     padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0}
   .bi-del{border:none;background:transparent;color:var(--muted);cursor:pointer;
@@ -215,6 +222,17 @@
       <p class="ajustes-msg" id="gb-msg"></p>
     </div>
   </div>
+  <div class="ajustes" id="cliente-editor" style="display:none">
+    <div class="ajustes-card">
+      <div class="ajustes-head"><b id="ce-nombre">Cliente</b><button id="btn-ce-cerrar" aria-label="Cerrar">✕</button></div>
+      <label class="ajustes-lbl">Notas del cliente</label>
+      <textarea class="in" id="ce-notas" rows="3" style="resize:vertical" placeholder="Ej: quiere planta baja, vio el martes, tiene el crédito pronto…"></textarea>
+      <p class="ce-contacto" id="ce-contacto"></p>
+      <button class="btn btn-brand" id="btn-ce-contactado" style="width:100%;margin-top:10px">📅 Le escribí hoy</button>
+      <button class="btn btn-guardar-busq" id="btn-ce-guardar" style="width:100%;margin-top:8px">Guardar</button>
+    </div>
+  </div>
+
   <div class="ajustes" id="val-picker" style="display:none">
     <div class="ajustes-card">
       <div class="ajustes-head"><b>Valorar propiedad</b><button id="btn-val-cerrar" aria-label="Cerrar">✕</button></div>
