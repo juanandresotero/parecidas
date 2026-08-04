@@ -177,6 +177,12 @@
     border-radius:8px;padding:3px 7px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ce-contacto{font-size:13px;color:var(--muted);margin:12px 0 0}
   .ce-contacto.tarde{color:#b45309;font-weight:700}
+  .rec-row{display:flex;gap:6px;flex-wrap:wrap}
+  .rec-row button{flex:1;min-width:58px;border:1px solid var(--line);background:var(--surface);
+    border-radius:9px;padding:9px 4px;font-family:inherit;font-weight:700;font-size:12.5px;
+    color:var(--ink);cursor:pointer}
+  .ce-recordatorio{font-size:13px;color:var(--brand);font-weight:700;margin:8px 0 0;min-height:16px}
+  .ce-recordatorio.due{color:var(--red)}
   .bi-btn{border:none;background:var(--brand);color:#fff;border-radius:9px;
     padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0}
   .bi-del{border:none;background:transparent;color:var(--muted);cursor:pointer;
@@ -229,7 +235,17 @@
       <textarea class="in" id="ce-notas" rows="3" style="resize:vertical" placeholder="Ej: quiere planta baja, vio el martes, tiene el crédito pronto…"></textarea>
       <p class="ce-contacto" id="ce-contacto"></p>
       <button class="btn btn-brand" id="btn-ce-contactado" style="width:100%;margin-top:10px">📅 Le escribí hoy</button>
-      <button class="btn btn-guardar-busq" id="btn-ce-guardar" style="width:100%;margin-top:8px">Guardar</button>
+      <label class="ajustes-lbl" style="margin-top:14px">⏰ Recordarme</label>
+      <div class="rec-row" id="ce-recordar">
+        <button data-d="1">Mañana</button>
+        <button data-d="3">3 días</button>
+        <button data-d="7">1 sem</button>
+        <button data-d="15">15 días</button>
+        <button data-d="30">1 mes</button>
+      </div>
+      <p class="ce-recordatorio" id="ce-recordatorio"></p>
+      <button class="btn btn-guardar-busq" id="btn-ce-sinrec" style="width:100%;margin-top:2px">Quitar recordatorio</button>
+      <button class="btn btn-guardar-busq" id="btn-ce-guardar" style="width:100%;margin-top:10px">Guardar</button>
     </div>
   </div>
 

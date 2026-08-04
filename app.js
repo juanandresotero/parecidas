@@ -801,9 +801,16 @@ function renderBusquedas() {
     info.appendChild(sub);
     var c = textoContacto(b);
     var cont2 = document.createElement("div");
-    cont2.className = "bi-contacto" + (c.tarde ? " tarde" : "");
-    cont2.textContent = (c.tarde ? "⏰ " : "💬 ") + "Últ. contacto: " + c.txt;
+    cont2.className = "bi-contacto";
+    cont2.textContent = "💬 Últ. contacto: " + c.txt;
     info.appendChild(cont2);
+    if (b.recordarAt) {                              // aviso según el temporizador
+      var r = recordatorioTexto(b);
+      var rec = document.createElement("div");
+      rec.className = "bi-contacto" + (r.due ? " tarde" : "");
+      rec.textContent = r.txt;
+      info.appendChild(rec);
+    }
     if (b.notas) {
       var np = document.createElement("div"); np.className = "bi-nota";
       np.textContent = "📝 " + b.notas;
@@ -863,6 +870,7 @@ function abrirClienteEditor(id) {
   $("ce-nombre").textContent = b.nombre || "Cliente";
   $("ce-notas").value = b.notas || "";
   pintarContactoCE(b);
+  pintarRecordatorioCE(b);
   abrirOverlay("cliente-editor");
 }
 function pintarContactoCE(b) {
@@ -881,6 +889,29 @@ function marcarContactado() {
   var arr = cargarBusquedas();
   var b = arr.filter(function (x) { return x.id === __clienteEdit; })[0];
   if (b) { b.ultimoContacto = new Date().toISOString(); guardarBusquedas(arr); pintarContactoCE(b); }
+}
+// Temporizador de recordatorio (lo setea Juan por cliente). due = ya llegó la fecha.
+function recordatorioTexto(b) {
+  if (!b || !b.recordarAt) return { none: true, due: false, txt: "" };
+  var d = diasDesde(b.recordarAt);           // >=0 = ya llegó/pasó
+  var fe = new Date(b.recordarAt);
+  var f = ("0" + fe.getDate()).slice(-2) + "/" + ("0" + (fe.getMonth() + 1)).slice(-2);
+  if (d >= 0) return { due: true, txt: "⏰ Recordatorio vencido (era " + f + ")" };
+  return { due: false, txt: "⏰ Recordar el " + f + " (en " + (-d) + (d === -1 ? " día" : " días") + ")" };
+}
+function pintarRecordatorioCE(b) {
+  var r = recordatorioTexto(b);
+  $("ce-recordatorio").textContent = r.none ? "Sin recordatorio." : r.txt;
+  $("ce-recordatorio").className = "ce-recordatorio" + (r.due ? " due" : "");
+}
+function setRecordatorio(dias) {
+  if (!__clienteEdit) return;
+  var arr = cargarBusquedas();
+  var b = arr.filter(function (x) { return x.id === __clienteEdit; })[0];
+  if (!b) return;
+  if (dias == null) delete b.recordarAt;
+  else b.recordarAt = new Date(Date.now() + dias * 86400000).toISOString();
+  guardarBusquedas(arr); pintarRecordatorioCE(b);
 }
 
 // -------------------------- Valoraciones (por cliente) --------------------------
@@ -982,6 +1013,11 @@ function initSegs() {
   $("btn-ce-guardar").addEventListener("click", cerrarCE);
   $("cliente-editor").addEventListener("click", function (e) { if (e.target === $("cliente-editor")) cerrarCE(); });
   $("btn-ce-contactado").addEventListener("click", marcarContactado);
+  $("ce-recordar").addEventListener("click", function (e) {
+    var d = e.target.getAttribute("data-d"); if (!d) return;
+    setRecordatorio(parseInt(d, 10));
+  });
+  $("btn-ce-sinrec").addEventListener("click", function () { setRecordatorio(null); });
   $("btn-instalar").addEventListener("click", function () {
     if (!deferredInstall) return;
     deferredInstall.prompt();
