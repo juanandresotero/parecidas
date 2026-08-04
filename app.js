@@ -859,7 +859,8 @@ function renderBusquedas() {
       badge.textContent = "+" + nuevas + " nueva" + (nuevas === 1 ? "" : "s");
       item.appendChild(badge);
     }
-    var edit = document.createElement("button"); edit.className = "bi-edit";
+    var edit = document.createElement("button");
+    edit.className = "bi-edit" + (novedadVista("lapiz") ? "" : " nuevo");
     edit.textContent = "✎"; edit.title = "Notas y recordatorio";
     edit.setAttribute("aria-label", "Notas y recordatorio");
     edit.onclick = function () { abrirClienteEditor(b.id); };
@@ -891,6 +892,13 @@ function renderBadge() {
 
 function abrirOverlay(id) { $(id).style.display = "flex"; }
 function cerrarOverlay(id) { $(id).style.display = "none"; }
+
+// -------------------------- Novedades (cartel 1 vez + resaltado amarillo) --------------------------
+function novedadVista(k) { try { return localStorage.getItem("parecidas_nv_" + k) === "1"; } catch (e) { return true; } }
+function marcarNovedad(k) { try { localStorage.setItem("parecidas_nv_" + k, "1"); } catch (e) {} }
+function pintarMarcaNueva() {
+  $("marca").classList.toggle("nuevo", !novedadVista("marca"));
+}
 
 // -------------------------- Recordar la vista (sobrevive a recargar) --------------------------
 var ESTADO_KEY = "parecidas_estado";
@@ -942,6 +950,7 @@ var __clienteEdit = null;
 function abrirClienteEditor(id) {
   var b = cargarBusquedas().filter(function (x) { return x.id === id; })[0];
   if (!b) return;
+  marcarNovedad("lapiz");   // ya la usó → deja de estar en amarillo
   __clienteEdit = id;
   $("ce-nombre").textContent = b.nombre || "Cliente";
   $("ce-notas").value = b.notas || "";
@@ -1091,7 +1100,17 @@ function initSegs() {
   toggleGastos();
   $("btn-traer").addEventListener("click", traer);
   $("btn-buscar").addEventListener("click", buscar);
-  $("marca").addEventListener("click", limpiarTodo);   // tocar 🏠 Parecidas = empezar de cero
+  $("marca").addEventListener("click", function () {   // tocar 🏠 Parecidas = empezar de cero
+    marcarNovedad("marca"); $("marca").classList.remove("nuevo");
+    limpiarTodo();
+  });
+  // Cartel de novedades (una sola vez)
+  pintarMarcaNueva();
+  if (!novedadVista("news")) abrirOverlay("news");
+  var cerrarNews = function () { marcarNovedad("news"); cerrarOverlay("news"); };
+  $("btn-news-ok").addEventListener("click", cerrarNews);
+  $("btn-news-x").addEventListener("click", cerrarNews);
+  $("news").addEventListener("click", function (e) { if (e.target === $("news")) cerrarNews(); });
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
   // Notas del cliente

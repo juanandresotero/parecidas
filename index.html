@@ -190,6 +190,10 @@
     border-radius:10px;padding:7px 12px;font-size:19px;cursor:pointer;flex-shrink:0;line-height:1}
   .ce-recordatorio{font-size:13px;color:var(--brand);font-weight:700;margin:8px 0 0;min-height:16px}
   .ce-recordatorio.due{color:var(--red)}
+  .news-list{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px;
+    font-size:14px;line-height:1.45;color:var(--ink)}
+  .nuevo{background:#efab00 !important;color:#3a2a00 !important;border-color:#efab00 !important;
+    box-shadow:0 0 0 3px rgba(239,171,0,.35)}
   .bi-btn{border:none;background:var(--brand);color:#fff;border-radius:9px;
     padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0}
   .bi-del{border:none;background:transparent;color:var(--muted);cursor:pointer;
@@ -236,6 +240,19 @@
       <p class="ajustes-msg" id="gb-msg"></p>
     </div>
   </div>
+  <div class="ajustes" id="news" style="display:none">
+    <div class="ajustes-card">
+      <div class="ajustes-head"><b>👋 Novedades</b><button id="btn-news-x" aria-label="Cerrar">✕</button></div>
+      <ul class="news-list">
+        <li>Para una <b>búsqueda nueva</b>, tocá el botón <b>🏠 Parecidas</b> (arriba a la izquierda).</li>
+        <li>En los <b>clientes guardados</b> hay un <b>temporizador</b> que te avisa cuando llega a cero.</li>
+        <li>Podés agregarle <b>notas</b> a cada cliente (tocá el lápiz ✎).</li>
+        <li>Las <b>novedades</b> están marcadas en <b>amarillo</b>; al tocarlas una vez, vuelven a lo normal.</li>
+      </ul>
+      <button class="btn btn-brand" id="btn-news-ok" style="width:100%;margin-top:14px">Entendido</button>
+    </div>
+  </div>
+
   <div class="ajustes" id="cliente-editor" style="display:none">
     <div class="ajustes-card">
       <div class="ajustes-head"><b id="ce-nombre">Cliente</b><button id="btn-ce-cerrar" aria-label="Cerrar">✕</button></div>
