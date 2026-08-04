@@ -181,6 +181,11 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         cochera = bool(park and park > 0) or dice_coch
     elif dice_coch:
         cochera = True   # sin detalle, pero el texto dice cochera
+    exp_price = det.get("expensesPrice") if det else None
+    exp_cur_raw = det.get("expensesCurrency") if det else None
+    exp_cur = (exp_cur_raw.get("value") if isinstance(exp_cur_raw, dict)
+               else (exp_cur_raw or ""))
+    gastos = exp_price if (exp_price and exp_price > 0) else None
     return {
         "id": it.get("id"),
         "slug": slug,
@@ -207,6 +212,10 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "estado_pub": (it.get("listingStatus") or {}).get("value") or "active",
         "renta": _tiene_renta(it.get("title") or ""),   # vendida con inquilino
         "cochera": cochera,          # True/False, o None si no se pudo leer el detalle
+        # Gastos comunes (expensas): casi siempre en pesos. Solo si > 0.
+        "gastos": gastos,
+        "gastos_moneda": exp_cur if gastos else "",
+        "gastos_usd": _precio_usd(gastos, exp_cur, rate),
         "detalle_ok": det is not None,
     }
 

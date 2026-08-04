@@ -120,8 +120,15 @@ function leerFiltros() {
     padronMax: soloNum($("f-padron-max").value),
     cochera: segVal("f-coch"),
     estado: segVal("f-estado"),
-    renta: segVal("f-renta")
+    renta: segVal("f-renta"),
+    // Gastos comunes (solo alquiler): se ingresan en pesos.
+    gastosMinUsd: aUsd(soloNum($("f-gastos-min").value), "UYU"),
+    gastosMaxUsd: aUsd(soloNum($("f-gastos-max").value), "UYU")
   };
+}
+// Mostrar el campo de gastos comunes solo cuando es Alquiler.
+function toggleGastos() {
+  $("f-gastos-wrap").style.display = segVal("f-oper") === "rent" ? "" : "none";
 }
 function aUsd(monto, moneda) {
   if (!monto) return null;
@@ -154,6 +161,9 @@ function pasa(c, f, slugActual) {
   if (f.estado && c.estado !== f.estado) return false;
   if (f.renta === "con" && c.renta !== true) return false;
   if (f.renta === "sin" && c.renta !== false) return false;
+  // Gastos comunes: si la propiedad no tiene el dato, NO la excluyo (indulgente).
+  if (f.gastosMinUsd != null && c.gastos_usd != null && c.gastos_usd < f.gastosMinUsd) return false;
+  if (f.gastosMaxUsd != null && c.gastos_usd != null && c.gastos_usd > f.gastosMaxUsd) return false;
   return true;
 }
 // Referencia para ordenar "más parecida": la propiedad del link (window.__base),
@@ -676,6 +686,7 @@ function snapshotForm() {
     precioMin: $("f-precio-min").value, precioMax: $("f-precio-max").value,
     cubMin: $("f-cub-min").value, cubMax: $("f-cub-max").value,
     padronMin: $("f-padron-min").value, padronMax: $("f-padron-max").value,
+    gastosMin: $("f-gastos-min").value, gastosMax: $("f-gastos-max").value,
     barrios: SELBARRIOS.slice(),
     dmin: stepVal("f-dmin"), dmax: stepVal("f-dmax"),
     coch: segVal("f-coch"), estado: segVal("f-estado"), renta: segVal("f-renta"),
@@ -690,6 +701,8 @@ function restoreForm(s) {
   $("f-precio-min").value = s.precioMin || ""; $("f-precio-max").value = s.precioMax || "";
   $("f-cub-min").value = s.cubMin || ""; $("f-cub-max").value = s.cubMax || "";
   $("f-padron-min").value = s.padronMin || ""; $("f-padron-max").value = s.padronMax || "";
+  $("f-gastos-min").value = s.gastosMin || ""; $("f-gastos-max").value = s.gastosMax || "";
+  toggleGastos();
   SELBARRIOS = (s.barrios || []).slice(); $("f-barrio").value = ""; renderChips(); pintarGrupo();
   setStep("f-dmin", s.dmin != null ? s.dmin : null);
   setStep("f-dmax", s.dmax != null ? s.dmax : null);
@@ -869,11 +882,12 @@ function limpiarTodo() {
   try { localStorage.removeItem(ESTADO_KEY); } catch (e) {}
   $("link").value = "";
   setSeg("f-oper", "sale"); setSeg("f-moneda", "USD"); setSegMulti("f-tipo", []);
-  ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max"]
+  ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max",
+   "f-gastos-min", "f-gastos-max"]
     .forEach(function (id) { $(id).value = ""; });
   SELBARRIOS = []; $("f-barrio").value = ""; renderChips(); pintarGrupo();
   setStep("f-dmin", null); setStep("f-dmax", null);
-  setSeg("f-coch", ""); setSeg("f-estado", ""); setSeg("f-renta", "");
+  setSeg("f-coch", ""); setSeg("f-estado", ""); setSeg("f-renta", ""); toggleGastos();
   window.__base = null; window.__slugActual = null; window.__busquedaActiva = null;
   SEL = []; CARDS = []; actualizarMulticopy();
   $("cards").innerHTML = ""; $("resultados").style.display = "none"; $("hint").innerHTML = "";
@@ -1010,6 +1024,7 @@ function initSegs() {
   $("f-oper").addEventListener("click", function (e) {
     if (e.target.tagName !== "BUTTON") return;
     setSeg("f-moneda", segVal("f-oper") === "rent" ? "UYU" : "USD");
+    toggleGastos();
   });
   // Tipo: varios a la vez (toggle independiente por botón)
   $("f-tipo").addEventListener("click", function (e) {
@@ -1036,8 +1051,10 @@ function initSegs() {
     window.__busquedaActiva = null;
     if (!$("link").value.trim()) { window.__base = null; window.__slugActual = null; }
   });
-  ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max"]
+  ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max",
+   "f-gastos-min", "f-gastos-max"]
     .forEach(function (id) { attachMiles(id, false); });
+  toggleGastos();
   $("btn-traer").addEventListener("click", traer);
   $("btn-buscar").addEventListener("click", buscar);
   $("titulo-app").addEventListener("click", limpiarTodo);   // tocar 🏠/Parecidas = empezar de cero
