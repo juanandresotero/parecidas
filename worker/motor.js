@@ -18,6 +18,20 @@ export default {
   async fetch(request) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
     const url = new URL(request.url);
+    // Cotización del dólar del día (uy.dolarapi bloquea el pedido directo del navegador).
+    if (url.searchParams.get("dolar")) {
+      try {
+        const r = await fetch("https://uy.dolarapi.com/v1/cotizaciones/usd", {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+            "Accept": "application/json" },
+          cf: { cacheTtl: 3600 },
+        });
+        const j = await r.json();
+        const rate = Number(j.venta || j.compra) || null;
+        return json({ ok: true, rate }, 200);
+      } catch (e) { return json({ error: "dolar: " + (e && e.message || e) }, 502); }
+    }
     const target = url.searchParams.get("url");
     if (!target) return json({ error: "Falta ?url=<link>" }, 400);
     let host;

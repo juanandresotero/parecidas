@@ -1122,10 +1122,19 @@ function initSegs() {
   });
 }
 
+// Dólar del día vía el motor (uy.dolarapi bloquea el pedido directo del navegador).
+function actualizarDolar() {
+  if (!MOTOR_URL) return;
+  fetch(MOTOR_URL + (MOTOR_URL.indexOf("?") >= 0 ? "&" : "?") + "dolar=1")
+    .then(function (r) { return r.json(); })
+    .then(function (d) { if (d && d.rate && d.rate > 0) USD_RATE = d.rate; })
+    .catch(function () {});
+}
 function cargar() {
   fetch("listings.json").then(function (r) { return r.json(); }).then(function (d) {
     DATA = d.listings || [];
     USD_RATE = d.usd_rate || null;
+    actualizarDolar();   // pisa con el dólar del día (fresco) si el motor responde
     // Lista de barrios reales para el autocompletar (sin repetir, ordenados).
     var vistos = {};
     BARRIOS_ALL = [];
