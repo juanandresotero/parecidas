@@ -215,14 +215,14 @@ function buscar() {
   var ref = refDeBusqueda();
   var slugActual = window.__slugActual || null;
   var res = filtrar(f, ref, slugActual);   // solo las que cumplen TODOS los filtros
+  // DUROS (nunca se aflojan): operación y DORMITORIOS. El resto sí, para llegar a 2.
   var pasos = [
-    ["estado", function () { f.estado = ""; }],                          // 7
-    ["cochera", function () { f.cochera = ""; }],                        // 6
-    ["dormitorios", function () { f.dmin = null; f.dmax = null; }],      // 5
+    ["estado", function () { f.estado = ""; }],
+    ["cochera", function () { f.cochera = ""; }],
     ["m²", function () { f.cubMin = null; f.cubMax = null; f.padronMin = null; f.padronMax = null; }],
-    ["precio", function () { f.precioMinUsd = null; f.precioMaxUsd = null; }], // 4
-    ["tipo", function () { f.tipos = []; }],                             // 3
-    ["zona", function () { f.grupo = null; }]                            // 2 (última)
+    ["precio", function () { f.precioMinUsd = null; f.precioMaxUsd = null; }],
+    ["tipo", function () { f.tipos = []; }],
+    ["zona", function () { f.grupo = null; }]
   ];
   var aflojados = [], i = 0;
   while (res.length < 2 && i < pasos.length) {   // mínimo 2, nunca menos
