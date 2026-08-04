@@ -214,21 +214,9 @@ function buscar() {
   var f = leerFiltros();
   var ref = refDeBusqueda();
   var slugActual = window.__slugActual || null;
-  var res = filtrar(f, ref, slugActual);   // solo las que cumplen TODOS los filtros
-  // DUROS (nunca se aflojan): operación y DORMITORIOS. El resto sí, para llegar a 2.
-  var pasos = [
-    ["estado", function () { f.estado = ""; }],
-    ["cochera", function () { f.cochera = ""; }],
-    ["m²", function () { f.cubMin = null; f.cubMax = null; f.padronMin = null; f.padronMax = null; }],
-    ["precio", function () { f.precioMinUsd = null; f.precioMaxUsd = null; }],
-    ["tipo", function () { f.tipos = []; }],
-    ["zona", function () { f.grupo = null; }]
-  ];
-  var aflojados = [], i = 0;
-  while (res.length < 2 && i < pasos.length) {   // mínimo 2, nunca menos
-    aflojados.push(pasos[i][0]); pasos[i][1](); i++;
-    res = filtrar(f, ref, slugActual);
-  }
+  // Respeta TODOS los filtros al 100%: NO afloja nada. Si da pocas o ninguna,
+  // se muestra tal cual (y el vacío avisa que aflojes a mano). Las mejores 10.
+  var res = filtrar(f, ref, slugActual);
   var lista = res.slice(0, TOPE_RESULTADOS);
   // Fase C — PRESERVAR: lo que marcaste a favor (⭐/💚/📤) para este cliente NO se
   // pierde aunque deje de cumplir los criterios. Se suma y se marca "fuera de criterios".
@@ -245,7 +233,8 @@ function buscar() {
       lista.push(prop);
     });
   }
-  render(lista, res.length, aflojados, fuera);
+  render(lista, res.length, [], fuera);
+  guardarEstadoActual();   // recordar lo que se está viendo (sobrevive a recargar)
 }
 
 // -------------------------- Dibujar resultados --------------------------
@@ -858,6 +847,38 @@ function renderBadge() {
 function abrirOverlay(id) { $(id).style.display = "flex"; }
 function cerrarOverlay(id) { $(id).style.display = "none"; }
 
+// -------------------------- Recordar la vista (sobrevive a recargar) --------------------------
+var ESTADO_KEY = "parecidas_estado";
+function guardarEstadoActual() {
+  try {
+    localStorage.setItem(ESTADO_KEY, JSON.stringify({
+      form: snapshotForm(), busquedaActiva: window.__busquedaActiva || null
+    }));
+  } catch (e) {}
+}
+function restaurarEstado() {
+  var est;
+  try { est = JSON.parse(localStorage.getItem(ESTADO_KEY) || "null"); } catch (e) { est = null; }
+  if (!est || !est.form) return;
+  restoreForm(est.form);
+  window.__busquedaActiva = est.busquedaActiva || null;
+  buscar();
+}
+// Tocar "Parecidas" = borrar lo que se está viendo (form + resultados + memoria).
+function limpiarTodo() {
+  try { localStorage.removeItem(ESTADO_KEY); } catch (e) {}
+  $("link").value = "";
+  setSeg("f-oper", "sale"); setSeg("f-moneda", "USD"); setSegMulti("f-tipo", []);
+  ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max"]
+    .forEach(function (id) { $(id).value = ""; });
+  SELBARRIOS = []; $("f-barrio").value = ""; renderChips(); pintarGrupo();
+  setStep("f-dmin", null); setStep("f-dmax", null);
+  setSeg("f-coch", ""); setSeg("f-estado", ""); setSeg("f-renta", "");
+  window.__base = null; window.__slugActual = null; window.__busquedaActiva = null;
+  SEL = []; CARDS = []; actualizarMulticopy();
+  $("cards").innerHTML = ""; $("resultados").style.display = "none"; $("hint").innerHTML = "";
+}
+
 // -------------------------- Notas + recordatorio por cliente --------------------------
 function diasDesde(iso) {
   if (!iso) return null;
@@ -1019,6 +1040,8 @@ function initSegs() {
     .forEach(function (id) { attachMiles(id, false); });
   $("btn-traer").addEventListener("click", traer);
   $("btn-buscar").addEventListener("click", buscar);
+  $("titulo-app").addEventListener("click", limpiarTodo);   // tocar 🏠/Parecidas = empezar de cero
+  $("titulo-app2").addEventListener("click", limpiarTodo);
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
   // Notas del cliente
@@ -1096,6 +1119,7 @@ function cargar() {
     BARRIOS_ALL.sort(function (a, b) { return norm(a) < norm(b) ? -1 : 1; });
     $("estado").textContent = "";
     renderBadge();   // numerito de parecidas nuevas en el 🔖
+    restaurarEstado();   // vuelve a mostrar lo último que estabas viendo
   }).catch(function () {
     $("estado").textContent = "No pude cargar las propiedades. Revisá la conexión y recargá.";
   });
