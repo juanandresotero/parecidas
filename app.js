@@ -798,7 +798,39 @@ function guardarBusquedaActual(nombre, tel) {
   window.__busquedaActiva = b.id;   // el cliente recién guardado queda activo
 }
 
+// ¿El formulario actual difiere de lo guardado en el cliente activo?
+function filtrosCambiaron() {
+  var b = busquedaActiva();
+  if (!b) return false;
+  return JSON.stringify(snapshotForm()) !== JSON.stringify(b.form || {});
+}
+// Guardar los filtros/form actuales dentro del cliente activo (y refrescar su baseline).
+function guardarFiltrosEnCliente() {
+  var b = busquedaActiva();
+  if (!b) return;
+  var arr = cargarBusquedas();
+  var bb = arr.filter(function (x) { return x.id === b.id; })[0];
+  if (!bb) return;
+  bb.form = snapshotForm();
+  bb.filtro = leerFiltros();
+  bb.slugActual = window.__slugActual || null;
+  bb.vistas = DATA.filter(function (c) { return pasa(c, bb.filtro, bb.slugActual); })
+    .map(function (c) { return c.slug; });
+  guardarBusquedas(arr);
+}
+// Antes de salir de un cliente con filtros cambiados: preguntar si guardarlos.
+function salirDeCliente(luego) {
+  if (filtrosCambiaron() &&
+      confirm("Cambiaste los filtros de este cliente. ¿Guardar los nuevos filtros?"))
+    guardarFiltrosEnCliente();
+  luego();
+}
+
 function abrirBusqueda(id) {
+  // Si venías de otro cliente con filtros cambiados, ofrecer guardarlos.
+  if (window.__busquedaActiva && window.__busquedaActiva !== id && filtrosCambiaron() &&
+      confirm("Cambiaste los filtros del cliente anterior. ¿Guardarlos antes de salir?"))
+    guardarFiltrosEnCliente();
   var arr = cargarBusquedas();
   var b = null;
   arr.forEach(function (x) { if (x.id === id) b = x; });
@@ -1114,7 +1146,7 @@ function initSegs() {
   $("btn-buscar").addEventListener("click", buscar);
   $("marca").addEventListener("click", function () {   // tocar 🏠 Parecidas = empezar de cero
     marcarNovedad("marca"); $("marca").classList.remove("nuevo");
-    limpiarTodo();
+    salirDeCliente(limpiarTodo);   // si cambió filtros de un cliente, ofrece guardarlos
   });
   // Cartel de novedades (una sola vez)
   pintarMarcaNueva();
