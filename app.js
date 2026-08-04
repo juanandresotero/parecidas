@@ -315,6 +315,15 @@ function resumen(c) {
   else med = (c.dorm != null) ? c.dorm + " dorm" : (c.m2_homog ? c.m2_homog + " m²" : "");
   return [oper, tipoTxt, med, fmtK(c.precio, c.moneda)].filter(Boolean).join(" · ");
 }
+// Título de la tarjeta: operación · tipo · dorm (o m² si terreno) · barrio · precio.
+function resumenCard(c) {
+  var oper = c.operacion === "rent" ? "Alquiler" : "Venta";
+  var t = tipoCat(c.tipo);
+  var tipoTxt = t === "apto" ? "apto" : (t === "casa" ? "casa" : (t === "terreno" ? "terreno" : "propiedad"));
+  var med = t === "terreno" ? (c.m2_padron ? c.m2_padron + " m²" : "")
+                            : (c.dorm != null ? c.dorm + " dorm" : "");
+  return [oper, tipoTxt, med, c.barrio || "", fmtK(c.precio, c.moneda)].filter(Boolean).join(" · ");
+}
 
 var SEL = [];      // propiedades tildadas, EN ORDEN de tildado (para numerar 1,2,3)
 var CARDS = [];    // {slug, numEl, card} de lo dibujado, para renumerar en pantalla
@@ -374,6 +383,7 @@ function enviarSeleccionadas() {
 function render(res, total, aflojados, fuera, yaNoEntra) {
   fuera = fuera || {}; yaNoEntra = yaNoEntra || {};
   var f = leerFiltros();
+  var monBusq = (segVal("f-moneda") || "USD").toLowerCase();   // para avisar conversión de dólar
   SEL = []; CARDS = []; actualizarMulticopy();
   $("resultados").style.display = "";
   // Si la búsqueda ya está guardada (cliente activo), no ofrezco "Guardar" de nuevo.
@@ -426,21 +436,22 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
     var foto = c.foto ? '<img class="foto" src="' + esc(c.foto) + '" alt="" loading="lazy">'
                       : '<div class="foto ph">🏠</div>';
     var chips = [];
-    if (c.dorm) chips.push(c.dorm + " dorm");
     if (c.m2_homog) chips.push(c.m2_homog + " m²");
     if (c.cochera === true) chips.push("🚗 cochera");
     if (c.estado === "a_estrenar") chips.push("a estrenar");
     if (c.renta === true) chips.push("con renta");
+    // Aviso del dólar SOLO si esta propiedad está en otra moneda que la buscada (hubo conversión).
+    var convChip = (USD_RATE && c.moneda && c.moneda.toLowerCase() !== monBusq)
+      ? '<span class="chip conv">💱 al dólar ' + esc(String(USD_RATE).replace(".", ",")) + '</span>' : "";
     var link = document.createElement("a");
     link.className = "card-link"; link.href = c.link; link.target = "_blank"; link.rel = "noopener";
     link.style.cssText = "display:flex;gap:11px;flex:1;min-width:0;align-items:center";
     link.innerHTML = foto +
       '<div class="info">' +
-        '<div class="precio">' + fmtPrecio(c) + '</div>' +
-        '<div class="barrio">' + esc(c.barrio || "") + '</div>' +
+        '<div class="titulo-card">' + esc(resumenCard(c)) + '</div>' +
         (fuera[c.slug] ? '<span class="fuera-tag">⚠ fuera de criterios</span>' : "") +
         (yaNoEntra[c.slug] ? '<span class="fuera-tag">🚫 ya no entra en el filtro</span>' : "") +
-        '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + '</div>' +
+        '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + convChip + '</div>' +
         (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +
       '</div>';
     card.appendChild(link);
@@ -939,12 +950,13 @@ function diasDesde(iso) {
   if (!iso) return null;
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
-// Texto "hace N días" del último contacto (o de cuando se creó). tarde = 7+ días.
+// "Hace N días" desde el ÚLTIMO ENVÍO real (Enviar por WhatsApp o "Le escribí hoy").
+// Si nunca le mandó nada, lo dice claro (no cuenta desde que se creó la búsqueda).
 function textoContacto(b) {
-  var d = diasDesde(b.ultimoContacto || b.creada);
-  if (d == null) return { txt: "—", tarde: false };
+  var d = diasDesde(b.ultimoContacto);
+  if (d == null) return { txt: "sin enviarle todavía", tarde: false };
   if (d <= 0) return { txt: "hoy", tarde: false };
-  return { txt: "hace " + d + (d === 1 ? " día" : " días"), tarde: d >= 7 };
+  return { txt: "hace " + d + (d === 1 ? " día" : " días"), tarde: false };
 }
 var __clienteEdit = null;
 function abrirClienteEditor(id) {
