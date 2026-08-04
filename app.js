@@ -128,10 +128,10 @@ function aUsd(monto, moneda) {
   if ((moneda || "USD") === "USD") return Math.round(monto);
   return USD_RATE ? Math.round(monto / USD_RATE) : null;
 }
-// Precio a USD según la operación: venta = dólares, alquiler = pesos.
+// Precio a USD según la MONEDA elegida (selector f-moneda). Todo se compara en USD.
 function precioAUsd(monto) {
   if (!monto) return null;
-  return segVal("f-oper") === "rent" ? aUsd(monto, "UYU") : aUsd(monto, "USD");
+  return aUsd(monto, segVal("f-moneda") || "USD");
 }
 
 // -------------------------- El filtro en sí --------------------------
@@ -456,6 +456,7 @@ function setRango(id, val) {   // llena mín/máx con ±25% del valor del link
 }
 function rellenar(c) {
   setSeg("f-oper", c.operacion === "rent" ? "rent" : "sale");
+  setSeg("f-moneda", (c.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(c.tipo);
   setSegMulti("f-tipo", tc === "otro" ? [] : [tc]);
   // precio: sin mínimo (más barato sirve), máximo +15%. m²: ±25%.
@@ -479,6 +480,7 @@ function rellenar(c) {
 // de RE/MAX, así que Juan lo agrega a mano si quiere filtrar por zona.
 function rellenarExterno(d) {
   setSeg("f-oper", d.operacion === "rent" ? "rent" : "sale");
+  setSeg("f-moneda", (d.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(d.tipo || "");
   setSegMulti("f-tipo", tc === "otro" ? [] : [tc]);
   $("f-precio-min").value = "";
@@ -681,7 +683,7 @@ function guardarBusquedas(arr) {
 function snapshotForm() {
   return {
     link: $("link").value,
-    oper: segVal("f-oper"), tipos: segMulti("f-tipo"),
+    oper: segVal("f-oper"), moneda: segVal("f-moneda"), tipos: segMulti("f-tipo"),
     precioMin: $("f-precio-min").value, precioMax: $("f-precio-max").value,
     cubMin: $("f-cub-min").value, cubMax: $("f-cub-max").value,
     padronMin: $("f-padron-min").value, padronMax: $("f-padron-max").value,
@@ -694,6 +696,7 @@ function snapshotForm() {
 function restoreForm(s) {
   $("link").value = s.link || "";
   setSeg("f-oper", s.oper || "sale");
+  setSeg("f-moneda", s.moneda || (s.oper === "rent" ? "UYU" : "USD"));
   setSegMulti("f-tipo", s.tipos || []);
   $("f-precio-min").value = s.precioMin || ""; $("f-precio-max").value = s.precioMax || "";
   $("f-cub-min").value = s.cubMin || ""; $("f-cub-max").value = s.cubMax || "";
@@ -976,11 +979,16 @@ window.addEventListener("appinstalled", function () {
 
 // -------------------------- Arranque + eventos --------------------------
 function initSegs() {
-  ["f-oper", "f-coch", "f-estado", "f-renta"].forEach(function (id) {   // una sola opción
+  ["f-oper", "f-coch", "f-estado", "f-renta", "f-moneda"].forEach(function (id) {   // una sola opción
     $(id).addEventListener("click", function (e) {
       if (e.target.tagName !== "BUTTON") return;
       setSeg(id, e.target.getAttribute("data-v"));
     });
+  });
+  // Al cambiar operación, moneda por defecto: alquiler → pesos, venta → dólares.
+  $("f-oper").addEventListener("click", function (e) {
+    if (e.target.tagName !== "BUTTON") return;
+    setSeg("f-moneda", segVal("f-oper") === "rent" ? "UYU" : "USD");
   });
   // Tipo: varios a la vez (toggle independiente por botón)
   $("f-tipo").addEventListener("click", function (e) {
