@@ -568,6 +568,7 @@ function fromDetalle(det, slug) {
     precio_usd: (det.currency || {}).value === "USD" ? (det.price ? Math.round(det.price) : null)
               : (USD_RATE && det.price ? Math.round(det.price / USD_RATE) : null),
     dorm: det.bedrooms,
+    direccion: det.displayAddress || "",
     barrio: (det.geoLabel || "").split(",")[0].trim(),
     m2_homog: homog(det.dimensionCovered, det.dimensionTotalBuilt, det.dimensionLand, esApto, det.dimensionSemicovered, det.dimensionUncovered),
     m2_padron: Math.round(det.dimensionLand || 0),
@@ -776,13 +777,13 @@ function waLink(tel) {
   return "https://wa.me/" + d;
 }
 
-function guardarBusquedaActual(nombre, tel) {
+function guardarBusquedaActual(nombre, tel, direccion) {
   var f = leerFiltros();
   var slugActual = window.__slugActual || null;
   var matches = DATA.filter(function (c) { return pasa(c, f, slugActual); });
   var b = {
     id: String(Date.now()) + Math.random().toString(36).slice(2, 7),
-    nombre: nombre, tel: tel, creada: new Date().toISOString(),
+    nombre: nombre, tel: tel, direccion: direccion || "", creada: new Date().toISOString(),
     form: snapshotForm(), filtro: f, slugActual: slugActual,
     vistas: matches.map(function (c) { return c.slug; })   // lo que ya vio hoy
   };
@@ -868,6 +869,11 @@ function renderBusquedas() {
     nom.title = "Notas del cliente";
     nom.onclick = function () { abrirClienteEditor(b.id); };
     info.appendChild(nom);
+    if (b.direccion) {
+      var dirEl = document.createElement("div"); dirEl.className = "bi-sub";
+      dirEl.textContent = "📍 " + b.direccion;
+      info.appendChild(dirEl);
+    }
     var sub = document.createElement("div"); sub.className = "bi-sub";
     var wa = waLink(b.tel);
     if (b.tel && wa) {
@@ -1203,6 +1209,16 @@ function initSegs() {
   // Botón "Guardar esta búsqueda" (dentro de los resultados) → pide nombre + celu
   $("btn-guardar-busq").addEventListener("click", function () {
     $("gb-nombre").value = ""; $("gb-tel").value = ""; $("gb-msg").textContent = "";
+    var dir = (window.__base && window.__base.direccion) || "";
+    $("gb-dir").value = dir;
+    // Si es un link de RE/MAX de archivo (sin dirección cargada), la traigo en vivo.
+    if (!dir && window.__slugActual) {
+      fetch(DET_EP + window.__slugActual).then(function (r) { return r.json(); }).then(function (d) {
+        var det = d && d.data ? (d.data.data || d.data) : d;
+        var da = det && det.displayAddress;
+        if (da && !$("gb-dir").value) $("gb-dir").value = da;
+      }).catch(function () {});
+    }
     abrirOverlay("guardar-busq"); $("gb-nombre").focus();
   });
   $("btn-guardar-cerrar").addEventListener("click", function () { cerrarOverlay("guardar-busq"); });
@@ -1210,8 +1226,9 @@ function initSegs() {
   $("btn-guardar-ok").addEventListener("click", function () {
     var nombre = ($("gb-nombre").value || "").trim();
     var tel = ($("gb-tel").value || "").trim();
+    var dir = ($("gb-dir").value || "").trim();
     if (!nombre) { $("gb-msg").textContent = "Poné un nombre para reconocerla."; return; }
-    guardarBusquedaActual(nombre, tel);
+    guardarBusquedaActual(nombre, tel, dir);
     cerrarOverlay("guardar-busq");
     renderBadge();
     buscar();   // refresca: muestra enviadas 📤 y descartadas 🔴

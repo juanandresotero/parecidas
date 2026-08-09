@@ -203,6 +203,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "m2_padron": round(terreno) if terreno else 0,   # el terreno del padrón
         "barrio": _barrio(it.get("geoLabel")),
         "depto": _depto(it.get("geoLabel")),
+        "direccion": (det.get("displayAddress") if det else "") or "",
         "foto": _foto(it.get("photos")),
         "agente_id": (it.get("associate") or {}).get("id") or "",
         "agente": (it.get("associate") or {}).get("name") or "",
