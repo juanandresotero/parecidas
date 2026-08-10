@@ -594,8 +594,9 @@ function traer() {
       fetch(MOTOR_URL + (MOTOR_URL.indexOf("?") >= 0 ? "&" : "?") + "url=" + encodeURIComponent(link))
         .then(function (r) { return r.json(); })
         .then(function (d) {
-          if (!d || d.error || (d.precio == null && d.dorm == null && d.m2_construidos == null))
-            throw new Error(d && d.error || "vacío");
+          if (d && d.error) { hint.innerHTML = "⚠️ " + esc(d.error) + " <b>Completá los datos a mano</b> y buscá igual."; return; }
+          if (!d || (d.precio == null && d.dorm == null && d.m2_construidos == null))
+            throw new Error("vacío");
           rellenarExterno(d);
           hint.innerHTML = "✓ Datos traídos de <b>" + esc(d.fuente || "el portal") +
             "</b>. Revisá (y agregá el barrio si querés) y tocá <b>Buscar parecidas</b>.";

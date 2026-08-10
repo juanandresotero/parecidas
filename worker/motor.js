@@ -42,7 +42,14 @@ export default {
       const html = await fetchHtml(target);
       let data;
       if (/infocasas\./i.test(host)) data = parseInfoCasas(html);
-      else if (/mercadolibre\.|mlibre\./i.test(host) || /\bMLU-/.test(target)) data = parseMercadoLibre(html);
+      else if (/mercadolibre\.|mlibre\./i.test(host) || /\bMLU-/.test(target)) {
+        data = parseMercadoLibre(html);
+        // ML bloquea con una página de "tráfico sospechoso" (sin ficha). Si no salió
+        // ni precio ni dormitorios ni m², fue bloqueo → avisar claro.
+        if (data.precio == null && data.dorm == null &&
+            data.m2_construidos == null && data.m2_totales == null)
+          return json({ error: "MercadoLibre bloqueó la lectura automática (anti-robot). Copiá los datos a mano." }, 200);
+      }
       else return json({ error: "Portal no soportado (solo InfoCasas y MercadoLibre)" }, 422);
       return json({ ok: true, fuente: host, ...data }, 200);
     } catch (e) {
