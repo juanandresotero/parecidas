@@ -39,13 +39,12 @@ export default {
     catch { return json({ error: "URL inválida" }, 400); }
 
     try {
-      const html = await fetchHtml(target);
       let data;
-      if (/infocasas\./i.test(host)) data = parseInfoCasas(html);
-      else if (/mercadolibre\.|mlibre\./i.test(host) || /\bMLU-/.test(target)) {
-        data = parseMercadoLibre(html);
-        // ML bloquea con una página de "tráfico sospechoso" (sin ficha). Si no salió
-        // ni precio ni dormitorios ni m², fue bloqueo → avisar claro.
+      if (/infocasas\./i.test(host)) {
+        data = parseInfoCasas(await fetchHtml(target));
+      } else if (/mercadolibre\.|mlibre\./i.test(host) || /\bMLU-/.test(target)) {
+        data = parseMercadoLibre(await fetchHtml(target, UA_ML));   // disfraz de bot
+        // Si aún así no salió nada, ML cambió algo → avisar claro.
         if (data.precio == null && data.dorm == null &&
             data.m2_construidos == null && data.m2_totales == null)
           return json({ error: "MercadoLibre bloqueó la lectura automática (anti-robot). Copiá los datos a mano." }, 200);
@@ -65,12 +64,16 @@ function json(obj, status = 200) {
   });
 }
 
-// Bajar el HTML haciéndonos pasar por un navegador de verdad (así la ficha directa pasa).
-async function fetchHtml(target) {
+// Bajar el HTML. UA por defecto = navegador; para ML pasamos un UA de bot de vista
+// previa (facebookexternalhit): ML le sirve la ficha completa a esos bots (SEO) y así
+// esquivamos su bloqueo anti-robot de la ficha normal.
+const UA_NAVEGADOR = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+const UA_ML = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
+async function fetchHtml(target, ua) {
   const r = await fetch(target, {
     headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+      "User-Agent": ua || UA_NAVEGADOR,
       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "es-UY,es;q=0.9,en;q=0.8",
       "Sec-Fetch-Mode": "navigate",
@@ -78,7 +81,7 @@ async function fetchHtml(target) {
       "Sec-Fetch-Dest": "document",
       "Upgrade-Insecure-Requests": "1",
     },
-    cf: { cacheTtl: 300, cacheEverything: true },
+    cf: { cacheTtl: 0 },   // sin caché: la clave es la URL y no varía por UA (nos daba páginas viejas)
   });
   if (!r.ok) throw new Error("HTTP " + r.status);
   return await r.text();
@@ -125,21 +128,33 @@ function cocheraDe(texto, cocheras) {
 }
 
 // ------------------------------ MercadoLibre ------------------------------
-// Precio/moneda del JSON-LD; ficha técnica de los pares {"id":"X","text":"Y"} que
-// ML embebe (confiables). NO leer por texto suelto: agarra números de otras partes
-// (el precio caía en "dormitorios").
+// ML bloquea la ficha para navegadores, pero le sirve el contenido SEO a los bots de
+// vista previa (usamos UA de facebookexternalhit). De ahí leemos:
+//  - precio/moneda: JSON-LD (offers.price/priceCurrency) + símbolo del título.
+//  - operación/tipo/dormitorios/barrio: del og:title ("Alquiler Apartamento 2
+//    Dormitorios La Blanqueada - $ 34.000").
+//  - m²: del og:description ("Departamento de 54 m²").
+function deco(s) {
+  return (s || "").replace(/&amp;/g, "&").replace(/&#x27;/gi, "'")
+    .replace(/&#(\d+);/g, function (m, d) { return String.fromCharCode(+d); })
+    .replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+}
 function parseMercadoLibre(html) {
   const out = {
     tipo: "", operacion: "sale", precio: null, moneda: "USD", dorm: null,
     m2_construidos: null, m2_totales: null, cochera: null, estado: "", renta: false, barrio: "",
   };
-  const titulo = (html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || "";
+  const og = (t) => {
+    const m = html.match(new RegExp('property=["\']og:' + t + '["\'][^>]*content=["\']([^"\']*)', "i"));
+    return m ? deco(m[1]) : "";
+  };
+  const titulo = og("title") || (html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || "";
+  const desc = og("description") || "";
 
-  // JSON-LD: precio y moneda
+  // Precio + moneda del JSON-LD (offers)
   const lds = html.match(/<script[^>]+application\/ld\+json[^>]*>[\s\S]*?<\/script>/gi) || [];
   for (const bloque of lds) {
-    const raw = bloque.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "");
-    let j; try { j = JSON.parse(raw); } catch { continue; }
+    let j; try { j = JSON.parse(bloque.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "")); } catch { continue; }
     for (const node of Array.isArray(j) ? j : [j]) {
       const offers = node && (node.offers || (node.mainEntity && node.mainEntity.offers));
       if (offers) {
@@ -149,30 +164,29 @@ function parseMercadoLibre(html) {
       }
     }
   }
+  // Moneda por el símbolo del título; precio de respaldo si el JSON-LD no lo trajo.
+  const priceStr = titulo.split(/\s[-–]\s/).pop() || "";
+  if (/U\$S|US\$|USD/i.test(priceStr)) out.moneda = "USD";
+  else if (/\$/.test(priceStr)) out.moneda = "UYU";
+  if (out.precio == null) { const pm = priceStr.match(/([\d][\d.,]*)/); if (pm) out.precio = numUY(pm[1]); }
 
-  // Ficha técnica: pares {"id":"Etiqueta","text":"Valor"} (primera aparición gana)
-  const esp = {};
-  for (const m of html.matchAll(/\{"id":"([^"]{1,40})","text":"([^"]{1,60})"\}/g)) {
-    if (!(m[1] in esp)) esp[m[1]] = m[2];
-  }
-  out.m2_totales = numUY(esp["Superficie total"]);
-  out.m2_construidos = numUY(esp["Área privada"]) || numUY(esp["Superficie cubierta"]) || out.m2_totales;
-  out.dorm = toInt(esp["Dormitorios"]);
-  // Cochera: si el TÍTULO dice cochera → con cochera (manda el título, pedido de Juan).
-  // Si no, uso la ficha técnica (Cocheras: N).
-  const coch = numUY(esp["Cocheras"]);
-  if (cocheraDe(titulo, null) === true) out.cochera = true;
-  else if (coch != null) out.cochera = coch > 0;
-  else out.cochera = null;
-  out.estado = estadoDe(titulo, numUY(esp["Antigüedad"]));   // "0 años" → a estrenar
-  out.tipo = esp["Tipo de departamento"] || esp["Tipo de casa"] ||
-    esp["Tipo de inmueble"] || titulo;
-
-  // Barrio: ML lo guarda como "city" en la ficha (o dentro de item_location)
-  const bm = html.match(/"city":"([^"]{2,40})"/) || html.match(/"item_location":"([^",]{2,40})/);
-  if (bm) out.barrio = bm[1].trim();
-
+  // Del título: "Operación Tipo N Dormitorios Barrio - precio"
   out.operacion = /\balquiler\b|\balquila\b|\barrienda\b/i.test(titulo) ? "rent" : "sale";
+  out.tipo = titulo;                                        // la app (tipoCat) lo interpreta
+  const md = titulo.match(/(\d+)\s*dormitorio/i); if (md) out.dorm = toInt(md[1]);
+  const head = (titulo.split(/\s[-–]\s/)[0] || "")
+    .replace(/^\s*(alquiler|venta)\s+/i, "")
+    .replace(/^\s*\S+\s+/, "")                              // saca la palabra del tipo
+    .replace(/^\s*\d+\s+dormitorios?\s+/i, "");             // saca "N Dormitorios"
+  out.barrio = head.trim();
+
+  // m² de la descripción
+  const m2 = desc.match(/(\d+(?:[.,]\d+)?)\s*m²/i) || desc.match(/(\d+)\s*m2\b/i);
+  if (m2) out.m2_construidos = numUY(m2[1]);
+
+  const texto = titulo + " " + desc;
+  out.cochera = cocheraDe(texto, null);
+  out.estado = estadoDe(texto, null);
   out.renta = RENTA_RE.test(titulo);
   return out;
 }

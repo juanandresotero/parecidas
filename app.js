@@ -386,8 +386,10 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
   var monBusq = (segVal("f-moneda") || "USD").toLowerCase();   // para avisar conversión de dólar
   SEL = []; CARDS = []; actualizarMulticopy();
   $("resultados").style.display = "";
-  // Si la búsqueda ya está guardada (cliente activo), no ofrezco "Guardar" de nuevo.
+  // Si la búsqueda ya está guardada (cliente activo), no ofrezco "Guardar" de nuevo;
+  // pero si cambiaste algo, muestro "Guardar cambios".
   $("btn-guardar-busq").style.display = window.__busquedaActiva ? "none" : "";
+  $("btn-guardar-cambios").style.display = (window.__busquedaActiva && filtrosCambiaron()) ? "" : "none";
   var cont = $("cards");
   if (!total) {
     $("cuenta").textContent = "0 encontradas";
@@ -1222,13 +1224,19 @@ function initSegs() {
     }
     abrirOverlay("guardar-busq"); $("gb-nombre").focus();
   });
+  $("btn-guardar-cambios").addEventListener("click", function () {
+    guardarFiltrosEnCliente();
+    $("hint").innerHTML = "✓ Cambios guardados en el cliente.";
+    buscar();   // refresca (el botón se oculta porque ya no hay cambios)
+  });
   $("btn-guardar-cerrar").addEventListener("click", function () { cerrarOverlay("guardar-busq"); });
   $("guardar-busq").addEventListener("click", function (e) { if (e.target === $("guardar-busq")) cerrarOverlay("guardar-busq"); });
   $("btn-guardar-ok").addEventListener("click", function () {
     var nombre = ($("gb-nombre").value || "").trim();
     var tel = ($("gb-tel").value || "").trim();
     var dir = ($("gb-dir").value || "").trim();
-    if (!nombre) { $("gb-msg").textContent = "Poné un nombre para reconocerla."; return; }
+    if (!nombre) nombre = dir;   // sin nombre pero con dirección → la dirección es el nombre
+    if (!nombre) { $("gb-msg").textContent = "Poné un nombre o una dirección para reconocerla."; return; }
     guardarBusquedaActual(nombre, tel, dir);
     cerrarOverlay("guardar-busq");
     renderBadge();
