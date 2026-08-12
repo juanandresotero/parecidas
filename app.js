@@ -517,6 +517,7 @@ function rellenar(c) {
   setSeg("f-renta", c.renta ? "con" : "sin");
   window.__slugActual = c.slug || null;
   window.__base = c;                       // referencia para ordenar "más parecida"
+  mostrarAgente(c);
 }
 // Llena el formulario con lo que trajo el motorcito (InfoCasas / MercadoLibre).
 // El barrio NO se autocompleta: los nombres de esos portales no coinciden con los
@@ -551,9 +552,37 @@ function rellenarExterno(d) {
     precio_usd: precioUsd, dorm: d.dorm, cochera: d.cochera, estado: d.estado,
     m2_homog: d.m2_construidos || null, barrio: ""
   };
+  mostrarAgente(null);   // InfoCasas/MercadoLibre: no tenemos el agente de RE/MAX
 }
 function etiquetaEstadoPub(e) {
   return e === "reserved" ? "Reservada" : (e === "negotiation" ? "En negociación" : "");
+}
+// Teléfono del agente que carga la propiedad (viene de la ficha, NO del ?associate=
+// que uno agrega al compartir). Se saca el celular primario y se limpia de espacios.
+function telAgente(assoc) {
+  var phones = (assoc && assoc.phones) || [];
+  var prim = phones.filter(function (p) { return p && (p.primary || p.isPrimary); })[0]
+          || phones.filter(function (p) { return p && (p.type === "mobile"); })[0]
+          || phones[0];
+  return prim && prim.value ? String(prim.value).replace(/\s+/g, "") : "";
+}
+// Muestra (o esconde) el botón "Copiar contacto del agente". El contacto SIEMPRE sale
+// de la propiedad (por el slug), así que ignora el associate del link → nunca da el
+// número de quien lo comparte.
+function mostrarAgente(c) {
+  var btn = $("btn-agente");
+  var nombre = (c && c.agente || "").trim();
+  var tel = (c && c.agente_tel || "").trim();
+  if (nombre || tel) {
+    window.__agente = { nombre: nombre, tel: tel };
+    var etq = "📇 Copiar contacto" + (nombre ? ": " + nombre : " del agente");
+    btn.textContent = etq;
+    btn.dataset.vuelve = etq;
+    btn.style.display = "";
+  } else {
+    window.__agente = null;
+    btn.style.display = "none";
+  }
 }
 function fromDetalle(det, slug) {
   var tipo = (det.type || {}).value || "";
@@ -577,12 +606,15 @@ function fromDetalle(det, slug) {
     cochera: (park != null) ? (park > 0) : null,
     estado: aEstrenar ? "a_estrenar" : "usada",
     estado_pub: (det.listingStatus || {}).value || "active",
-    renta: /(renta|rentad|alquilad|ocupad)/i.test(det.title || "")
+    renta: /(renta|rentad|alquilad|ocupad)/i.test(det.title || ""),
+    agente: (det.associate || {}).name || "",
+    agente_tel: telAgente(det.associate)
   };
 }
 function traer() {
   var link = $("link").value.trim();
   var hint = $("hint");
+  mostrarAgente(null);   // se reesconde; lo vuelven a mostrar rellenar/fromDetalle si hay agente
   if (!link) { hint.textContent = "Pegá un link, o completá los datos a mano abajo."; return; }
   var esRemax = /remax\.com\.uy/i.test(link);
   var slug = slugDeLink(link);
@@ -984,6 +1016,7 @@ function limpiarTodo() {
   window.__ultimaVista = null;
   SEL = []; CARDS = []; actualizarMulticopy();
   $("cards").innerHTML = ""; $("resultados").style.display = "none"; $("hint").innerHTML = "";
+  mostrarAgente(null);
 }
 
 // -------------------------- Notas + recordatorio por cliente --------------------------
@@ -1164,6 +1197,12 @@ function initSegs() {
   $("btn-news-ok").addEventListener("click", cerrarNews);
   $("btn-news-x").addEventListener("click", cerrarNews);
   $("news").addEventListener("click", function (e) { if (e.target === $("news")) cerrarNews(); });
+  $("btn-agente").addEventListener("click", function () {
+    var a = window.__agente; if (!a) return;
+    var texto = [a.nombre, a.tel].filter(Boolean).join(" ");
+    copiarTexto(texto, $("btn-agente"),
+      $("btn-agente").dataset.vuelve || "📇 Copiar contacto del agente");
+  });
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
   // Notas del cliente

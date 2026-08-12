@@ -65,6 +65,17 @@ def _get_pagina(page: int) -> list:
     return data if isinstance(data, list) else []
 
 
+def _tel_agente(assoc: dict) -> str:
+    """Celular del agente que carga la propiedad (de la ficha, no del associate del
+    link compartido). Toma el primario/móvil y lo limpia de espacios."""
+    phones = (assoc or {}).get("phones") or []
+    prim = (next((p for p in phones if p and (p.get("primary") or p.get("isPrimary"))), None)
+            or next((p for p in phones if p and p.get("type") == "mobile"), None)
+            or (phones[0] if phones else None))
+    val = (prim or {}).get("value") or ""
+    return re.sub(r"\s+", "", str(val)) if val else ""
+
+
 def _barrio(geo):
     return (geo or "").split(",")[0].strip()
 
@@ -207,6 +218,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "foto": _foto(it.get("photos")),
         "agente_id": (it.get("associate") or {}).get("id") or "",
         "agente": (it.get("associate") or {}).get("name") or "",
+        "agente_tel": _tel_agente(it.get("associate") or {}),
         "estado": "a_estrenar" if a_estrenar else ("usada" if det else ""),
         # Estado de publicación: active | reserved | negotiation. Solo 'active' se
         # ofrece como parecida (reservada/en negociación NO están habilitadas).
