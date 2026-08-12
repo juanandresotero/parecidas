@@ -578,6 +578,7 @@ function mostrarAgente(c) {
     var etq = "📇 Copiar contacto" + (nombre ? ": " + nombre : " del agente");
     btn.textContent = etq;
     btn.dataset.vuelve = etq;
+    btn.classList.toggle("nuevo", !novedadVista("agente-btn"));   // amarillo hasta el 1er toque
     btn.style.display = "";
   } else {
     window.__agente = null;
@@ -1192,12 +1193,23 @@ function initSegs() {
   });
   // Cartel de novedades (una sola vez)
   pintarMarcaNueva();
-  if (!novedadVista("news")) abrirOverlay("news");
+  if (!novedadVista("news")) {
+    // Usuario nuevo: ve el cartel completo (el punto del agente ya está adentro),
+    // así que doy por vista la novedad del agente para no encimarle dos carteles.
+    abrirOverlay("news"); marcarNovedad("news-agente");
+  } else if (!novedadVista("news-agente")) {
+    abrirOverlay("news-agente");
+  }
   var cerrarNews = function () { marcarNovedad("news"); cerrarOverlay("news"); };
   $("btn-news-ok").addEventListener("click", cerrarNews);
   $("btn-news-x").addEventListener("click", cerrarNews);
   $("news").addEventListener("click", function (e) { if (e.target === $("news")) cerrarNews(); });
+  var cerrarNewsAgente = function () { marcarNovedad("news-agente"); cerrarOverlay("news-agente"); };
+  $("btn-news-agente-ok").addEventListener("click", cerrarNewsAgente);
+  $("btn-news-agente-x").addEventListener("click", cerrarNewsAgente);
+  $("news-agente").addEventListener("click", function (e) { if (e.target === $("news-agente")) cerrarNewsAgente(); });
   $("btn-agente").addEventListener("click", function () {
+    marcarNovedad("agente-btn"); $("btn-agente").classList.remove("nuevo");   // ya lo usó → sale del amarillo
     var a = window.__agente; if (!a) return;
     var texto = [a.nombre, a.tel].filter(Boolean).join(" ");
     copiarTexto(texto, $("btn-agente"),
