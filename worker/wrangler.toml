@@ -18,4 +18,4 @@ VAPID_PUBLIC = "BAxadZ2Doxe6UjrVtNi5E29AlBvGacELm2Lxuv-CVwdVKem4ZnRAyn0ULCA2-Gvh
 # El id se completa al crearla:  npx wrangler kv namespace create SUBS
 [[kv_namespaces]]
 binding = "SUBS"
-id = "PENDIENTE_COMPLETAR_AL_CREAR_LA_KV"
+id = "0d2588dda67e4dfdb3fa6b20a7d819fa"
