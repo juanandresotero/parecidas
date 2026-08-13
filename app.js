@@ -1127,16 +1127,22 @@ async function sincronizarPush(sub) {
 function pintarEstadoAvisos() {
   var el = $("avisos-estado"); if (!el) return;
   var btnProbar = $("btn-probar-aviso");
+  var btnAct = $("btn-activar-avisos");
   if (!pushSoportado()) {
     el.textContent = "Este celu/navegador no soporta avisos.";
     if (btnProbar) btnProbar.style.display = "none";
     return;
   }
   var p = Notification.permission;
-  el.textContent = p === "granted" ? "✓ Avisos activados (te llegan con la app cerrada)."
+  var activo = p === "granted";
+  el.textContent = activo ? "Ya no tenés que volver a activarlo: queda prendido."
     : p === "denied" ? "Los avisos están bloqueados en este celu. Activalos en los ajustes del navegador."
     : "Los avisos están apagados.";
-  if (btnProbar) btnProbar.style.display = p === "granted" ? "" : "none";
+  if (btnAct) {   // el botón muestra claro si ya está activado
+    btnAct.textContent = activo ? "✓ Avisos activados" : "Activar avisos";
+    btnAct.classList.toggle("btn-activado", activo);
+  }
+  if (btnProbar) btnProbar.style.display = activo ? "" : "none";
 }
 // Manda un aviso de prueba a ESTE celu para confirmar que llega de verdad.
 async function probarAviso() {
