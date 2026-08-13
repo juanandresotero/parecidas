@@ -3,8 +3,13 @@
 // (que arma el robot 1 vez por día) y filtra. Sin servidor.
 
 // Associate editable (cada usuario pone el suyo en Ajustes). Guardado en el celu.
+// OJO: si el usuario lo BORRÓ a propósito (guardó ""), hay que respetar el vacío y NO
+// volver al de Juan. Por eso distingo "no configurado" (null) de "vacío a propósito" ("").
 var ASSOCIATE = "940041154";
-try { ASSOCIATE = localStorage.getItem("parecidas_associate") || ASSOCIATE; } catch (e) {}
+try {
+  var _assocGuardado = localStorage.getItem("parecidas_associate");
+  if (_assocGuardado !== null) ASSOCIATE = _assocGuardado;   // "" incluido = sin contacto
+} catch (e) {}
 // Motorcito (Cloudflare Worker) que lee InfoCasas / MercadoLibre. Ya publicado y
 // prendido por defecto; cada usuario puede poner el suyo en Ajustes (lo pisa).
 var MOTOR_URL = "https://parecidas-motor.cualcaxsiempre.workers.dev";
@@ -292,6 +297,8 @@ function porque(c, f) {
   return b.join(" · ");
 }
 function linkAssoc(link) {
+  // Sin código de associate → link limpio (no sale el contacto de nadie).
+  if (!ASSOCIATE) return link;
   return link + (link.indexOf("?") >= 0 ? "&" : "?") + "associate=" + ASSOCIATE;
 }
 
@@ -1246,14 +1253,18 @@ function initSegs() {
   });
   $("btn-ajustes-cerrar").addEventListener("click", function () { $("ajustes").style.display = "none"; });
   $("ajustes").addEventListener("click", function (e) { if (e.target === $("ajustes")) $("ajustes").style.display = "none"; });
-  $("btn-associate-guardar").addEventListener("click", function () {
+  var guardarAjustes = function () {
     var v = ($("in-associate").value || "").trim();
-    if (!v) { $("ajustes-msg").textContent = "Poné tu código."; return; }
-    ASSOCIATE = v;
+    ASSOCIATE = v;                                  // vacío = links sin contacto
     try { localStorage.setItem("parecidas_associate", v); } catch (e) {}
     MOTOR_URL = ($("in-motor").value || "").trim().replace(/\/+$/, "");
     try { localStorage.setItem("parecidas_motor", MOTOR_URL); } catch (e) {}
-    $("ajustes-msg").textContent = "✓ Guardado";
+    $("ajustes-msg").textContent = v ? "✓ Guardado" : "✓ Guardado — los links salen sin contacto";
+  };
+  $("btn-associate-guardar").addEventListener("click", guardarAjustes);
+  $("btn-associate-borrar").addEventListener("click", function () {
+    $("in-associate").value = "";
+    guardarAjustes();
   });
 
   // Búsquedas guardadas (menú nuevo)

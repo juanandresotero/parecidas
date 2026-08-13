@@ -1,5 +1,5 @@
 // Service worker: deja andar la app sin conexión y sirve los datos frescos.
-var CACHE = "parecidas-v37";
+var CACHE = "parecidas-v38";
 var SHELL = ["./", "index.html", "app.js", "barrios.js",
              "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
