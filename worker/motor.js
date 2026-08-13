@@ -47,6 +47,22 @@ export default {
       if (rec && avisos.length) { rec.pending = []; await env.SUBS.put("sub:" + id, JSON.stringify(rec)); }
       return json({ avisos });
     }
+    // Prueba: manda un aviso al instante a este celu (para confirmar que llega).
+    if (url.searchParams.get("testpush")) {
+      if (!env || !env.SUBS) return json({ error: "push no configurado" }, 501);
+      const ep = url.searchParams.get("ep");
+      if (!ep) return json({ error: "falta ep" }, 400);
+      const id = await hashId(ep);
+      const rec = await env.SUBS.get("sub:" + id, "json");
+      if (!rec) return json({ error: "no suscripto" }, 404);
+      rec.pending = (rec.pending || []).concat([{
+        titulo: "✅ Prueba de aviso",
+        cuerpo: "¡Los avisos de Parecidas funcionan!", url: "./", tag: "prueba",
+      }]);
+      await env.SUBS.put("sub:" + id, JSON.stringify(rec));
+      const st = await enviarPush(rec, env);
+      return json({ ok: st === 201 || st === 200, status: st }, 200);
+    }
     // Cotización del dólar del día (uy.dolarapi bloquea el pedido directo del navegador).
     if (url.searchParams.get("dolar")) {
       try {

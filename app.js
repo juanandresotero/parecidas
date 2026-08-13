@@ -1112,11 +1112,36 @@ async function sincronizarPush(sub) {
 }
 function pintarEstadoAvisos() {
   var el = $("avisos-estado"); if (!el) return;
-  if (!pushSoportado()) { el.textContent = "Este celu/navegador no soporta avisos."; return; }
+  var btnProbar = $("btn-probar-aviso");
+  if (!pushSoportado()) {
+    el.textContent = "Este celu/navegador no soporta avisos.";
+    if (btnProbar) btnProbar.style.display = "none";
+    return;
+  }
   var p = Notification.permission;
   el.textContent = p === "granted" ? "✓ Avisos activados (te llegan con la app cerrada)."
     : p === "denied" ? "Los avisos están bloqueados en este celu. Activalos en los ajustes del navegador."
     : "Los avisos están apagados.";
+  if (btnProbar) btnProbar.style.display = p === "granted" ? "" : "none";
+}
+// Manda un aviso de prueba a ESTE celu para confirmar que llega de verdad.
+async function probarAviso() {
+  var el = $("avisos-estado");
+  if (Notification.permission !== "granted") { await activarAvisos(true); }
+  if (Notification.permission !== "granted") { pintarEstadoAvisos(); return; }
+  el.textContent = "Mandando prueba…";
+  try {
+    var reg = await navigator.serviceWorker.ready;
+    var sub = await reg.pushManager.getSubscription();
+    if (!sub) { await activarAvisos(true); sub = await reg.pushManager.getSubscription(); }
+    if (!sub) { el.textContent = "No pude suscribir este celu."; return; }
+    await sincronizarPush(sub);
+    var r = await fetch(MOTOR_URL + (MOTOR_URL.indexOf("?") >= 0 ? "&" : "?") +
+      "testpush=1&ep=" + encodeURIComponent(sub.endpoint));
+    var d = await r.json();
+    el.textContent = (d && d.ok) ? "✓ Aviso enviado. Debería aparecerte en unos segundos."
+      : "No salió la prueba (código " + ((d && d.status) || "?") + ").";
+  } catch (e) { el.textContent = "No pude mandar la prueba."; }
 }
 
 function abrirOverlay(id) { $(id).style.display = "flex"; }
@@ -1443,9 +1468,10 @@ function initSegs() {
     $("avisos-estado").textContent = "Pidiendo permiso…";
     activarAvisos(true).then(function (ok) {
       pintarEstadoAvisos();
-      if (ok) $("avisos-estado").textContent = "✓ Avisos activados. Te llegan aunque no tengas la app abierta.";
+      if (ok) $("avisos-estado").textContent = "✓ Avisos activados. Probá con el botón de abajo.";
     });
   });
+  $("btn-probar-aviso").addEventListener("click", probarAviso);
 
   // Búsquedas guardadas (menú nuevo)
   $("btn-busquedas").addEventListener("click", function () { renderBusquedas(); abrirOverlay("busquedas"); });
