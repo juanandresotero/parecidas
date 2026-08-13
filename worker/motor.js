@@ -30,6 +30,7 @@ export default {
         const rec = {
           endpoint: body.endpoint, p256dh: body.p256dh, auth: body.auth,
           campanas: Array.isArray(body.campanas) ? body.campanas : [],
+          busquedas: mergeBusquedas(prev.busquedas, body.busquedas),
           seen: prev.seen || {}, pending: prev.pending || [], updated: Date.now(),
         };
         await env.SUBS.put("sub:" + id, JSON.stringify(rec));
@@ -101,16 +102,25 @@ export default {
     }
   },
 
-  // Robotito que se despierta solo (cron): revisa las propiedades en campaña y, si
-  // alguna cambió de estado, deja el aviso pronto y le dispara la notificación al celu.
+  // Robotito que se despierta solo (cron): revisa (1) las propiedades en campaña y
+  // (2) las parecidas nuevas de cada cliente. Si hay novedad, dispara la notificación.
   async scheduled(event, env, ctx) {
     if (!env || !env.SUBS) return;
+    // El archivo del día (una sola vez para todos): para detectar parecidas nuevas.
+    let listings = null;
+    try {
+      const lr = await fetch("https://juanandresotero.github.io/parecidas/listings.json");
+      const ld = await lr.json();
+      listings = ld && ld.listings ? ld.listings : null;
+    } catch (e) { listings = null; }
+
     const list = await env.SUBS.list({ prefix: "sub:" });
     for (const k of list.keys) {
       const rec = await env.SUBS.get(k.name, "json");
       if (!rec) continue;
       let dirty = false;
       const nuevos = [];
+      // (1) Campaña: estado de la propiedad en RE/MAX.
       for (const c of (rec.campanas || [])) {
         const est = await estadoRemax(c.slug);
         if (est == null) continue;                 // error de red: no toco nada
@@ -125,9 +135,27 @@ export default {
           });
         }
       }
-      if (nuevos.length) {
-        rec.pending = (rec.pending || []).concat(nuevos); dirty = true;
+      // (2) Parecidas nuevas por cliente (mismo filtro que la app).
+      if (listings) {
+        for (const b of (rec.busquedas || [])) {
+          if (!b || !b.filtro) continue;
+          const seen = new Set(b.seen || []);
+          let nuevas = 0;
+          for (const c of listings) {
+            if (!pasa(c, b.filtro, b.slugActual)) continue;
+            if (!seen.has(c.slug)) { seen.add(c.slug); nuevas++; }
+          }
+          if (nuevas > 0) {
+            b.seen = Array.from(seen); dirty = true;
+            nuevos.push({
+              titulo: "🔎 Parecidas nuevas",
+              cuerpo: nuevas + (nuevas === 1 ? " nueva" : " nuevas") + " para " + (b.nombre || "un cliente"),
+              url: "./", tag: "busq-" + b.id,
+            });
+          }
+        }
       }
+      if (nuevos.length) { rec.pending = (rec.pending || []).concat(nuevos); dirty = true; }
       if (dirty) await env.SUBS.put(k.name, JSON.stringify(rec));
       if (nuevos.length) {
         const st = await enviarPush(rec, env);
@@ -136,6 +164,58 @@ export default {
     }
   },
 };
+
+// Junta las búsquedas nuevas con lo que ya sabía el robotito (para no re-avisar lo visto).
+function mergeBusquedas(prev, incoming) {
+  prev = Array.isArray(prev) ? prev : [];
+  const byId = {}; prev.forEach((x) => { byId[x.id] = x; });
+  return (Array.isArray(incoming) ? incoming : []).map((nb) => {
+    const old = byId[nb.id];
+    const base = old ? (old.seen || []) : (nb.vistas || []);   // 1ª vez: baseline = lo ya visto
+    const seen = Array.from(new Set(base.concat(nb.vistas || [])));
+    return {
+      id: nb.id, nombre: nb.nombre || "un cliente",
+      filtro: nb.filtro || null, slugActual: nb.slugActual || null, seen,
+    };
+  });
+}
+
+// ---- Filtro (idéntico al de la app; el filtro viene ya masticado con USD y grupo) ----
+function norm(s) {
+  return (s || "").normalize("NFC").toLowerCase()
+    .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
+    .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n").trim();
+}
+function tipoCat(t) {
+  t = norm(t);
+  if (t.indexOf("departamento") >= 0 || t.indexOf("penthouse") >= 0 || t.indexOf("apart") >= 0 || t === "ph") return "apto";
+  if (t.indexOf("casa") >= 0) return "casa";
+  if (t.indexOf("terreno") >= 0 || t.indexOf("lote") >= 0) return "terreno";
+  return "otro";
+}
+function pasa(c, f, slugActual) {
+  if (slugActual && c.slug === slugActual) return false;
+  if (c.estado_pub && c.estado_pub !== "active") return false;
+  if (f.operacion && c.operacion !== f.operacion) return false;
+  if (f.tipos && f.tipos.length && f.tipos.indexOf(tipoCat(c.tipo)) < 0) return false;
+  if (f.grupo && f.grupo.indexOf(norm(c.barrio)) < 0) return false;
+  if (f.dmin != null && (c.dorm == null || c.dorm < f.dmin)) return false;
+  if (f.dmax != null && (c.dorm == null || c.dorm > f.dmax)) return false;
+  if (f.precioMinUsd != null && (c.precio_usd == null || c.precio_usd < f.precioMinUsd)) return false;
+  if (f.precioMaxUsd != null && (c.precio_usd == null || c.precio_usd > f.precioMaxUsd)) return false;
+  if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
+  if (f.cubMax != null && (c.m2_homog == null || c.m2_homog > f.cubMax)) return false;
+  if (f.padronMin != null && (c.m2_padron == null || c.m2_padron < f.padronMin)) return false;
+  if (f.padronMax != null && (c.m2_padron == null || c.m2_padron > f.padronMax)) return false;
+  if (f.cochera === "si" && c.cochera !== true) return false;
+  if (f.cochera === "no" && c.cochera !== false) return false;
+  if (f.estado && c.estado !== f.estado) return false;
+  if (f.renta === "con" && c.renta !== true) return false;
+  if (f.renta === "sin" && c.renta !== false) return false;
+  if (f.gastosMinUsd != null && c.gastos_usd != null && c.gastos_usd < f.gastosMinUsd) return false;
+  if (f.gastosMaxUsd != null && c.gastos_usd != null && c.gastos_usd > f.gastosMaxUsd) return false;
+  return true;
+}
 
 // ---- Push: helpers ----
 function etqEstado(est) {

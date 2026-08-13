@@ -890,12 +890,14 @@ function abrirBusqueda(id) {
   cerrarOverlay("busquedas");
   buscar();
   renderBadge();
+  sincronizarPush();   // ya viste esta búsqueda → el robotito no te re-avisa lo mismo
   $("resultados").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function borrarBusqueda(id) {
   var arr = cargarBusquedas().filter(function (x) { return x.id !== id; });
   guardarBusquedas(arr); renderBusquedas(); renderBadge();
+  sincronizarPush();   // el robotito deja de vigilar la que borraste
 }
 
 function renderBusquedas() {
@@ -1071,6 +1073,17 @@ function slugsEnCampana() {
     .filter(function (b) { return b.campana && (b.campSlug || b.slugActual); })
     .map(function (b) { return { slug: b.campSlug || b.slugActual, dir: b.direccion || b.nombre || "" }; });
 }
+// Las búsquedas guardadas a vigilar (parecidas nuevas) con la app cerrada. Manda el
+// filtro ya masticado + lo ya visto (para que el robotito no re-avise lo mismo).
+function busquedasParaVigilar() {
+  return cargarBusquedas().map(function (b) {
+    return {
+      id: b.id, nombre: b.nombre || b.direccion || "un cliente",
+      filtro: b.filtro || null, slugActual: b.slugActual || null,
+      vistas: (b.vistas || [])
+    };
+  }).filter(function (x) { return x.filtro; });
+}
 function pushSoportado() {
   return ("serviceWorker" in navigator) && ("PushManager" in window) && ("Notification" in window);
 }
@@ -1105,7 +1118,8 @@ async function sincronizarPush(sub) {
       body: JSON.stringify({
         endpoint: sub.endpoint,
         p256dh: j.keys && j.keys.p256dh, auth: j.keys && j.keys.auth,
-        campanas: slugsEnCampana()
+        campanas: slugsEnCampana(),
+        busquedas: busquedasParaVigilar()
       })
     });
   } catch (e) {}
@@ -1511,6 +1525,7 @@ function initSegs() {
     var quiereCamp = $("gb-campana").checked;
     guardarBusquedaActual(nombre, tel, dir, quiereCamp);
     if (quiereCamp && window.__slugActual) activarAvisos(true);   // pide permiso para avisarle
+    else sincronizarPush();                                        // sumá la búsqueda a lo que vigila
     cerrarOverlay("guardar-busq");
     renderBadge();
     buscar();   // refresca: muestra enviadas 📤 y descartadas 🔴
