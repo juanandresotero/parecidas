@@ -820,15 +820,17 @@ function waLink(tel) {
   return "https://wa.me/" + d;
 }
 
-function guardarBusquedaActual(nombre, tel, direccion) {
+function guardarBusquedaActual(nombre, tel, direccion, campana) {
   var f = leerFiltros();
   var slugActual = window.__slugActual || null;
   var matches = DATA.filter(function (c) { return pasa(c, f, slugActual); });
+  var esCamp = !!(campana && slugActual);   // campaña solo si vino de un link de RE/MAX
   var b = {
     id: String(Date.now()) + Math.random().toString(36).slice(2, 7),
     nombre: nombre, tel: tel, direccion: direccion || "", creada: new Date().toISOString(),
     form: snapshotForm(), filtro: f, slugActual: slugActual,
-    vistas: matches.map(function (c) { return c.slug; })   // lo que ya vio hoy
+    vistas: matches.map(function (c) { return c.slug; }),   // lo que ya vio hoy
+    campana: esCamp, campSlug: esCamp ? slugActual : null, campEstado: "", campAck: ""
   };
   // Si hay seleccionadas al guardar: esas quedan PENDIENTES (⏳) y el resto de las
   // que estaban en la lista, DESCARTADAS (🔴 descarte_1). (Enviada se marca al Enviar.)
@@ -840,6 +842,7 @@ function guardarBusquedaActual(nombre, tel, direccion) {
   }
   var arr = cargarBusquedas(); arr.unshift(b); guardarBusquedas(arr);
   window.__busquedaActiva = b.id;   // el cliente recién guardado queda activo
+  if (esCamp) chequearCampanas();   // arranca la vigilancia de esa propiedad ya
 }
 
 // ¿El formulario actual difiere de lo guardado en el cliente activo?
@@ -945,6 +948,14 @@ function renderBusquedas() {
       np.textContent = "📝 " + b.notas;
       info.appendChild(np);
     }
+    if (b.campana) {
+      var alerta = campEnAlerta(b);
+      var cp = document.createElement("div");
+      cp.className = "bi-camp " + (alerta ? "alerta" : "ok");
+      cp.textContent = alerta ? ("⚠️ En campaña — " + etqCampana(b.campEstado))
+                              : "📣 En campaña — publicada";
+      info.appendChild(cp);
+    }
     item.appendChild(info);
     if (nuevas > 0) {
       var badge = document.createElement("span"); badge.className = "bi-nuevas";
@@ -972,7 +983,7 @@ function renderBusquedas() {
 
 // El numerito rojo en el 🔖 de arriba = total de nuevas en todas las búsquedas.
 function renderBadge() {
-  var n = totalNuevas(), el = $("busq-badge");
+  var n = totalNuevas() + campAlertasNuevas().length, el = $("busq-badge");
   if (n > 0) { el.textContent = n > 99 ? "99+" : n; el.style.display = ""; }
   else el.style.display = "none";
   // Numerito (silencioso) en el ícono de la app instalada. Se refresca al abrir la app.
@@ -980,6 +991,68 @@ function renderBadge() {
     if (n > 0 && navigator.setAppBadge) navigator.setAppBadge(n);
     else if (navigator.clearAppBadge) navigator.clearAppBadge();
   } catch (e) {}
+}
+
+// -------------------------- Campañas: vigilar propiedades publicitadas --------------------------
+// Vigila SOLO al abrir la app (sin servidor no hay aviso con la app cerrada). Si una
+// propiedad que Juan publicita pasa a reservada / en negociación / se baja, avisa.
+function etqCampana(est) {
+  return est === "reserved" ? "Reservada"
+    : est === "negotiation" ? "En negociación"
+    : est === "baja" ? "Ya no está publicada"
+    : est === "finished" ? "Finalizada / vendida"
+    : "Cambió de estado";
+}
+function estadoCampanaDe(d) {
+  var det = d && d.data ? (d.data.data || d.data) : null;
+  if (!det || !det.slug) return "baja";                 // data null = ya no publicada
+  return (det.listingStatus || {}).value || "active";
+}
+function campEnAlerta(b) { return b.campana && b.campEstado && b.campEstado !== "active"; }
+function campAlertas() { return cargarBusquedas().filter(campEnAlerta); }
+// Avisos que Juan todavía NO reconoció con "Entendido" (los que cuentan para el numerito).
+function campAlertasNuevas() {
+  return campAlertas().filter(function (b) { return b.campEstado !== b.campAck; });
+}
+// Chequea en vivo el estado de cada propiedad en campaña; al terminar, repinta los avisos.
+function chequearCampanas() {
+  var arr = cargarBusquedas();
+  var pend = arr.filter(function (b) { return b.campana && (b.campSlug || b.slugActual); });
+  if (!pend.length) { pintarBanner(); return; }
+  var falta = pend.length;
+  var fin = function () {
+    if (--falta > 0) return;
+    guardarBusquedas(arr);
+    pintarBanner(); renderBadge();
+    if ($("busquedas").style.display === "flex") renderBusquedas();
+  };
+  pend.forEach(function (b) {
+    var slug = b.campSlug || b.slugActual;
+    fetch(DET_EP + slug).then(function (r) { return r.json(); })
+      .then(function (d) { b.campEstado = estadoCampanaDe(d); fin(); })
+      .catch(function () { fin(); });   // error de red: dejo el estado conocido como estaba
+  });
+}
+// Cartel rojo arriba (solo con avisos que todavía no reconoció).
+function pintarBanner() {
+  var al = campAlertasNuevas();
+  var box = $("camp-banner");
+  if (!al.length) { box.style.display = "none"; return; }
+  var lista = $("cb-lista"); lista.innerHTML = "";
+  al.forEach(function (b) {
+    var d = document.createElement("div"); d.className = "cb-item";
+    var quien = b.direccion || b.nombre || "Una propiedad";
+    d.innerHTML = "📣 " + esc(quien) + " → <b>" + esc(etqCampana(b.campEstado)) + "</b>";
+    lista.appendChild(d);
+  });
+  box.style.display = "";
+}
+// "Entendido": deja de insistir con ESTE estado (pero el ⚠️ sigue en el menú 🔖).
+function ackCampanas() {
+  var arr = cargarBusquedas();
+  arr.forEach(function (b) { if (campEnAlerta(b)) b.campAck = b.campEstado; });
+  guardarBusquedas(arr);
+  pintarBanner(); renderBadge();
 }
 
 function abrirOverlay(id) { $(id).style.display = "flex"; }
@@ -1051,7 +1124,38 @@ function abrirClienteEditor(id) {
   $("ce-recdias").value = "";
   pintarContactoCE(b);
   pintarRecordatorioCE(b);
+  pintarCampanaCE(b);
   abrirOverlay("cliente-editor");
+}
+// Estado de la campaña + botón para prender/apagar la vigilancia de ESA propiedad.
+function pintarCampanaCE(b) {
+  var btn = $("btn-ce-campana"), est = $("ce-camp-estado");
+  var slug = b.campSlug || b.slugActual;
+  if (!slug) { btn.style.display = "none"; est.textContent = ""; est.className = "ce-contacto"; return; }
+  if (b.campana) {
+    var alerta = campEnAlerta(b);
+    est.textContent = alerta ? ("📣 En campaña — ⚠️ " + etqCampana(b.campEstado))
+                             : "📣 En campaña — publicada";
+    est.className = "ce-contacto" + (alerta ? " tarde" : "");
+    btn.textContent = "📣 Ya no hago campaña de esta propiedad";
+  } else {
+    est.textContent = ""; est.className = "ce-contacto";
+    btn.textContent = "📣 Marcar: estoy en campaña de esta propiedad";
+  }
+  btn.style.display = "";
+}
+function toggleCampanaCE() {
+  if (!__clienteEdit) return;
+  var arr = cargarBusquedas();
+  var b = arr.filter(function (x) { return x.id === __clienteEdit; })[0];
+  if (!b) return;
+  var slug = b.campSlug || b.slugActual;
+  if (!slug) return;
+  if (b.campana) { b.campana = false; }
+  else { b.campana = true; b.campSlug = slug; b.campEstado = ""; b.campAck = ""; }
+  guardarBusquedas(arr);
+  pintarCampanaCE(b); renderBadge();
+  if (b.campana) chequearCampanas();
 }
 function pintarContactoCE(b) {
   var c = textoContacto(b);
@@ -1236,6 +1340,9 @@ function initSegs() {
     setRecordatorio(n);
   });
   $("btn-ce-sinrec").addEventListener("click", function () { $("ce-recdias").value = ""; setRecordatorio(null); });
+  $("btn-ce-campana").addEventListener("click", toggleCampanaCE);
+  $("btn-cb-ok").addEventListener("click", ackCampanas);
+  $("btn-cb-ver").addEventListener("click", function () { renderBusquedas(); abrirOverlay("busquedas"); });
   $("btn-instalar").addEventListener("click", function () {
     if (!deferredInstall) return;
     deferredInstall.prompt();
@@ -1274,6 +1381,9 @@ function initSegs() {
   // Botón "Guardar esta búsqueda" (dentro de los resultados) → pide nombre + celu
   $("btn-guardar-busq").addEventListener("click", function () {
     $("gb-nombre").value = ""; $("gb-tel").value = ""; $("gb-msg").textContent = "";
+    // Pregunta de campaña: solo si la búsqueda salió de un link de RE/MAX (hay propiedad que vigilar).
+    $("gb-campana").checked = false;
+    $("gb-campana-wrap").style.display = window.__slugActual ? "flex" : "none";
     var dir = (window.__base && window.__base.direccion) || "";
     $("gb-dir").value = dir;
     // Si es un link de RE/MAX de archivo (sin dirección cargada), la traigo en vivo.
@@ -1299,7 +1409,7 @@ function initSegs() {
     var dir = ($("gb-dir").value || "").trim();
     if (!nombre) nombre = dir;   // sin nombre pero con dirección → la dirección es el nombre
     if (!nombre) { $("gb-msg").textContent = "Poné un nombre o una dirección para reconocerla."; return; }
-    guardarBusquedaActual(nombre, tel, dir);
+    guardarBusquedaActual(nombre, tel, dir, $("gb-campana").checked);
     cerrarOverlay("guardar-busq");
     renderBadge();
     buscar();   // refresca: muestra enviadas 📤 y descartadas 🔴
@@ -1328,7 +1438,8 @@ function cargar() {
     });
     BARRIOS_ALL.sort(function (a, b) { return norm(a) < norm(b) ? -1 : 1; });
     $("estado").textContent = "";
-    renderBadge();   // numerito de parecidas nuevas en el 🔖
+    renderBadge();   // numerito de parecidas nuevas + avisos de campaña en el 🔖
+    chequearCampanas();   // vigila las propiedades en campaña (aviso al abrir)
     restaurarEstado();   // vuelve a mostrar lo último que estabas viendo
   }).catch(function () {
     $("estado").textContent = "No pude cargar las propiedades. Revisá la conexión y recargá.";
