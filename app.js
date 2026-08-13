@@ -15,6 +15,8 @@ try {
 var MOTOR_URL = "https://parecidas-motor.cualcaxsiempre.workers.dev";
 try { MOTOR_URL = localStorage.getItem("parecidas_motor") || MOTOR_URL; } catch (e) {}
 var DET_EP = "https://api-ar.redremax.com/remaxweb-uy/api/listings/findBySlug/";
+// Link corto de RE/MAX (ej: remax.com.uy/940061113-30) = id interno → esta API lo resuelve.
+var INT_EP = "https://api-ar.redremax.com/remaxweb-uy/api/listings/findByInternalId/";
 var CDN = "https://d1acdg20u0pmxj.cloudfront.net/";
 
 var DATA = [];        // propiedades
@@ -626,9 +628,13 @@ function traer() {
   if (!link) { hint.textContent = "Pegá un link, o completá los datos a mano abajo."; return; }
   var esRemax = /remax\.com\.uy/i.test(link);
   var slug = slugDeLink(link);
-  // 1) ¿está en el archivo del día? (lo más rápido)
-  var enArchivo = DATA.filter(function (c) { return c.slug === slug; })[0];
-  if (enArchivo) { rellenar(enArchivo); hint.innerHTML = avisoTraido(); return; }
+  // Link corto de RE/MAX: el último tramo es el id interno (ej: 940061113-30), no un slug.
+  var esIdInterno = esRemax && /^\d+-\d+$/.test(slug);
+  // 1) ¿está en el archivo del día? (lo más rápido; solo si ya es un slug de texto)
+  if (!esIdInterno) {
+    var enArchivo = DATA.filter(function (c) { return c.slug === slug; })[0];
+    if (enArchivo) { rellenar(enArchivo); hint.innerHTML = avisoTraido(); return; }
+  }
   if (!esRemax) {
     var esOtroPortal = /(infocasas\.|mercadolibre\.|mlibre\.)/i.test(link) || /\bMLU-/.test(link);
     if (MOTOR_URL && esOtroPortal) {
@@ -653,12 +659,14 @@ function traer() {
       : "⚠️ Ese link no es de RE/MAX: no puedo leerlo solo. <b>Completá los datos a mano</b> y buscá igual.";
     return;
   }
-  // 2) link de RE/MAX no incluido (muy nueva): lo busco en vivo
+  // 2) link de RE/MAX no incluido (o link corto): lo busco en vivo. El corto va por id
+  //    interno; el largo, por slug. Los dos devuelven la ficha completa (con su slug real).
   hint.textContent = "Buscando la propiedad en RE/MAX…";
-  fetch(DET_EP + slug).then(function (r) { return r.json(); }).then(function (d) {
+  var ep = esIdInterno ? (INT_EP + encodeURIComponent(slug)) : (DET_EP + slug);
+  fetch(ep).then(function (r) { return r.json(); }).then(function (d) {
     var det = d && d.data ? (d.data.data || d.data) : d;
     if (!det || !det.slug) throw new Error("no");
-    rellenar(fromDetalle(det, det.slug));
+    rellenar(fromDetalle(det, det.slug));   // usa el slug REAL de la ficha
     hint.innerHTML = avisoTraido();
   }).catch(function () {
     hint.innerHTML = "No pude leer ese link. <b>Completá los datos a mano</b> y buscá igual.";
