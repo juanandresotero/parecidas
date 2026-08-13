@@ -1173,6 +1173,13 @@ function marcarNovedad(k) { try { localStorage.setItem("parecidas_nv_" + k, "1")
 function pintarMarcaNueva() {
   $("marca").classList.toggle("nuevo", !novedadVista("marca"));
 }
+// ⚙️ en amarillo hasta que active los avisos (apunta a dónde activarlos). Si ya los
+// activó, no hace falta el amarillo.
+function pintarAjustesNuevo() {
+  var pend = !novedadVista("ajustes-nv") &&
+    (!("Notification" in window) || Notification.permission !== "granted");
+  $("btn-ajustes").classList.toggle("nuevo", pend);
+}
 
 // -------------------------- Recordar la vista (sobrevive a recargar) --------------------------
 var ESTADO_KEY = "parecidas_estado";
@@ -1412,14 +1419,17 @@ function initSegs() {
     marcarNovedad("marca"); $("marca").classList.remove("nuevo");
     salirDeCliente(limpiarTodo);   // si cambió filtros de un cliente, ofrece guardarlos
   });
-  // Cartel de novedades (una sola vez)
+  // Cartel de novedades (una sola vez). Muestro UNO por apertura para no encimar.
   pintarMarcaNueva();
+  pintarAjustesNuevo();
   if (!novedadVista("news")) {
-    // Usuario nuevo: ve el cartel completo (el punto del agente ya está adentro),
-    // así que doy por vista la novedad del agente para no encimarle dos carteles.
-    abrirOverlay("news"); marcarNovedad("news-agente");
+    // Usuario nuevo: ve el cartel completo (ya trae adentro agente + avisos),
+    // así que doy por vistos los carteles sueltos para no encimarle varios.
+    abrirOverlay("news"); marcarNovedad("news-agente"); marcarNovedad("news-avisos");
   } else if (!novedadVista("news-agente")) {
     abrirOverlay("news-agente");
+  } else if (!novedadVista("news-avisos")) {
+    abrirOverlay("news-avisos");
   }
   var cerrarNews = function () { marcarNovedad("news"); cerrarOverlay("news"); };
   $("btn-news-ok").addEventListener("click", cerrarNews);
@@ -1429,6 +1439,10 @@ function initSegs() {
   $("btn-news-agente-ok").addEventListener("click", cerrarNewsAgente);
   $("btn-news-agente-x").addEventListener("click", cerrarNewsAgente);
   $("news-agente").addEventListener("click", function (e) { if (e.target === $("news-agente")) cerrarNewsAgente(); });
+  var cerrarNewsAvisos = function () { marcarNovedad("news-avisos"); cerrarOverlay("news-avisos"); };
+  $("btn-news-avisos-ok").addEventListener("click", cerrarNewsAvisos);
+  $("btn-news-avisos-x").addEventListener("click", cerrarNewsAvisos);
+  $("news-avisos").addEventListener("click", function (e) { if (e.target === $("news-avisos")) cerrarNewsAvisos(); });
   $("btn-agente").addEventListener("click", function () {
     marcarNovedad("agente-btn"); $("btn-agente").classList.remove("nuevo");   // ya lo usó → sale del amarillo
     var a = window.__agente; if (!a) return;
@@ -1464,6 +1478,7 @@ function initSegs() {
   $("val-picker").addEventListener("click", function (e) { if (e.target === $("val-picker")) cerrarOverlay("val-picker"); });
   // Ajustes (associate editable)
   $("btn-ajustes").addEventListener("click", function () {
+    marcarNovedad("ajustes-nv"); $("btn-ajustes").classList.remove("nuevo");   // ya la vio
     $("in-associate").value = ASSOCIATE; $("in-motor").value = MOTOR_URL;
     $("ajustes-msg").textContent = "";
     pintarEstadoAvisos();
