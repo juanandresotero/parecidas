@@ -1055,6 +1055,70 @@ function ackCampanas() {
   pintarBanner(); renderBadge();
 }
 
+// -------------------------- Avisos con la app cerrada (push, gratis vía Cloudflare) --------------------------
+// Llave PÚBLICA (no es secreto): identifica que el aviso viene de TU robotito.
+var VAPID_PUBLIC = "BAxadZ2Doxe6UjrVtNi5E29AlBvGacELm2Lxuv-CVwdVKem4ZnRAyn0ULCA2-GvhrUmADw_exSksOnbOsDolTWc";
+function urlB64ToUint8(base64) {
+  var pad = "=".repeat((4 - base64.length % 4) % 4);
+  var b64 = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+  var raw = atob(b64), arr = new Uint8Array(raw.length);
+  for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+// Las propiedades en campaña que el robotito tiene que vigilar (con la app cerrada).
+function slugsEnCampana() {
+  return cargarBusquedas()
+    .filter(function (b) { return b.campana && (b.campSlug || b.slugActual); })
+    .map(function (b) { return { slug: b.campSlug || b.slugActual, dir: b.direccion || b.nombre || "" }; });
+}
+function pushSoportado() {
+  return ("serviceWorker" in navigator) && ("PushManager" in window) && ("Notification" in window);
+}
+// Pide permiso (si corresponde), suscribe el celu y le manda al robotito qué vigilar.
+async function activarAvisos(pedirPermiso) {
+  if (!pushSoportado() || !MOTOR_URL) return false;
+  try {
+    var perm = Notification.permission;
+    if (perm === "default" && pedirPermiso) perm = await Notification.requestPermission();
+    if (perm !== "granted") return false;
+    var reg = await navigator.serviceWorker.ready;
+    var sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC)
+    });
+    await sincronizarPush(sub);
+    return true;
+  } catch (e) { return false; }
+}
+// Manda la suscripción + la lista de lo que hay que vigilar. Sin permiso concedido, no hace nada.
+async function sincronizarPush(sub) {
+  if (!pushSoportado() || !MOTOR_URL || Notification.permission !== "granted") return;
+  try {
+    if (!sub) {
+      var reg = await navigator.serviceWorker.ready;
+      sub = await reg.pushManager.getSubscription();
+    }
+    if (!sub) return;
+    var j = sub.toJSON();
+    await fetch(MOTOR_URL + (MOTOR_URL.indexOf("?") >= 0 ? "&" : "?") + "sub=1", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: sub.endpoint,
+        p256dh: j.keys && j.keys.p256dh, auth: j.keys && j.keys.auth,
+        campanas: slugsEnCampana()
+      })
+    });
+  } catch (e) {}
+}
+function pintarEstadoAvisos() {
+  var el = $("avisos-estado"); if (!el) return;
+  if (!pushSoportado()) { el.textContent = "Este celu/navegador no soporta avisos."; return; }
+  var p = Notification.permission;
+  el.textContent = p === "granted" ? "✓ Avisos activados (te llegan con la app cerrada)."
+    : p === "denied" ? "Los avisos están bloqueados en este celu. Activalos en los ajustes del navegador."
+    : "Los avisos están apagados.";
+}
+
 function abrirOverlay(id) { $(id).style.display = "flex"; }
 function cerrarOverlay(id) { $(id).style.display = "none"; }
 
@@ -1155,7 +1219,8 @@ function toggleCampanaCE() {
   else { b.campana = true; b.campSlug = slug; b.campEstado = ""; b.campAck = ""; }
   guardarBusquedas(arr);
   pintarCampanaCE(b); renderBadge();
-  if (b.campana) chequearCampanas();
+  if (b.campana) { chequearCampanas(); activarAvisos(true); }
+  else sincronizarPush();   // sacó la campaña: actualiza la lista que vigila el robotito
 }
 function pintarContactoCE(b) {
   var c = textoContacto(b);
@@ -1356,6 +1421,7 @@ function initSegs() {
   $("btn-ajustes").addEventListener("click", function () {
     $("in-associate").value = ASSOCIATE; $("in-motor").value = MOTOR_URL;
     $("ajustes-msg").textContent = "";
+    pintarEstadoAvisos();
     $("ajustes").style.display = "flex";
   });
   $("btn-ajustes-cerrar").addEventListener("click", function () { $("ajustes").style.display = "none"; });
@@ -1372,6 +1438,13 @@ function initSegs() {
   $("btn-associate-borrar").addEventListener("click", function () {
     $("in-associate").value = "";
     guardarAjustes();
+  });
+  $("btn-activar-avisos").addEventListener("click", function () {
+    $("avisos-estado").textContent = "Pidiendo permiso…";
+    activarAvisos(true).then(function (ok) {
+      pintarEstadoAvisos();
+      if (ok) $("avisos-estado").textContent = "✓ Avisos activados. Te llegan aunque no tengas la app abierta.";
+    });
   });
 
   // Búsquedas guardadas (menú nuevo)
@@ -1409,7 +1482,9 @@ function initSegs() {
     var dir = ($("gb-dir").value || "").trim();
     if (!nombre) nombre = dir;   // sin nombre pero con dirección → la dirección es el nombre
     if (!nombre) { $("gb-msg").textContent = "Poné un nombre o una dirección para reconocerla."; return; }
-    guardarBusquedaActual(nombre, tel, dir, $("gb-campana").checked);
+    var quiereCamp = $("gb-campana").checked;
+    guardarBusquedaActual(nombre, tel, dir, quiereCamp);
+    if (quiereCamp && window.__slugActual) activarAvisos(true);   // pide permiso para avisarle
     cerrarOverlay("guardar-busq");
     renderBadge();
     buscar();   // refresca: muestra enviadas 📤 y descartadas 🔴
@@ -1440,6 +1515,7 @@ function cargar() {
     $("estado").textContent = "";
     renderBadge();   // numerito de parecidas nuevas + avisos de campaña en el 🔖
     chequearCampanas();   // vigila las propiedades en campaña (aviso al abrir)
+    sincronizarPush();    // si ya dio permiso, actualiza la lista que vigila el robotito
     restaurarEstado();   // vuelve a mostrar lo último que estabas viendo
   }).catch(function () {
     $("estado").textContent = "No pude cargar las propiedades. Revisá la conexión y recargá.";

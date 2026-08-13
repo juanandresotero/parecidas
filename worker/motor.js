@@ -10,14 +10,43 @@
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Headers": "*",
 };
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
     const url = new URL(request.url);
+    // --- Avisos con la app cerrada (push) ---
+    // Guardar/actualizar la suscripción del celu + qué propiedades vigilar.
+    if (url.searchParams.get("sub")) {
+      if (!env || !env.SUBS) return json({ error: "push no configurado" }, 501);
+      try {
+        const body = await request.json();
+        if (!body || !body.endpoint) return json({ error: "falta endpoint" }, 400);
+        const id = await hashId(body.endpoint);
+        const prev = (await env.SUBS.get("sub:" + id, "json")) || {};
+        const rec = {
+          endpoint: body.endpoint, p256dh: body.p256dh, auth: body.auth,
+          campanas: Array.isArray(body.campanas) ? body.campanas : [],
+          seen: prev.seen || {}, pending: prev.pending || [], updated: Date.now(),
+        };
+        await env.SUBS.put("sub:" + id, JSON.stringify(rec));
+        return json({ ok: true }, 200);
+      } catch (e) { return json({ error: "sub: " + (e && e.message || e) }, 400); }
+    }
+    // El Service Worker pregunta "¿qué aviso muestro?" (el push llega vacío).
+    if (url.searchParams.get("pending")) {
+      if (!env || !env.SUBS) return json({ avisos: [] });
+      const ep = url.searchParams.get("ep");
+      if (!ep) return json({ avisos: [] });
+      const id = await hashId(ep);
+      const rec = await env.SUBS.get("sub:" + id, "json");
+      const avisos = (rec && rec.pending) || [];
+      if (rec && avisos.length) { rec.pending = []; await env.SUBS.put("sub:" + id, JSON.stringify(rec)); }
+      return json({ avisos });
+    }
     // Cotización del dólar del día (uy.dolarapi bloquea el pedido directo del navegador).
     if (url.searchParams.get("dolar")) {
       try {
@@ -55,7 +84,97 @@ export default {
       return json({ error: "No pude leer la página: " + (e && e.message || e) }, 502);
     }
   },
+
+  // Robotito que se despierta solo (cron): revisa las propiedades en campaña y, si
+  // alguna cambió de estado, deja el aviso pronto y le dispara la notificación al celu.
+  async scheduled(event, env, ctx) {
+    if (!env || !env.SUBS) return;
+    const list = await env.SUBS.list({ prefix: "sub:" });
+    for (const k of list.keys) {
+      const rec = await env.SUBS.get(k.name, "json");
+      if (!rec) continue;
+      let dirty = false;
+      const nuevos = [];
+      for (const c of (rec.campanas || [])) {
+        const est = await estadoRemax(c.slug);
+        if (est == null) continue;                 // error de red: no toco nada
+        const prev = rec.seen[c.slug];
+        if (prev !== est) { rec.seen[c.slug] = est; dirty = true; }
+        if (prev === undefined) continue;          // primera vez: solo registrar, no avisar
+        if (est !== prev && est !== "active") {
+          nuevos.push({
+            titulo: "📣 Propiedad en campaña",
+            cuerpo: (c.dir || "Una propiedad") + " → " + etqEstado(est),
+            url: "./", tag: "camp-" + c.slug,
+          });
+        }
+      }
+      if (nuevos.length) {
+        rec.pending = (rec.pending || []).concat(nuevos); dirty = true;
+      }
+      if (dirty) await env.SUBS.put(k.name, JSON.stringify(rec));
+      if (nuevos.length) {
+        const st = await enviarPush(rec, env);
+        if (st === 404 || st === 410) await env.SUBS.delete(k.name);   // suscripción vencida
+      }
+    }
+  },
 };
+
+// ---- Push: helpers ----
+function etqEstado(est) {
+  return est === "reserved" ? "Reservada"
+    : est === "negotiation" ? "En negociación"
+    : est === "baja" ? "Ya no está publicada"
+    : est === "finished" ? "Finalizada / vendida" : "Cambió de estado";
+}
+async function estadoRemax(slug) {
+  try {
+    const r = await fetch("https://api-ar.redremax.com/remaxweb-uy/api/listings/findBySlug/" +
+      encodeURIComponent(slug), { headers: { "User-Agent": "parecidas/1.0" } });
+    const d = await r.json();
+    const det = d && d.data ? (d.data.data || d.data) : null;
+    if (!det || !det.slug) return "baja";
+    return (det.listingStatus || {}).value || "active";
+  } catch (e) { return null; }
+}
+async function hashId(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).slice(0, 16)
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function b64urlBytes(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlObj(obj) { return b64urlBytes(new TextEncoder().encode(JSON.stringify(obj))); }
+// Firma VAPID (identifica que el aviso viene de TU robotito). Push SIN cuerpo (vacío):
+// solo necesita esta firma, no cifrado → mucho más simple.
+async function vapidAuth(endpoint, env) {
+  const aud = new URL(endpoint).origin;
+  const exp = Math.floor(Date.now() / 1000) + 12 * 3600;
+  const unsigned = b64urlObj({ typ: "JWT", alg: "ES256" }) + "." +
+    b64urlObj({ aud, exp, sub: "mailto:juanandresotero@gmail.com" });
+  const key = await crypto.subtle.importKey("jwk", JSON.parse(env.VAPID_PRIVATE_JWK),
+    { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key,
+    new TextEncoder().encode(unsigned));
+  const jwt = unsigned + "." + b64urlBytes(new Uint8Array(sig));
+  return "vapid t=" + jwt + ", k=" + env.VAPID_PUBLIC;
+}
+async function enviarPush(rec, env) {
+  try {
+    const res = await fetch(rec.endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": await vapidAuth(rec.endpoint, env),
+        "TTL": "86400", "Content-Length": "0", "Urgency": "normal",
+      },
+    });
+    return res.status;
+  } catch (e) { return 0; }
+}
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {

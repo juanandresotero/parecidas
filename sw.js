@@ -1,5 +1,8 @@
 // Service worker: deja andar la app sin conexión y sirve los datos frescos.
-var CACHE = "parecidas-v40";
+var CACHE = "parecidas-v41";
+// Robotito de Cloudflare (fijo y público). El aviso viene "vacío"; acá le pedimos al
+// robotito qué decir (así no hace falta cifrar el mensaje = mucho más simple).
+var MOTOR = "https://parecidas-motor.cualcaxsiempre.workers.dev";
 var SHELL = ["./", "index.html", "app.js", "barrios.js",
              "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
@@ -17,6 +20,42 @@ self.addEventListener("activate", function (e) {
                          .map(function (k) { return caches.delete(k); }));
   }));
   self.clients.claim();
+});
+
+// Aviso con la app cerrada: llega "vacío" y le preguntamos al robotito qué mostrar.
+self.addEventListener("push", function (e) {
+  e.waitUntil((async function () {
+    var titulo = "Parecidas", cuerpo = "Tenés novedades. Tocá para ver.", url = "./";
+    try {
+      var sub = await self.registration.pushManager.getSubscription();
+      if (sub) {
+        var r = await fetch(MOTOR + "?pending=1&ep=" + encodeURIComponent(sub.endpoint));
+        var d = await r.json();
+        if (d && d.avisos && d.avisos.length) {
+          for (var i = 0; i < d.avisos.length; i++) {
+            var a = d.avisos[i];
+            await self.registration.showNotification(a.titulo || titulo, {
+              body: a.cuerpo || cuerpo, icon: "icon-192.png", badge: "icon-192.png",
+              tag: a.tag || ("parecidas-" + i), data: { url: a.url || url }
+            });
+          }
+          return;
+        }
+      }
+    } catch (err) {}
+    await self.registration.showNotification(titulo, {
+      body: cuerpo, icon: "icon-192.png", badge: "icon-192.png", data: { url: url }
+    });
+  })());
+});
+self.addEventListener("notificationclick", function (e) {
+  e.notification.close();
+  var url = (e.notification.data && e.notification.data.url) || "./";
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true })
+    .then(function (cls) {
+      for (var i = 0; i < cls.length; i++) { if ("focus" in cls[i]) return cls[i].focus(); }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    }));
 });
 
 self.addEventListener("fetch", function (e) {

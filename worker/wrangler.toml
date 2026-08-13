@@ -2,5 +2,20 @@ name = "parecidas-motor"
 main = "motor.js"
 compatibility_date = "2024-11-01"
 
-# Motorcito de Parecidas (lee InfoCasas + MercadoLibre). Sin secretos, sin llaves.
+# Motorcito de Parecidas: lee InfoCasas/MercadoLibre + avisa (push) con la app cerrada.
 # Se publica gratis con:  npx wrangler deploy   (desde esta carpeta worker/)
+
+# El robotito se despierta solo cada 3 horas para revisar las propiedades en campaña.
+[triggers]
+crons = ["0 */3 * * *"]
+
+# Llave PÚBLICA de los avisos (no es secreto). La privada va como secreto:
+#   npx wrangler secret put VAPID_PRIVATE_JWK
+[vars]
+VAPID_PUBLIC = "BAxadZ2Doxe6UjrVtNi5E29AlBvGacELm2Lxuv-CVwdVKem4ZnRAyn0ULCA2-GvhrUmADw_exSksOnbOsDolTWc"
+
+# Base de datos chica (gratis) donde se guardan las suscripciones de los celus.
+# El id se completa al crearla:  npx wrangler kv namespace create SUBS
+[[kv_namespaces]]
+binding = "SUBS"
+id = "PENDIENTE_COMPLETAR_AL_CREAR_LA_KV"
