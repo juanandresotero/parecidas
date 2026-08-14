@@ -489,7 +489,36 @@ function parseInfoCasas(html) {
   if (!out.tipo) out.tipo = titulo;
   if (out.operacion === "sale" && /\balquiler\b|\balquila\b/i.test(titulo)) out.operacion = "rent";
   out.renta = RENTA_RE.test(titulo);
+  out.barrio = barrioInfoCasas(html);
   return out;
+}
+
+// Barrio de InfoCasas: sale del "camino de migas" (Inicio > Venta > Apartamentos >
+// Montevideo > POCITOS > ...). El barrio es el tramo que sigue a Montevideo/Canelones.
+// 1º el breadcrumb en JSON-LD (autoritativo); si no, los links del breadcrumb en el HTML.
+function barrioInfoCasas(html) {
+  var bloques = html.match(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (var i = 0; i < bloques.length; i++) {
+    var cuerpo = bloques[i].replace(/^[\s\S]*?>/, "").replace(/<\/script>\s*$/i, "");
+    var data; try { data = JSON.parse(cuerpo); } catch (e) { continue; }
+    var arr = Array.isArray(data) ? data : [data];
+    for (var j = 0; j < arr.length; j++) {
+      var d = arr[j];
+      if (!d || d["@type"] !== "BreadcrumbList" || !Array.isArray(d.itemListElement)) continue;
+      var items = d.itemListElement.map(function (e) {
+        return String((e && (e.name || (e.item && e.item.name))) || "").trim();
+      });
+      for (var k = 0; k < items.length; k++) {
+        // El barrio sigue a Montevideo/Canelones y NO es el último (el último = la propiedad).
+        if (/^(montevideo|canelones)$/i.test(items[k]) && k + 1 <= items.length - 2)
+          return items[k + 1];
+      }
+    }
+  }
+  // Respaldo: link del breadcrumb /(venta|alquiler)/<tipo>/(montevideo|canelones)/<barrio>.
+  var m = html.match(/\/(?:venta|alquiler)\/[^\/"']+\/(?:montevideo|canelones)\/([a-z0-9\-]+)/i);
+  if (m && !/^\d/.test(m[1])) return m[1].replace(/-/g, " ").trim();
+  return "";
 }
 
 // Recorre el árbol y devuelve el primer objeto que "parece" una propiedad.

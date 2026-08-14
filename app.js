@@ -347,6 +347,7 @@ function resumenCard(c) {
 
 var SEL = [];      // propiedades tildadas, EN ORDEN de tildado (para numerar 1,2,3)
 var CARDS = [];    // {slug, numEl, card} de lo dibujado, para renumerar en pantalla
+var RENDER_RES = []; // últimas parecidas dibujadas (para saber cuáles están ⭐ en campañas)
 function idxSel(slug) { for (var i = 0; i < SEL.length; i++) if (SEL[i].slug === slug) return i; return -1; }
 function renumerar() {
   CARDS.forEach(function (o) {
@@ -357,7 +358,7 @@ function renumerar() {
   actualizarMulticopy();
 }
 function actualizarMulticopy() {
-  var n = SEL.length;
+  var n = listaEnviar().length;
   $("multibar").style.display = n ? "flex" : "none";
   $("btn-multienviar").textContent = "📲 Enviar (" + n + ")";
   $("btn-multicopy").textContent = "📋 Copiar (" + n + ")";
@@ -369,15 +370,26 @@ function busquedaActiva() {
   var arr = cargarBusquedas();
   return arr.filter(function (x) { return x.id === window.__busquedaActiva; })[0] || null;
 }
+// ¿La búsqueda abierta es una campaña? (ahí conviven casilla ☑️ + valoración ⭐).
+function esCampActiva() { var b = busquedaActiva(); return !!(b && b.campana); }
+// Parecidas dibujadas marcadas como ⭐ "Para enviar" (para la campaña).
+function estrellasCards() {
+  var b = busquedaActiva(); if (!b) return [];
+  return RENDER_RES.filter(function (c) { return valDe(b, c.slug) === "a_enviar"; });
+}
+// Qué se manda al tocar Enviar/Copiar: lo tildado ☑️; si no hay nada tildado y es una
+// campaña, se mandan las ⭐ (pedido de Juan: las dos cosas, independientes).
+function listaEnviar() { return SEL.length ? SEL : (esCampActiva() ? estrellasCards() : SEL); }
 function textoSeleccionadas() {
-  return SEL.map(function (c, i) {
+  return listaEnviar().map(function (c, i) {
     return (i + 1) + ". " + resumen(c) + "\n" + linkAssoc(c.link);
   }).join("\n\n");
 }
 // Enviar por WhatsApp: si hay cliente con número → abre su chat; si no → WhatsApp
 // para elegir contacto. Y suma 1 en enviadas (marca las propiedades como enviadas).
 function enviarSeleccionadas() {
-  if (!SEL.length) return;
+  var lista = listaEnviar();
+  if (!lista.length) return;
   var texto = textoSeleccionadas();
   var b = busquedaActiva();
   var wa = b ? waLink(b.tel) : null;
@@ -389,7 +401,7 @@ function enviarSeleccionadas() {
     if (bb) {
       bb.enviadas = bb.enviadas || [];
       bb.estados = bb.estados || {};
-      SEL.forEach(function (c) {
+      lista.forEach(function (c) {
         if (bb.enviadas.indexOf(c.slug) < 0) bb.enviadas.push(c.slug);
         bb.estados[c.slug] = "enviada";           // queda marcada como enviada
       });
@@ -404,7 +416,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
   fuera = fuera || {}; yaNoEntra = yaNoEntra || {};
   var f = leerFiltros();
   var monBusq = (segVal("f-moneda") || "USD").toLowerCase();   // para avisar conversión de dólar
-  SEL = []; CARDS = []; actualizarMulticopy();
+  SEL = []; CARDS = []; RENDER_RES = []; actualizarMulticopy();
   $("resultados").style.display = "";
   // Si la búsqueda ya está guardada (cliente activo), no ofrezco "Guardar" de nuevo;
   // pero si cambiaste algo, muestro "Guardar cambios".
@@ -428,6 +440,8 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
   if (bAct) res = res.slice().sort(function (a, b) {
     return VAL_ESTADOS[valDe(bAct, a.slug)].orden - VAL_ESTADOS[valDe(bAct, b.slug)].orden;
   });
+  RENDER_RES = res;               // guardo lo dibujado (para saber las ⭐ de una campaña)
+  actualizarMulticopy();          // refresca el contador (por si hay ⭐ y nada tildado)
   res.forEach(function (c) {                       // ya viene cortado al tope
     var card = document.createElement("div");
     card.className = "card";
@@ -437,11 +451,15 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
     var col = document.createElement("div"); col.className = "card-col";
     var num = document.createElement("span"); num.className = "card-num"; num.style.display = "none";
     col.appendChild(num);
-    if (bAct) {
-      // Con cliente: la ⭐ "Para enviar" ES la selección (sin casillero).
+    // En una CAMPAÑA conviven las dos cosas (pedido de Juan): la valoración ⭐ para el
+    // seguimiento Y la casillita ☑️ para elegir y enviar rápido. Se manda lo tildado;
+    // si no tildaste nada, se mandan las ⭐ (ver listaEnviar()).
+    var esCamp = bAct && bAct.campana;
+    if (bAct && !esCamp) {
+      // Cliente normal (no campaña): la ⭐ "Para enviar" ES la selección (sin casillero).
       if (valDe(bAct, c.slug) === "a_enviar") SEL.push(c);
     } else {
-      // Sin cliente: casillero para seleccionar y copiar.
+      // Sin cliente, o campaña: casillero para seleccionar y copiar/enviar.
       var chk = document.createElement("input");
       chk.type = "checkbox"; chk.className = "card-check";
       chk.setAttribute("aria-label", "Seleccionar");
@@ -509,8 +527,9 @@ function copiarTexto(texto, btn, vuelve) {
   else prompt("Copiá:", texto);
 }
 function copiarSeleccionadas() {
-  if (!SEL.length) return;
-  copiarTexto(textoSeleccionadas(), $("btn-multicopy"), "📋 Copiar (" + SEL.length + ")");
+  var n = listaEnviar().length;
+  if (!n) return;
+  copiarTexto(textoSeleccionadas(), $("btn-multicopy"), "📋 Copiar (" + n + ")");
 }
 
 // -------------------------- Traer datos de un link --------------------------
@@ -1340,7 +1359,7 @@ function limpiarTodo() {
   setSeg("f-coch", ""); setSeg("f-estado", ""); setSegMulti("f-renta", []); toggleGastos();
   window.__base = null; window.__slugActual = null; window.__busquedaActiva = null;
   window.__ultimaVista = null;
-  SEL = []; CARDS = []; actualizarMulticopy();
+  SEL = []; CARDS = []; RENDER_RES = []; actualizarMulticopy();
   $("cards").innerHTML = ""; $("resultados").style.display = "none"; $("hint").innerHTML = "";
   mostrarAgente(null);
 }
