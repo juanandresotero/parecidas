@@ -972,8 +972,14 @@ function renderBusquedas() {
       info.appendChild(dirEl);
     }
 
-    // Fila de chips: campaña · recordatorio · sin evaluar · notas.
+    // Fila de chips: nuevas · campaña · recordatorio · sin evaluar · notas.
     var row = document.createElement("div"); row.className = "bi-row";
+    var nuev = nuevasDe(b);                          // parecidas nuevas desde la última vez
+    if (nuev > 0) {
+      var nb = document.createElement("span"); nb.className = "bi-chip nuevas";
+      nb.textContent = "🆕 " + nuev + " nueva" + (nuev === 1 ? "" : "s");
+      row.appendChild(nb);
+    }
     if (b.campana) {
       var alerta = campEnAlerta(b);
       var cp = document.createElement("span");
