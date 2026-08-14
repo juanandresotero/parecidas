@@ -23,6 +23,6 @@ jobs:
         run: |
           git config user.name "parecidas-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add listings.json
+          git add listings.json primera_vez.json
           git commit -m "datos: actualizar propiedades ($(date -u +%F))" || echo "sin cambios"
           git push

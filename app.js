@@ -465,12 +465,22 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
     // Aviso del dólar SOLO si esta propiedad está en otra moneda que la buscada (hubo conversión).
     var convChip = (USD_RATE && c.moneda && c.moneda.toLowerCase() !== monBusq)
       ? '<span class="chip conv">💱 al dólar ' + esc(String(USD_RATE).replace(".", ",")) + '</span>' : "";
+    // Cartel "subida hace N días" (solo si el robot registró cuándo apareció y es reciente).
+    var diasSubida = "";
+    if (c.visto_desde) {
+      var _dv = diasDesde(c.visto_desde);
+      if (_dv >= 0 && _dv <= 30) {
+        var _t = _dv === 0 ? "Subida hoy" : (_dv === 1 ? "Subida ayer" : "Subida hace " + _dv + " días");
+        diasSubida = '<span class="subida-tag">🆕 ' + _t + '</span>';
+      }
+    }
     var link = document.createElement("a");
     link.className = "card-link"; link.href = c.link; link.target = "_blank"; link.rel = "noopener";
     link.style.cssText = "display:flex;gap:11px;flex:1;min-width:0;align-items:center";
     link.innerHTML = foto +
       '<div class="info">' +
         '<div class="titulo-card">' + esc(resumenCard(c)) + '</div>' +
+        diasSubida +
         (fuera[c.slug] ? '<span class="fuera-tag">⚠ fuera de criterios</span>' : "") +
         (yaNoEntra[c.slug] ? '<span class="fuera-tag">🚫 ya no entra en el filtro</span>' : "") +
         '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + convChip + '</div>' +
@@ -1555,7 +1565,7 @@ function initSegs() {
   // Ajustes (associate editable)
   $("btn-ajustes").addEventListener("click", function () {
     marcarNovedad("ajustes-nv"); $("btn-ajustes").classList.remove("nuevo");   // ya la vio
-    $("in-associate").value = ASSOCIATE; $("in-motor").value = MOTOR_URL;
+    $("in-associate").value = ASSOCIATE;
     $("ajustes-msg").textContent = "";
     pintarEstadoAvisos();
     $("ajustes").style.display = "flex";
@@ -1566,8 +1576,6 @@ function initSegs() {
     var v = ($("in-associate").value || "").trim();
     ASSOCIATE = v;                                  // vacío = links sin contacto
     try { localStorage.setItem("parecidas_associate", v); } catch (e) {}
-    MOTOR_URL = ($("in-motor").value || "").trim().replace(/\/+$/, "");
-    try { localStorage.setItem("parecidas_motor", MOTOR_URL); } catch (e) {}
     $("ajustes-msg").textContent = v ? "✓ Guardado" : "✓ Guardado — los links salen sin contacto";
   };
   $("btn-associate-guardar").addEventListener("click", guardarAjustes);

@@ -13,6 +13,7 @@ Uso:  python build_listings.py            (todo Mvd+Canelones, ~2500, tarda)
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import re
@@ -388,6 +389,40 @@ def main():
             print(f"  detalle {i}/{len(mvd_can)} (fallidos {fallidos})",
                   file=sys.stderr)
         time.sleep(0.25)   # amable con la API
+    # "Subida hace N días": RE/MAX NO publica la fecha de alta, así que el robot registra
+    # la PRIMERA vez que ve cada propiedad en `primera_vez.json`. Es preciso DE ACÁ EN
+    # ADELANTE: en la 1ª corrida todo queda "preexistente" (visto_desde=None, sin cartel);
+    # las que aparezcan en corridas siguientes llevan la fecha real. (Juan 2026-08-14)
+    _hoy = datetime.date.today().isoformat()
+    try:
+        with open("primera_vez.json", encoding="utf-8") as _f:
+            _prev = json.load(_f)
+    except FileNotFoundError:
+        _prev = None                     # no existe = primera corrida (baseline)
+    except Exception:
+        _prev = {}
+    _primera = _prev is None
+    _prev = _prev or {}
+    _mapa = {}
+    for _fila in filas:
+        _slug = _fila.get("slug")
+        if not _slug:
+            _fila["visto_desde"] = None
+            continue
+        if _slug in _prev:
+            _fecha = _prev[_slug]        # ya la conocíamos → su fecha original
+        elif _primera:
+            _fecha = None                # preexistente: no sabemos cuándo se subió
+        else:
+            _fecha = _hoy                # apareció NUEVA de verdad
+        _mapa[_slug] = _fecha
+        _fila["visto_desde"] = _fecha
+    try:
+        with open("primera_vez.json", "w", encoding="utf-8") as _f:
+            json.dump(_mapa, _f, ensure_ascii=False)
+    except Exception:
+        pass
+
     out = {"listings": filas, "usd_rate": rate, "total": len(filas)}
     with open("listings.json", "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False)
