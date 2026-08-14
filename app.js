@@ -119,6 +119,8 @@ function leerFiltros() {
     grupo: grupo,
     dmin: stepVal("f-dmin"),
     dmax: stepVal("f-dmax"),
+    bmin: stepVal("f-bmin"),   // baños (total = baño + toilet)
+    bmax: stepVal("f-bmax"),
     precioMinUsd: precioAUsd(soloNum($("f-precio-min").value)),
     precioMaxUsd: precioAUsd(soloNum($("f-precio-max").value)),
     cubMin: soloNum($("f-cub-min").value),
@@ -157,6 +159,8 @@ function pasa(c, f, slugActual) {
   if (f.grupo && f.grupo.indexOf(norm(c.barrio)) < 0) return false;
   if (f.dmin != null && (c.dorm == null || c.dorm < f.dmin)) return false;
   if (f.dmax != null && (c.dorm == null || c.dorm > f.dmax)) return false;
+  if (f.bmin != null && (c.banos == null || c.banos < f.bmin)) return false;
+  if (f.bmax != null && (c.banos == null || c.banos > f.bmax)) return false;
   if (f.precioMinUsd != null && (c.precio_usd == null || c.precio_usd < f.precioMinUsd)) return false;
   if (f.precioMaxUsd != null && (c.precio_usd == null || c.precio_usd > f.precioMaxUsd)) return false;
   if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
@@ -520,6 +524,8 @@ function rellenar(c) {
   $("f-barrio").value = ""; renderChips(); pintarGrupo();
   setStep("f-dmin", c.dorm != null ? c.dorm : null);
   setStep("f-dmax", c.dorm != null ? c.dorm : null);
+  setStep("f-bmin", c.banos != null ? c.banos : null);
+  setStep("f-bmax", c.banos != null ? c.banos : null);
   setSeg("f-coch", c.cochera === true ? "si" : (c.cochera === false ? "no" : ""));
   setSeg("f-estado", c.estado || "");
   // Regla de Juan: si el link tiene renta → parecidas con renta; si no → sin renta.
@@ -783,6 +789,7 @@ function snapshotForm() {
     gastosMin: $("f-gastos-min").value, gastosMax: $("f-gastos-max").value,
     barrios: SELBARRIOS.slice(),
     dmin: stepVal("f-dmin"), dmax: stepVal("f-dmax"),
+    bmin: stepVal("f-bmin"), bmax: stepVal("f-bmax"),
     coch: segVal("f-coch"), estado: segVal("f-estado"), renta: segVal("f-renta"),
     base: window.__base || null, slugActual: window.__slugActual || null
   };
@@ -800,6 +807,8 @@ function restoreForm(s) {
   SELBARRIOS = (s.barrios || []).slice(); $("f-barrio").value = ""; renderChips(); pintarGrupo();
   setStep("f-dmin", s.dmin != null ? s.dmin : null);
   setStep("f-dmax", s.dmax != null ? s.dmax : null);
+  setStep("f-bmin", s.bmin != null ? s.bmin : null);
+  setStep("f-bmax", s.bmax != null ? s.bmax : null);
   setSeg("f-coch", s.coch || ""); setSeg("f-estado", s.estado || ""); setSeg("f-renta", s.renta || "");
   window.__base = s.base || null; window.__slugActual = s.slugActual || null;
 }
@@ -1239,6 +1248,7 @@ function limpiarTodo() {
     .forEach(function (id) { $(id).value = ""; });
   SELBARRIOS = []; $("f-barrio").value = ""; renderChips(); pintarGrupo();
   setStep("f-dmin", null); setStep("f-dmax", null);
+  setStep("f-bmin", null); setStep("f-bmax", null);
   setSeg("f-coch", ""); setSeg("f-estado", ""); setSeg("f-renta", ""); toggleGastos();
   window.__base = null; window.__slugActual = null; window.__busquedaActiva = null;
   window.__ultimaVista = null;
@@ -1421,7 +1431,7 @@ function initSegs() {
     var b = e.target;
     b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") === "true" ? "false" : "true");
   });
-  ["f-dmin", "f-dmax"].forEach(function (id) {
+  ["f-dmin", "f-dmax", "f-bmin", "f-bmax"].forEach(function (id) {
     $(id).addEventListener("click", function (e) {
       var d = e.target.getAttribute("data-d");
       if (!d) return;

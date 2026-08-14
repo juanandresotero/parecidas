@@ -201,6 +201,8 @@ function pasa(c, f, slugActual) {
   if (f.grupo && f.grupo.indexOf(norm(c.barrio)) < 0) return false;
   if (f.dmin != null && (c.dorm == null || c.dorm < f.dmin)) return false;
   if (f.dmax != null && (c.dorm == null || c.dorm > f.dmax)) return false;
+  if (f.bmin != null && (c.banos == null || c.banos < f.bmin)) return false;
+  if (f.bmax != null && (c.banos == null || c.banos > f.bmax)) return false;
   if (f.precioMinUsd != null && (c.precio_usd == null || c.precio_usd < f.precioMinUsd)) return false;
   if (f.precioMaxUsd != null && (c.precio_usd == null || c.precio_usd > f.precioMaxUsd)) return false;
   if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;

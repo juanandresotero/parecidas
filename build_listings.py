@@ -197,6 +197,12 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     exp_cur = (exp_cur_raw.get("value") if isinstance(exp_cur_raw, dict)
                else (exp_cur_raw or ""))
     gastos = exp_price if (exp_price and exp_price > 0) else None
+    # Total de baños = baños + toilet (el toilet cuenta como un baño más). El toilet
+    # viene del detalle; sin detalle, usamos solo bathrooms (Juan 2026-08-14).
+    _banos = it.get("bathrooms")
+    _toilets = det.get("toilets") if det else None
+    banos_tot = (((_banos or 0) + (_toilets or 0))
+                 if (_banos is not None or _toilets is not None) else None)
     return {
         "id": it.get("id"),
         "slug": slug,
@@ -209,7 +215,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "precio_usd": _precio_usd(it.get("price"),
                                   (it.get("currency") or {}).get("value"), rate),
         "dorm": it.get("bedrooms"),
-        "banos": it.get("bathrooms"),
+        "banos": banos_tot,   # baños + toilet (total)
         "m2_homog": _homog(cubiertos, totales, terreno, es_apto, semi, descub),
         "m2_padron": round(terreno) if terreno else 0,   # el terreno del padrón
         "barrio": _barrio(it.get("geoLabel")),
