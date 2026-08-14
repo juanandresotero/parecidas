@@ -210,13 +210,13 @@ _MULTI_EXCLUIR = [
     # propiedad horizontal (descarta siempre)
     "regimen de propiedad horizontal", "bajo regimen de propiedad horizontal",
     "bajo propiedad horizontal", "en propiedad horizontal",
-    "regimen de p.h.", "regimen ph",
+    "regimen de p.h.", "regimen ph", "regimen de ph", "propiedad horizontal",
 ]
 
 _MULTI_POSITIVAS = [
-    # "X principal" (implica que existe otra)
-    "casa principal", "casa princial", "vivienda principal", "unidad principal",
-    "apartamento principal", "apto principal", "depto principal", "propiedad principal",
+    # OJO: "X principal" (casa/vivienda principal) NO va acá — en RE/MAX se usa para
+    # describir LA construcción principal, no una segunda vivienda (80% falsos medidos).
+    # Se movió a _MULTI_COMBO_A: solo cuenta si además hay "al fondo/segunda/trasera".
     # "la otra X" / "el otro X"
     "la otra casa", "la otra casita", "la otra vivienda", "la otra unidad",
     "la otra propiedad", "la otra finca", "el otro apartamento", "el otro apto",
@@ -241,9 +241,9 @@ _MULTI_POSITIVAS = [
     "bifamiliar", "trifamiliar", "doble vivienda", "triple vivienda", "complejo de casas",
     "unidades independientes", "viviendas independientes", "casas independientes",
     "totalmente independientes",
-    # idiomáticos uruguayos
+    # idiomáticos uruguayos ("frente y fondo" SOLO = ruido: jardín/patio/terreno al
+    # frente y fondo. Medido en RE/MAX: ~90% falsos. Queda el inequívoco "casa al ...").
     "casa al frente y al fondo", "casa adelante y atras", "casa adelante y casa atras",
-    "frente y fondo",
     # rentas múltiples (números ya en cifra)
     "2 rentas", "3 rentas", "4 rentas",
     "ideal 2 rentas", "ideal 3 rentas", "ideal 4 rentas",
@@ -255,7 +255,9 @@ _MULTI_POSITIVAS = [
 ]
 
 _MULTI_NUM_OK = {"casas", "casitas"}   # patrón "N <sustantivo>" solo con casas/casitas
-_MULTI_COMBO_A = ["casa al frente", "casa adelante", "casa de adelante", "vivienda al frente"]
+_MULTI_COMBO_A = ["casa al frente", "casa adelante", "casa de adelante", "vivienda al frente",
+                  "casa principal", "casa princial", "vivienda principal", "propiedad principal",
+                  "unidad principal"]
 _MULTI_COMBO_B = ["apto al fondo", "apartamento al fondo", "casa al fondo", "casita al fondo",
                   "monoambiente al fondo", "unidad al fondo", "segunda unidad", "unidad trasera",
                   "segunda casa", "apartamento trasero", "casa trasera"]
