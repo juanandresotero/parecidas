@@ -122,11 +122,28 @@ export default {
       const nuevos = [];
       // (1) Campaña: estado de la propiedad en RE/MAX.
       for (const c of (rec.campanas || [])) {
-        const est = await estadoRemax(c.slug);
-        if (est == null) continue;                 // error de red: no toco nada
+        const info = await estadoRemax(c.slug);
+        if (info == null) continue;                // error de red: no toco nada
+        const est = info.estado;
         const prev = rec.seen[c.slug];
         if (prev !== est) { rec.seen[c.slug] = est; dirty = true; }
-        if (prev === undefined) continue;          // primera vez: solo registrar, no avisar
+        // Bajó de precio (aunque la propiedad siga activa). Primera vez: solo registra.
+        if (!rec.precios) rec.precios = {};
+        const pp = rec.precios[c.slug];
+        if (info.precio != null) {
+          if (pp && pp.moneda === info.moneda && info.precio < pp.precio) {
+            nuevos.push({
+              titulo: "💸 Bajó de precio",
+              cuerpo: (c.dir || "Una propiedad") + ": de " + fmtPrecio(pp.precio, info.moneda) +
+                      " a " + fmtPrecio(info.precio, info.moneda),
+              url: "./", tag: "precio-" + c.slug,
+            });
+          }
+          if (!pp || pp.precio !== info.precio || pp.moneda !== info.moneda) {
+            rec.precios[c.slug] = { precio: info.precio, moneda: info.moneda }; dirty = true;
+          }
+        }
+        if (prev === undefined) continue;          // primera vez: solo registrar el estado
         if (est !== prev && est !== "active") {
           nuevos.push({
             titulo: "📣 Propiedad en campaña",
@@ -238,9 +255,17 @@ async function estadoRemax(slug) {
       encodeURIComponent(slug), { headers: { "User-Agent": "parecidas/1.0" } });
     const d = await r.json();
     const det = d && d.data ? (d.data.data || d.data) : null;
-    if (!det || !det.slug) return "baja";
-    return (det.listingStatus || {}).value || "active";
+    if (!det || !det.slug) return { estado: "baja", precio: null, moneda: "" };
+    return {
+      estado: (det.listingStatus || {}).value || "active",
+      precio: typeof det.price === "number" ? det.price : null,
+      moneda: (det.currency || {}).value || "",
+    };
   } catch (e) { return null; }
+}
+function fmtPrecio(n, moneda) {
+  const s = String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return ((moneda || "").toUpperCase() === "UYU" ? "$U " : "USD ") + s;
 }
 async function hashId(s) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));

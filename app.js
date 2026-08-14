@@ -997,6 +997,11 @@ function renderBusquedas() {
       cp.textContent = alerta ? ("⚠️ " + etqCampana(b.campEstado)) : "📣 En campaña";
       row.appendChild(cp);
     }
+    if (campBajaNueva(b)) {
+      var bpc = document.createElement("span"); bpc.className = "bi-chip baja";
+      bpc.textContent = "💸 Bajó a " + fmtPrecioApp(b.campBajaPrecio.a, b.campBajaPrecio.moneda);
+      row.appendChild(bpc);
+    }
     if (b.recordarAt) {                              // reloj cortito con lo que falta
       var d = diasDesde(b.recordarAt);
       var rc = document.createElement("span");
@@ -1044,7 +1049,7 @@ function renderBusquedas() {
 
 // El numerito rojo en el 🔖 de arriba = total de nuevas en todas las búsquedas.
 function renderBadge() {
-  var nuevas = totalNuevas(), alertas = campAlertasNuevas().length, el = $("busq-badge");
+  var nuevas = totalNuevas(), alertas = campAlertasNuevas().length + campBajasNuevas().length, el = $("busq-badge");
   // Dentro de la app: el ⚠️ MANDA. Si una propiedad en campaña cambió (reservada /
   // en negociación / ya no publicada), el dibujito es ⚠️ (tapa el número). Si no hay
   // alerta de campaña pero sí parecidas nuevas, va el número. Si no hay nada, se esconde.
@@ -1099,6 +1104,13 @@ function campAlertas() { return cargarBusquedas().filter(campEnAlerta); }
 function campAlertasNuevas() {
   return campAlertas().filter(function (b) { return b.campEstado !== b.campAck; });
 }
+// Bajó de precio: aviso pendiente si el último "a" no fue reconocido con "Entendido".
+function campBajaNueva(b) { return !!(b.campana && b.campBajaPrecio && b.campBajaPrecio.a !== b.campBajaAck); }
+function campBajasNuevas() { return cargarBusquedas().filter(campBajaNueva); }
+function fmtPrecioApp(n, moneda) {
+  var s = new Intl.NumberFormat("es-UY").format(Math.round(n));
+  return ((moneda || "").toUpperCase() === "UYU" ? "$U " : "USD ") + s;
+}
 // Chequea en vivo el estado de cada propiedad en campaña; al terminar, repinta los avisos.
 function chequearCampanas() {
   var arr = cargarBusquedas();
@@ -1114,15 +1126,29 @@ function chequearCampanas() {
   pend.forEach(function (b) {
     var slug = b.campSlug || b.slugActual;
     fetch(DET_EP + slug).then(function (r) { return r.json(); })
-      .then(function (d) { b.campEstado = estadoCampanaDe(d); fin(); })
-      .catch(function () { fin(); });   // error de red: dejo el estado conocido como estaba
+      .then(function (d) {
+        b.campEstado = estadoCampanaDe(d);
+        // Bajó de precio (aunque siga activa). Primera vez: solo registra, no avisa.
+        var det = d && d.data ? (d.data.data || d.data) : null;
+        var pr = det && typeof det.price === "number" ? det.price : null;
+        var mo = det && det.currency ? (det.currency.value || "") : "";
+        if (pr != null) {
+          if (b.campPrecio != null && b.campMoneda === mo && pr < b.campPrecio) {
+            b.campBajaPrecio = { de: b.campPrecio, a: pr, moneda: mo };
+          }
+          b.campPrecio = pr; b.campMoneda = mo;
+        }
+        fin();
+      })
+      .catch(function () { fin(); });   // error de red: dejo lo conocido como estaba
   });
 }
 // Cartel rojo arriba (solo con avisos que todavía no reconoció).
 function pintarBanner() {
   var al = campAlertasNuevas();
+  var baj = campBajasNuevas();
   var box = $("camp-banner");
-  if (!al.length) { box.style.display = "none"; return; }
+  if (!al.length && !baj.length) { box.style.display = "none"; return; }
   var lista = $("cb-lista"); lista.innerHTML = "";
   al.forEach(function (b) {
     var d = document.createElement("div"); d.className = "cb-item";
@@ -1130,12 +1156,21 @@ function pintarBanner() {
     d.innerHTML = "📣 " + esc(quien) + " → <b>" + esc(etqCampana(b.campEstado)) + "</b>";
     lista.appendChild(d);
   });
+  baj.forEach(function (b) {
+    var d = document.createElement("div"); d.className = "cb-item";
+    var quien = b.direccion || b.nombre || "Una propiedad";
+    d.innerHTML = "💸 " + esc(quien) + " → <b>bajó a " + esc(fmtPrecioApp(b.campBajaPrecio.a, b.campBajaPrecio.moneda)) + "</b>";
+    lista.appendChild(d);
+  });
   box.style.display = "";
 }
 // "Entendido": deja de insistir con ESTE estado (pero el ⚠️ sigue en el menú 🔖).
 function ackCampanas() {
   var arr = cargarBusquedas();
-  arr.forEach(function (b) { if (campEnAlerta(b)) b.campAck = b.campEstado; });
+  arr.forEach(function (b) {
+    if (campEnAlerta(b)) b.campAck = b.campEstado;
+    if (b.campBajaPrecio) b.campBajaAck = b.campBajaPrecio.a;   // baja reconocida
+  });
   guardarBusquedas(arr);
   pintarBanner(); renderBadge();
 }
