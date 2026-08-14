@@ -1,5 +1,5 @@
 // Service worker: deja andar la app sin conexión y sirve los datos frescos.
-var CACHE = "parecidas-v48";
+var CACHE = "parecidas-v49";
 // Robotito de Cloudflare (fijo y público). El aviso viene "vacío"; acá le pedimos al
 // robotito qué decir (así no hace falta cifrar el mensaje = mucho más simple).
 var MOTOR = "https://parecidas-motor.cualcaxsiempre.workers.dev";
@@ -51,11 +51,18 @@ self.addEventListener("push", function (e) {
 self.addEventListener("notificationclick", function (e) {
   e.notification.close();
   var url = (e.notification.data && e.notification.data.url) || "./";
-  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true })
-    .then(function (cls) {
-      for (var i = 0; i < cls.length; i++) { if ("focus" in cls[i]) return cls[i].focus(); }
-      if (self.clients.openWindow) return self.clients.openWindow(url);
-    }));
+  e.waitUntil((async function () {
+    // Cerrar TODAS las notificaciones y limpiar el "1" del ícono (Android/iOS lo dejan
+    // pegado si queda una notificación sin descartar). Best-effort.
+    try {
+      var ns = await self.registration.getNotifications();
+      ns.forEach(function (n) { n.close(); });
+      if (self.navigator && self.navigator.clearAppBadge) await self.navigator.clearAppBadge();
+    } catch (err) {}
+    var cls = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (var i = 0; i < cls.length; i++) { if ("focus" in cls[i]) return cls[i].focus(); }
+    if (self.clients.openWindow) return self.clients.openWindow(url);
+  })());
 });
 
 self.addEventListener("fetch", function (e) {

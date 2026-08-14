@@ -181,6 +181,21 @@
   .bi-nuevas{background:var(--red);color:#fff;border-radius:999px;padding:2px 8px;
     font-size:11px;font-weight:800;white-space:nowrap;flex-shrink:0}
   .bi-clic{cursor:pointer}
+  .bi-avatar{width:48px;height:48px;border-radius:11px;flex:none;background-size:cover;
+    background-position:center;background-color:var(--surface)}
+  .bi-avatar.sinfoto{display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--surface)}
+  .bi-dir{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bi-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px}
+  .bi-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;
+    padding:2px 8px;border-radius:999px;line-height:1.6}
+  .bi-chip.camp{background:var(--ok-bg);color:var(--brand)}
+  .bi-chip.alerta{background:var(--red);color:#fff}
+  .bi-chip.reloj{background:#fff3d6;color:#b45309}
+  .bi-chip.reloj.tarde{background:var(--red);color:#fff}
+  .bi-chip.pend{background:var(--surface);color:var(--muted)}
+  .bi-dot{width:8px;height:8px;border-radius:50%;background:#9aa7ba;display:inline-block}
+  .bi-vernotas{cursor:pointer;font-size:15px;line-height:1;padding:0 2px}
+  .bi-acc{display:flex;flex-direction:column;gap:7px;flex:none}
   .bi-contacto{font-size:11.5px;color:var(--muted);margin-top:1px}
   .bi-contacto.tarde{color:#b45309;font-weight:700}
   .bi-nota{font-size:11.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line);
@@ -228,7 +243,7 @@
     <button class="marca" id="marca" title="Tocá para empezar de cero">
       <span class="logo">🏠</span><span class="marca-txt">Parecidas</span>
     </button>
-    <button class="ajustes-btn busq-btn" id="btn-busquedas" title="Búsquedas guardadas" aria-label="Búsquedas guardadas">🔖<span class="busq-badge" id="busq-badge" style="display:none">0</span></button>
+    <button class="ajustes-btn busq-btn" id="btn-busquedas" title="Búsquedas guardadas" aria-label="Búsquedas guardadas">🗃️👥<span class="busq-badge" id="busq-badge" style="display:none">0</span></button>
     <button class="ajustes-btn" id="btn-ajustes" title="Ajustes" aria-label="Ajustes">⚙️</button>
   </div>
 

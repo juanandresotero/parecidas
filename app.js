@@ -917,6 +917,15 @@ function borrarBusqueda(id) {
   sincronizarPush();   // el robotito deja de vigilar la que borraste
 }
 
+// La foto de la propiedad en campaña (para el avatar de la ficha): la busca en DATA por
+// slug. Si ya no está publicada (reservada/baja → sale del listado), devuelve null.
+function fotoCampana(b) {
+  var slug = b && (b.campSlug || b.slugActual);
+  if (!slug || typeof DATA === "undefined" || !DATA) return null;
+  var p = DATA.filter(function (c) { return c.slug === slug; })[0];
+  return (p && p.foto) ? p.foto : null;
+}
+
 function renderBusquedas() {
   var cont = $("busq-lista");
   var arr = cargarBusquedas();
@@ -926,76 +935,85 @@ function renderBusquedas() {
   }
   cont.innerHTML = "";
   arr.forEach(function (b) {
-    var nuevas = nuevasDe(b);
     var item = document.createElement("div"); item.className = "busq-item";
-    var info = document.createElement("div"); info.className = "bi-info";
-    var nom = document.createElement("div"); nom.className = "bi-nom bi-clic";
-    nom.textContent = b.nombre || "Sin nombre";
-    nom.title = "Notas del cliente";
-    nom.onclick = function () { abrirClienteEditor(b.id); };
+
+    // Avatar SOLO si está en campaña: la foto de la propiedad que publicita.
+    if (b.campana) {
+      var foto = fotoCampana(b);
+      var av = document.createElement("div"); av.className = "bi-avatar";
+      if (foto) { av.style.backgroundImage = "url('" + foto + "')"; }
+      else { av.className += " sinfoto"; av.textContent = "📣"; }
+      item.appendChild(av);
+    }
+
+    // Info (tocar en cualquier lado de acá = abre la búsqueda).
+    var info = document.createElement("div"); info.className = "bi-info bi-clic";
+    info.title = "Abrir búsqueda";
+    info.onclick = function () { abrirBusqueda(b.id); };
+
+    // Título: el nombre del cliente; si no hay, la dirección.
+    var tieneNombre = !!(b.nombre && b.nombre.trim());
+    var nom = document.createElement("div"); nom.className = "bi-nom";
+    nom.textContent = tieneNombre ? b.nombre : (b.direccion || "Sin nombre");
     info.appendChild(nom);
-    if (b.direccion) {
-      var dirEl = document.createElement("div"); dirEl.className = "bi-sub";
+
+    // Dirección debajo — SOLO si hay nombre (si no, ya es el título; no repetir).
+    if (tieneNombre && b.direccion) {
+      var dirEl = document.createElement("div"); dirEl.className = "bi-dir";
       dirEl.textContent = "📍 " + b.direccion;
       info.appendChild(dirEl);
     }
-    var sub = document.createElement("div"); sub.className = "bi-sub";
-    var wa = waLink(b.tel);
-    if (b.tel && wa) {
-      var a = document.createElement("a");
-      a.className = "bi-tel"; a.href = wa; a.target = "_blank"; a.rel = "noopener";
-      a.textContent = "💬 " + b.tel;
-      sub.appendChild(a);
-    } else { sub.textContent = matchesDe(b).length + " parecidas"; }
-    var env = (b.enviadas || []).length;
-    if (env) sub.appendChild(document.createTextNode("  ·  📤 " + env + " enviada" + (env === 1 ? "" : "s")));
-    info.appendChild(sub);
-    var c = textoContacto(b);
-    var cont2 = document.createElement("div");
-    cont2.className = "bi-contacto";
-    cont2.textContent = "💬 Últ. contacto: " + c.txt;
-    info.appendChild(cont2);
-    if (b.recordarAt) {                              // aviso según el temporizador
-      var r = recordatorioTexto(b);
-      var rec = document.createElement("div");
-      rec.className = "bi-contacto" + (r.due ? " tarde" : "");
-      rec.textContent = r.txt;
-      info.appendChild(rec);
-    }
-    if (b.notas) {
-      var np = document.createElement("div"); np.className = "bi-nota";
-      np.textContent = "📝 " + b.notas;
-      info.appendChild(np);
-    }
+
+    // Fila de chips: campaña · recordatorio · sin evaluar · notas.
+    var row = document.createElement("div"); row.className = "bi-row";
     if (b.campana) {
       var alerta = campEnAlerta(b);
-      var cp = document.createElement("div");
-      cp.className = "bi-camp " + (alerta ? "alerta" : "ok");
-      cp.textContent = alerta ? ("⚠️ En campaña — " + etqCampana(b.campEstado))
-                              : "📣 En campaña — publicada";
-      info.appendChild(cp);
+      var cp = document.createElement("span");
+      cp.className = "bi-chip " + (alerta ? "alerta" : "camp");
+      cp.textContent = alerta ? ("⚠️ " + etqCampana(b.campEstado)) : "📣 En campaña";
+      row.appendChild(cp);
     }
+    if (b.recordarAt) {                              // reloj cortito con lo que falta
+      var d = diasDesde(b.recordarAt);
+      var rc = document.createElement("span");
+      rc.className = "bi-chip reloj" + (d >= 0 ? " tarde" : "");
+      rc.textContent = d >= 0 ? "⏰ vencido" : ("⏰ " + (-d) + (d === -1 ? " día" : " días"));
+      row.appendChild(rc);
+    }
+    // Sin evaluar (el círculo gris): parecidas que cumplen el filtro y siguen sin valorar.
+    var sinEval = matchesDe(b).filter(function (c) { return valDe(b, c.slug) === "sin_valorar"; }).length;
+    if (sinEval > 0) {
+      var pe = document.createElement("span"); pe.className = "bi-chip pend";
+      var dot = document.createElement("span"); dot.className = "bi-dot"; pe.appendChild(dot);
+      pe.appendChild(document.createTextNode(" " + sinEval + " sin evaluar"));
+      row.appendChild(pe);
+    }
+    // Notas: solo un 📝 para verlas (sin número).
+    if (b.notas) {
+      var nt = document.createElement("span"); nt.className = "bi-vernotas";
+      nt.textContent = "📝"; nt.title = "Ver notas";
+      nt.onclick = function (e) { e.stopPropagation(); abrirClienteEditor(b.id); };
+      row.appendChild(nt);
+    }
+    if (row.children.length) info.appendChild(row);
     item.appendChild(info);
-    if (nuevas > 0) {
-      var badge = document.createElement("span"); badge.className = "bi-nuevas";
-      badge.textContent = "+" + nuevas + " nueva" + (nuevas === 1 ? "" : "s");
-      item.appendChild(badge);
-    }
+
+    // Acciones: editar + borrar (sin "Abrir" — tocar la ficha ya la abre).
+    var acc = document.createElement("div"); acc.className = "bi-acc";
     var edit = document.createElement("button");
     edit.className = "bi-edit" + (novedadVista("lapiz") ? "" : " nuevo");
     edit.textContent = "✎"; edit.title = "Notas y recordatorio";
     edit.setAttribute("aria-label", "Notas y recordatorio");
     edit.onclick = function () { abrirClienteEditor(b.id); };
-    item.appendChild(edit);
-    var abrir = document.createElement("button"); abrir.className = "bi-btn";
-    abrir.textContent = "Abrir"; abrir.onclick = function () { abrirBusqueda(b.id); };
-    item.appendChild(abrir);
+    acc.appendChild(edit);
     var del = document.createElement("button"); del.className = "bi-del";
     del.textContent = "🗑"; del.title = "Borrar"; del.setAttribute("aria-label", "Borrar");
     del.onclick = function () {
       if (confirm("¿Borrar la búsqueda de " + (b.nombre || "este cliente") + "?")) borrarBusqueda(b.id);
     };
-    item.appendChild(del);
+    acc.appendChild(del);
+    item.appendChild(acc);
+
     cont.appendChild(item);
   });
 }
@@ -1023,6 +1041,7 @@ function renderBadge() {
 // novedad adentro. Se llama al abrir la app y al volver a ella (Juan 2026-08-14).
 function limpiarNotifsColgadas() {
   try {
+    if (navigator.clearAppBadge) navigator.clearAppBadge();   // saca el "1" del ícono ya (renderBadge lo repone si hay algo real)
     if (navigator.serviceWorker && navigator.serviceWorker.ready) {
       navigator.serviceWorker.ready.then(function (reg) {
         if (reg && reg.getNotifications) {
