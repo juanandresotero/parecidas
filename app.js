@@ -993,13 +993,36 @@ function renderBusquedas() {
 
 // El numerito rojo en el 🔖 de arriba = total de nuevas en todas las búsquedas.
 function renderBadge() {
-  var n = totalNuevas() + campAlertasNuevas().length, el = $("busq-badge");
-  if (n > 0) { el.textContent = n > 99 ? "99+" : n; el.style.display = ""; }
+  var nuevas = totalNuevas(), alertas = campAlertasNuevas().length, el = $("busq-badge");
+  // Dentro de la app: el ⚠️ MANDA. Si una propiedad en campaña cambió (reservada /
+  // en negociación / ya no publicada), el dibujito es ⚠️ (tapa el número). Si no hay
+  // alerta de campaña pero sí parecidas nuevas, va el número. Si no hay nada, se esconde.
+  if (alertas > 0) { el.textContent = "⚠️"; el.style.display = ""; }
+  else if (nuevas > 0) { el.textContent = nuevas > 99 ? "99+" : nuevas; el.style.display = ""; }
   else el.style.display = "none";
-  // Numerito (silencioso) en el ícono de la app instalada. Se refresca al abrir la app.
+  // En el ícono de la app instalada el sistema SOLO permite un número (no un símbolo),
+  // así que ahí va el total de novedades. Se refresca al abrir la app.
   try {
-    if (n > 0 && navigator.setAppBadge) navigator.setAppBadge(n);
+    var total = nuevas + alertas;
+    if (total > 0 && navigator.setAppBadge) navigator.setAppBadge(total);
     else if (navigator.clearAppBadge) navigator.clearAppBadge();
+  } catch (e) {}
+}
+
+// Cierra las notificaciones que quedaron colgadas en la bandeja del sistema. Si no se
+// cierran, el sistema deja el "1" PEGADO en el ícono de la app aunque ya hayas visto la
+// novedad adentro. Se llama al abrir la app y al volver a ella (Juan 2026-08-14).
+function limpiarNotifsColgadas() {
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready.then(function (reg) {
+        if (reg && reg.getNotifications) {
+          reg.getNotifications().then(function (ns) {
+            ns.forEach(function (n) { n.close(); });
+          }).catch(function () {});
+        }
+      }).catch(function () {});
+    }
   } catch (e) {}
 }
 
@@ -1594,3 +1617,9 @@ function cargar() {
 
 initSegs();
 cargar();
+// Al abrir la app: cerrar notificaciones colgadas (saca el "1" pegado del ícono).
+limpiarNotifsColgadas();
+// Al volver a la app (la tenías en segundo plano): idem + repintar el dibujito.
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden) { limpiarNotifsColgadas(); renderBadge(); }
+});
