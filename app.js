@@ -1288,6 +1288,16 @@ function cerrarOverlay(id) { $(id).style.display = "none"; }
 // -------------------------- Novedades (cartel 1 vez + resaltado amarillo) --------------------------
 function novedadVista(k) { try { return localStorage.getItem("parecidas_nv_" + k) === "1"; } catch (e) { return true; } }
 function marcarNovedad(k) { try { localStorage.setItem("parecidas_nv_" + k, "1"); } catch (e) {} }
+// ¿Primera vez ABSOLUTA en la app? = localStorage sin ninguna huella de uso previo.
+function esPrimeraVezEnLaApp() {
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i) || "";
+      if (k.indexOf("parecidas_") === 0 && k !== "parecidas_nv_iniciado") return false;
+    }
+    return true;
+  } catch (e) { return false; }
+}
 function pintarMarcaNueva() {
   $("marca").classList.toggle("nuevo", !novedadVista("marca"));
 }
@@ -1540,12 +1550,18 @@ function initSegs() {
     marcarNovedad("marca"); $("marca").classList.remove("nuevo");
     salirDeCliente(limpiarTodo);   // si cambió filtros de un cliente, ofrece guardarlos
   });
+  // PRIMERA vez que alguien abre la app (nunca la usó): no tiene sentido mostrarle novedades
+  // de cosas que nunca conoció, ni encadenarle varias ventanitas. Se marca todo como visto
+  // → arranca limpio y solo verá las novedades de acá en adelante. El que YA usó la app sí
+  // ve las novedades nuevas. (Juan 2026-08-14)
+  if (!novedadVista("iniciado")) {
+    if (esPrimeraVezEnLaApp()) ["news", "news-agente", "news-avisos"].forEach(marcarNovedad);
+    marcarNovedad("iniciado");
+  }
   // Cartel de novedades (una sola vez). Muestro UNO por apertura para no encimar.
   pintarMarcaNueva();
   pintarAjustesNuevo();
   if (!novedadVista("news")) {
-    // Usuario nuevo: ve el cartel completo (ya trae adentro agente + avisos),
-    // así que doy por vistos los carteles sueltos para no encimarle varios.
     abrirOverlay("news"); marcarNovedad("news-agente"); marcarNovedad("news-avisos");
   } else if (!novedadVista("news-agente")) {
     abrirOverlay("news-agente");
