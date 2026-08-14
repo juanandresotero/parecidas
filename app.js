@@ -129,7 +129,7 @@ function leerFiltros() {
     padronMax: soloNum($("f-padron-max").value),
     cochera: segVal("f-coch"),
     estado: segVal("f-estado"),
-    renta: segVal("f-renta"),
+    rentaSel: segMulti("f-renta"),   // ["con"|"multi"|"sin"] (multi-select, OR)
     // Gastos comunes (solo alquiler): se ingresan en pesos.
     gastosMinUsd: aUsd(soloNum($("f-gastos-min").value), "UYU"),
     gastosMaxUsd: aUsd(soloNum($("f-gastos-max").value), "UYU")
@@ -170,8 +170,15 @@ function pasa(c, f, slugActual) {
   if (f.cochera === "si" && c.cochera !== true) return false;
   if (f.cochera === "no" && c.cochera !== false) return false;
   if (f.estado && c.estado !== f.estado) return false;
-  if (f.renta === "con" && c.renta !== true) return false;
-  if (f.renta === "sin" && c.renta !== false) return false;
+  // Renta / varias unidades (multi-select, OR): la propiedad pasa si cumple ALGUNA de
+  // las opciones elegidas. Nada elegido = no filtra (da igual).
+  if (f.rentaSel && f.rentaSel.length) {
+    var okR = false;
+    if (f.rentaSel.indexOf("con") >= 0 && c.renta === true) okR = true;
+    if (f.rentaSel.indexOf("sin") >= 0 && c.renta === false) okR = true;
+    if (f.rentaSel.indexOf("multi") >= 0 && c.multiunidad === true) okR = true;
+    if (!okR) return false;
+  }
   // Gastos comunes: si la propiedad no tiene el dato, NO la excluyo (indulgente).
   if (f.gastosMinUsd != null && c.gastos_usd != null && c.gastos_usd < f.gastosMinUsd) return false;
   if (f.gastosMaxUsd != null && c.gastos_usd != null && c.gastos_usd > f.gastosMaxUsd) return false;
@@ -529,7 +536,7 @@ function rellenar(c) {
   setSeg("f-coch", c.cochera === true ? "si" : (c.cochera === false ? "no" : ""));
   setSeg("f-estado", c.estado || "");
   // Regla de Juan: si el link tiene renta → parecidas con renta; si no → sin renta.
-  setSeg("f-renta", c.renta ? "con" : "sin");
+  setSegMulti("f-renta", [c.renta ? "con" : "sin"]);
   window.__slugActual = c.slug || null;
   window.__base = c;                       // referencia para ordenar "más parecida"
   mostrarAgente(c);
@@ -557,7 +564,7 @@ function rellenarExterno(d) {
   setStep("f-dmax", d.dorm != null ? d.dorm : null);
   setSeg("f-coch", d.cochera === true ? "si" : (d.cochera === false ? "no" : ""));
   setSeg("f-estado", d.estado || "");
-  setSeg("f-renta", d.renta ? "con" : "sin");
+  setSegMulti("f-renta", [d.renta ? "con" : "sin"]);
   window.__slugActual = null;                      // no es de RE/MAX: no me excluyo
   var precioUsd = d.moneda === "UYU"
     ? (USD_RATE && d.precio ? Math.round(d.precio / USD_RATE) : null)
@@ -790,7 +797,7 @@ function snapshotForm() {
     barrios: SELBARRIOS.slice(),
     dmin: stepVal("f-dmin"), dmax: stepVal("f-dmax"),
     bmin: stepVal("f-bmin"), bmax: stepVal("f-bmax"),
-    coch: segVal("f-coch"), estado: segVal("f-estado"), renta: segVal("f-renta"),
+    coch: segVal("f-coch"), estado: segVal("f-estado"), rentaSel: segMulti("f-renta"),
     base: window.__base || null, slugActual: window.__slugActual || null
   };
 }
@@ -809,7 +816,8 @@ function restoreForm(s) {
   setStep("f-dmax", s.dmax != null ? s.dmax : null);
   setStep("f-bmin", s.bmin != null ? s.bmin : null);
   setStep("f-bmax", s.bmax != null ? s.bmax : null);
-  setSeg("f-coch", s.coch || ""); setSeg("f-estado", s.estado || ""); setSeg("f-renta", s.renta || "");
+  setSeg("f-coch", s.coch || ""); setSeg("f-estado", s.estado || "");
+  setSegMulti("f-renta", s.rentaSel || (s.renta ? [s.renta] : []));   // migra búsquedas viejas (s.renta string)
   window.__base = s.base || null; window.__slugActual = s.slugActual || null;
 }
 
@@ -1268,7 +1276,7 @@ function limpiarTodo() {
   SELBARRIOS = []; $("f-barrio").value = ""; renderChips(); pintarGrupo();
   setStep("f-dmin", null); setStep("f-dmax", null);
   setStep("f-bmin", null); setStep("f-bmax", null);
-  setSeg("f-coch", ""); setSeg("f-estado", ""); setSeg("f-renta", ""); toggleGastos();
+  setSeg("f-coch", ""); setSeg("f-estado", ""); setSegMulti("f-renta", []); toggleGastos();
   window.__base = null; window.__slugActual = null; window.__busquedaActiva = null;
   window.__ultimaVista = null;
   SEL = []; CARDS = []; actualizarMulticopy();
@@ -1432,7 +1440,7 @@ window.addEventListener("appinstalled", function () {
 
 // -------------------------- Arranque + eventos --------------------------
 function initSegs() {
-  ["f-oper", "f-coch", "f-estado", "f-renta", "f-moneda"].forEach(function (id) {   // una sola opción
+  ["f-oper", "f-coch", "f-estado", "f-moneda"].forEach(function (id) {   // una sola opción
     $(id).addEventListener("click", function (e) {
       if (e.target.tagName !== "BUTTON") return;
       setSeg(id, e.target.getAttribute("data-v"));
@@ -1445,10 +1453,12 @@ function initSegs() {
     toggleGastos();
   });
   // Tipo: varios a la vez (toggle independiente por botón)
-  $("f-tipo").addEventListener("click", function (e) {
-    if (e.target.tagName !== "BUTTON") return;
-    var b = e.target;
-    b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") === "true" ? "false" : "true");
+  ["f-tipo", "f-renta"].forEach(function (id) {   // multi-select: se pueden prender varios
+    $(id).addEventListener("click", function (e) {
+      if (e.target.tagName !== "BUTTON") return;
+      var b = e.target;
+      b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") === "true" ? "false" : "true");
+    });
   });
   ["f-dmin", "f-dmax", "f-bmin", "f-bmax"].forEach(function (id) {
     $(id).addEventListener("click", function (e) {

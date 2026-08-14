@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 import urllib.request
 
 # "Con renta" (vendida con inquilino) no es un campo de RE/MAX: viene en el título
@@ -171,6 +172,114 @@ def _fetch_detalle(slug: str):
         return None
 
 
+# ------------------------- Detector de MULTI-UNIDAD (varias viviendas en un padrón) ---
+# Conocimiento destilado del proyecto SerchJAO (validado contra avisos reales de MELI/
+# InfoCasas). El orden IMPORTA: exclusiones primero (PH + edificio nuevo), después las
+# señales positivas. Cada lista es una prueba que salió mal y se corrigió — no tocar sin
+# medir contra avisos reales. Ver CONOCIMIENTO_MULTIUNIDAD_PADRON.md.
+
+def _norm_multi(texto: str) -> str:
+    """Minúsculas, sin tildes, números en letra→cifra, y separa cifra pegada a letra."""
+    t = (texto or "").lower()
+    t = unicodedata.normalize("NFD", t)
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")   # quita tildes
+    nums = {"dos": "2", "tres": "3", "cuatro": "4", "cinco": "5", "seis": "6",
+            "siete": "7", "ocho": "8", "nueve": "9"}
+    t = re.sub(r"\b(dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\b",
+               lambda m: nums[m.group(1)], t)
+    t = re.sub(r"([2-9])([a-z])", r"\1 \2", t)                     # "2casas" -> "2 casas"
+    return t
+
+_MULTI_EXCLUIR = [
+    # edificio nuevo / desarrollo
+    "vivienda promovida", "viviendas promovidas",
+    "ley 18.795", "ley n 18.795", "ley n18.795",
+    "fideicomiso de construc", "fideicomiso construc",
+    "amparado por la ley", "amparada por la ley", "amparado por proyecto de ley",
+    "exoneracion de itp", "exoneracion del itp",
+    "exoneracion de irpf", "exoneracion del irpf", "exoneracion de iva",
+    "amenities", "ammenities",
+    "apartamentos por piso", "apartamentos por pisos", "aptos por piso",
+    "unidades por piso", "unidades por pisos",
+    "cuenta con unidades", "unidades disponibles", "apartamentos disponibles",
+    "totalidad del edificio", "edificio cuenta con", "el proyecto cuenta",
+    "este desarrollo", "este proyecto",
+    "entrega estimada", "entrega prevista", "entrega 202",
+    "obra nueva", "en pozo", "venta en pozo", "preventa",
+    "comercializamos la totalidad",
+    # propiedad horizontal (descarta siempre)
+    "regimen de propiedad horizontal", "bajo regimen de propiedad horizontal",
+    "bajo propiedad horizontal", "en propiedad horizontal",
+    "regimen de p.h.", "regimen ph",
+]
+
+_MULTI_POSITIVAS = [
+    # "X principal" (implica que existe otra)
+    "casa principal", "casa princial", "vivienda principal", "unidad principal",
+    "apartamento principal", "apto principal", "depto principal", "propiedad principal",
+    # "la otra X" / "el otro X"
+    "la otra casa", "la otra casita", "la otra vivienda", "la otra unidad",
+    "la otra propiedad", "la otra finca", "el otro apartamento", "el otro apto",
+    "el otro depto", "el otro monoambiente", "el otro local",
+    # "X con/mas/+/y Y"
+    "casa con apartamento", "casa con apto", "casa con depto", "casa con departamento",
+    "casa con monoambiente",
+    "casa mas apartamento", "casa mas apto", "casa mas depto", "casa mas monoambiente",
+    "casa mas casita",
+    "casa + apartamento", "casa + apto", "casa + depto",
+    "casa y apartamento", "casa y apto", "casa y depto", "casa y monoambiente",
+    "casa y casita",
+    "casa con apartamentos", "casa con aptos", "casa con deptos", "casa con departamentos",
+    "casa con monoambientes",
+    "casa mas apartamentos", "casa + aptos", "casa y aptos",
+    # padrón / terreno explícito (NO "padron unico" — ver documento)
+    "mismo padron", "un mismo padron", "en el mismo padron", "en un mismo padron",
+    "un solo padron",
+    "mismo terreno", "en el mismo terreno", "en un mismo terreno",
+    # categóricos
+    "vivienda multifamiliar", "viviendas multifamiliares", "multifamiliar",
+    "bifamiliar", "trifamiliar", "doble vivienda", "triple vivienda", "complejo de casas",
+    "unidades independientes", "viviendas independientes", "casas independientes",
+    "totalmente independientes",
+    # idiomáticos uruguayos
+    "casa al frente y al fondo", "casa adelante y atras", "casa adelante y casa atras",
+    "frente y fondo",
+    # rentas múltiples (números ya en cifra)
+    "2 rentas", "3 rentas", "4 rentas",
+    "ideal 2 rentas", "ideal 3 rentas", "ideal 4 rentas",
+    "ideal para 2 rentas", "ideal para 3 rentas", "ideal para 4 rentas",
+    "para 2 rentas", "para 3 rentas", "para 4 rentas",
+    # familias
+    "2 familias", "3 familias", "4 familias",
+    "para 2 familias", "para 3 familias", "para 4 familias",
+]
+
+_MULTI_NUM_OK = {"casas", "casitas"}   # patrón "N <sustantivo>" solo con casas/casitas
+_MULTI_COMBO_A = ["casa al frente", "casa adelante", "casa de adelante", "vivienda al frente"]
+_MULTI_COMBO_B = ["apto al fondo", "apartamento al fondo", "casa al fondo", "casita al fondo",
+                  "monoambiente al fondo", "unidad al fondo", "segunda unidad", "unidad trasera",
+                  "segunda casa", "apartamento trasero", "casa trasera"]
+
+def es_multiunidad(texto: str):
+    """True/False si el aviso describe varias viviendas en un mismo padrón. None si no
+    hay texto que leer (no descartar: el robot re-lee mañana)."""
+    t = _norm_multi(texto)
+    if not t.strip():
+        return None
+    for ex in _MULTI_EXCLUIR:               # exclusiones PRIMERO
+        if ex in t:
+            return False
+    for p in _MULTI_POSITIVAS:              # frases positivas fuertes
+        if p in t:
+            return True
+    for m in re.finditer(r"\b([2-9])\s+([a-z]+)\b", t):   # patrón numérico restringido
+        if m.group(2) in _MULTI_NUM_OK:
+            return True
+    if any(a in t for a in _MULTI_COMBO_A) and any(b in t for b in _MULTI_COMBO_B):
+        return True                         # combinación frente + otra-unidad
+    return False
+
+
 def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     tipo = (it.get("type") or {}).get("value") or ""
     es_apto = tipo.startswith("departamento") or tipo == "ph" or "penthouse" in tipo
@@ -216,6 +325,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
                                   (it.get("currency") or {}).get("value"), rate),
         "dorm": it.get("bedrooms"),
         "banos": banos_tot,   # baños + toilet (total)
+        "multiunidad": es_multiunidad(texto),   # varias viviendas en un mismo padrón
         "m2_homog": _homog(cubiertos, totales, terreno, es_apto, semi, descub),
         "m2_padron": round(terreno) if terreno else 0,   # el terreno del padrón
         "barrio": _barrio(it.get("geoLabel")),

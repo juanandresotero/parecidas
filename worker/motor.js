@@ -212,8 +212,14 @@ function pasa(c, f, slugActual) {
   if (f.cochera === "si" && c.cochera !== true) return false;
   if (f.cochera === "no" && c.cochera !== false) return false;
   if (f.estado && c.estado !== f.estado) return false;
-  if (f.renta === "con" && c.renta !== true) return false;
-  if (f.renta === "sin" && c.renta !== false) return false;
+  // Renta / varias unidades (multi-select, OR). Nada elegido = no filtra.
+  if (f.rentaSel && f.rentaSel.length) {
+    var okR = false;
+    if (f.rentaSel.indexOf("con") >= 0 && c.renta === true) okR = true;
+    if (f.rentaSel.indexOf("sin") >= 0 && c.renta === false) okR = true;
+    if (f.rentaSel.indexOf("multi") >= 0 && c.multiunidad === true) okR = true;
+    if (!okR) return false;
+  }
   if (f.gastosMinUsd != null && c.gastos_usd != null && c.gastos_usd < f.gastosMinUsd) return false;
   if (f.gastosMaxUsd != null && c.gastos_usd != null && c.gastos_usd > f.gastosMaxUsd) return false;
   return true;
