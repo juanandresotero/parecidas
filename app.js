@@ -896,14 +896,24 @@ function guardarBusquedaActual(nombre, tel, direccion, campana) {
   }
   var arr = cargarBusquedas(); arr.unshift(b); guardarBusquedas(arr);
   window.__busquedaActiva = b.id;   // el cliente recién guardado queda activo
+  window.__formBaseline = snapshotFiltros();   // recién guardado → sin cambios pendientes
   if (esCamp) chequearCampanas();   // arranca la vigilancia de esa propiedad ya
 }
 
-// ¿El formulario actual difiere de lo guardado en el cliente activo?
+// Foto comparable del formulario: SOLO los filtros que Juan edita. Se sacan los campos
+// derivados del link (base/slugActual), que se recalculan al re-dibujar y darían falsos
+// "cambios". La valoración NO está acá (no es un filtro) → tocarla nunca marca cambio.
+function snapshotFiltros() {
+  var s = snapshotForm();
+  delete s.base; delete s.slugActual;
+  return JSON.stringify(s);
+}
+// ¿El formulario actual difiere de la foto de cuando se abrió/guardó el cliente?
+// Compara contra __formBaseline (foto tomada al abrir), NO contra la foto guardada vieja:
+// así las búsquedas guardadas antes de agregar filtros nuevos NO marcan "cambió" al abrir.
 function filtrosCambiaron() {
-  var b = busquedaActiva();
-  if (!b) return false;
-  return JSON.stringify(snapshotForm()) !== JSON.stringify(b.form || {});
+  if (!busquedaActiva() || window.__formBaseline == null) return false;
+  return snapshotFiltros() !== window.__formBaseline;
 }
 // Guardar los filtros/form actuales dentro del cliente activo (y refrescar su baseline).
 function guardarFiltrosEnCliente() {
@@ -918,34 +928,76 @@ function guardarFiltrosEnCliente() {
   bb.vistas = DATA.filter(function (c) { return pasa(c, bb.filtro, bb.slugActual); })
     .map(function (c) { return c.slug; });
   guardarBusquedas(arr);
+  window.__formBaseline = snapshotFiltros();   // recién guardado → ya no hay "cambios"
 }
-// Antes de salir de un cliente con filtros cambiados: preguntar si guardarlos.
+// Diálogo de 3 opciones: Guardar / Salir sin guardar / Cancelar. Llama a cb con
+// "guardar" | "salir" | "cancelar". Cancelar = no hace nada (se queda donde está).
+function preguntarGuardar(cb) {
+  var ov = document.createElement("div");
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;" +
+    "display:flex;align-items:center;justify-content:center;padding:20px";
+  var box = document.createElement("div");
+  box.style.cssText = "background:#fff;color:#12203a;max-width:340px;width:100%;" +
+    "border-radius:16px;padding:20px;box-shadow:0 12px 44px rgba(0,0,0,.32)";
+  box.innerHTML = '<div style="font-weight:700;font-size:17px;margin-bottom:6px">Cambiaste los filtros</div>' +
+    '<div style="color:#5a6b86;font-size:15px;margin-bottom:16px">¿Guardar los nuevos filtros de este cliente antes de salir?</div>';
+  var fila = document.createElement("div");
+  fila.style.cssText = "display:flex;flex-direction:column;gap:8px";
+  function boton(txt, resp, estilo) {
+    var b = document.createElement("button");
+    b.textContent = txt;
+    b.style.cssText = "padding:12px;border-radius:11px;border:0;font-size:15px;" +
+      "font-weight:600;cursor:pointer;" + estilo;
+    b.onclick = function () { if (ov.parentNode) document.body.removeChild(ov); cb(resp); };
+    return b;
+  }
+  fila.appendChild(boton("💾 Guardar", "guardar", "background:#2563eb;color:#fff"));
+  fila.appendChild(boton("Salir sin guardar", "salir", "background:#eef2f7;color:#12203a"));
+  fila.appendChild(boton("Cancelar", "cancelar", "background:transparent;color:#5a6b86"));
+  box.appendChild(fila); ov.appendChild(box);
+  ov.addEventListener("click", function (e) {
+    if (e.target === ov) { document.body.removeChild(ov); cb("cancelar"); }
+  });
+  document.body.appendChild(ov);
+}
+// Antes de salir de un cliente con filtros cambiados: preguntar si guardarlos (3 opciones).
 function salirDeCliente(luego) {
-  if (filtrosCambiaron() &&
-      confirm("Cambiaste los filtros de este cliente. ¿Guardar los nuevos filtros?"))
-    guardarFiltrosEnCliente();
-  luego();
+  if (!filtrosCambiaron()) { luego(); return; }
+  preguntarGuardar(function (resp) {
+    if (resp === "cancelar") return;               // se queda donde está
+    if (resp === "guardar") guardarFiltrosEnCliente();
+    luego();                                        // guardar o salir → sale
+  });
 }
 
 function abrirBusqueda(id) {
-  // Si venías de otro cliente con filtros cambiados, ofrecer guardarlos.
-  if (window.__busquedaActiva && window.__busquedaActiva !== id && filtrosCambiaron() &&
-      confirm("Cambiaste los filtros del cliente anterior. ¿Guardarlos antes de salir?"))
-    guardarFiltrosEnCliente();
-  var arr = cargarBusquedas();
-  var b = null;
-  arr.forEach(function (x) { if (x.id === id) b = x; });
-  if (!b) return;
-  restoreForm(b.form);
-  window.__busquedaActiva = b.id;                               // cliente activo (para Enviar)
-  window.__ultimaVista = null;                                  // baseline nuevo (no descarta al abrir)
-  b.vistas = matchesDe(b).map(function (c) { return c.slug; });  // marca como visto → apaga el numerito
-  guardarBusquedas(arr);
-  cerrarOverlay("busquedas");
-  buscar();
-  renderBadge();
-  sincronizarPush();   // ya viste esta búsqueda → el robotito no te re-avisa lo mismo
-  $("resultados").scrollIntoView({ behavior: "smooth", block: "start" });
+  var seguir = function () {
+    var arr = cargarBusquedas();
+    var b = null;
+    arr.forEach(function (x) { if (x.id === id) b = x; });
+    if (!b) return;
+    restoreForm(b.form);
+    window.__busquedaActiva = b.id;                               // cliente activo (para Enviar)
+    window.__formBaseline = snapshotFiltros();                    // foto base: recién abierto = sin cambios
+    window.__ultimaVista = null;                                  // baseline nuevo (no descarta al abrir)
+    b.vistas = matchesDe(b).map(function (c) { return c.slug; });  // marca como visto → apaga el numerito
+    guardarBusquedas(arr);
+    cerrarOverlay("busquedas");
+    buscar();
+    renderBadge();
+    sincronizarPush();   // ya viste esta búsqueda → el robotito no te re-avisa lo mismo
+    $("resultados").scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  // Si venías de otro cliente con filtros cambiados, ofrecer guardarlos (3 opciones).
+  if (window.__busquedaActiva && window.__busquedaActiva !== id && filtrosCambiaron()) {
+    preguntarGuardar(function (resp) {
+      if (resp === "cancelar") return;                 // no abre la otra, se queda
+      if (resp === "guardar") guardarFiltrosEnCliente();
+      seguir();
+    });
+  } else {
+    seguir();
+  }
 }
 
 function borrarBusqueda(id) {
@@ -1358,6 +1410,7 @@ function limpiarTodo() {
   setStep("f-bmin", null); setStep("f-bmax", null);
   setSeg("f-coch", ""); setSeg("f-estado", ""); setSegMulti("f-renta", []); toggleGastos();
   window.__base = null; window.__slugActual = null; window.__busquedaActiva = null;
+  window.__formBaseline = null;   // sin cliente abierto → no hay "cambios" que preguntar
   window.__ultimaVista = null;
   SEL = []; CARDS = []; RENDER_RES = []; actualizarMulticopy();
   $("cards").innerHTML = ""; $("resultados").style.display = "none"; $("hint").innerHTML = "";
