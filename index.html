@@ -174,7 +174,7 @@
   .btn-guardar-busq{width:100%;margin-top:10px;background:var(--ok-bg);color:var(--brand);
     border:1px solid var(--line);padding:11px}
   .busq-lista{display:flex;flex-direction:column;gap:9px;max-height:62vh;overflow-y:auto}
-  .busq-item{display:flex;align-items:center;gap:9px;padding:10px;border:1px solid var(--line);
+  .busq-item{display:flex;align-items:flex-start;gap:9px;padding:10px;border:1px solid var(--line);
     border-radius:12px;background:var(--surface-2)}
   .bi-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
   .bi-nom{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -242,8 +242,13 @@
   .bi-del{border:none;background:transparent;color:var(--muted);cursor:pointer;
     font-size:16px;padding:4px;flex-shrink:0}
   .mv-chip{border:1px solid var(--line);background:var(--surface);color:var(--muted);
-    border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+    border-radius:999px;padding:6px 11px;font-size:13px;font-weight:600;cursor:pointer}
   .mv-chip[aria-pressed="true"]{background:var(--brand);color:#fff;border-color:var(--brand)}
+  /* Marcador del mapa: gota invertida con el ícono de la valoración adentro. */
+  .pin-gota{width:30px;height:30px;background:#fff;border:2px solid var(--brand);
+    border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;
+    justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,.3)}
+  .pin-gota span{transform:rotate(45deg);font-size:15px;line-height:1}
 </style>
 </head>
 <body>
@@ -528,10 +533,13 @@
     <button class="btn" id="btn-mapa-cerrar" style="width:auto;padding:7px 15px;background:#eef2f7;color:#12203a;border:0;border-radius:10px;font-weight:600">✕ Cerrar</button>
   </div>
   <!-- Filtro por valoración (solo con un cliente abierto). Las descartadas NUNCA aparecen. -->
-  <div id="mapa-valfiltro" style="display:none;gap:8px;padding:8px 14px;background:#fff;border-top:1px solid #eef2f7;align-items:center">
+  <div id="mapa-valfiltro" style="display:none;gap:7px;padding:8px 14px;background:#fff;border-top:1px solid #eef2f7;align-items:center;flex-wrap:wrap">
     <span style="font-size:12.5px;color:#5a6b86">Ver:</span>
-    <button id="mv-sin" class="mv-chip" aria-pressed="true">⚪ Sin evaluar</button>
-    <button id="mv-val" class="mv-chip" aria-pressed="false">⭐ Valoradas</button>
+    <button class="mv-chip" data-v="sin_valorar" aria-pressed="true">⚪ Sin valorar</button>
+    <button class="mv-chip" data-v="a_enviar" aria-pressed="false">⭐ Para enviar</button>
+    <button class="mv-chip" data-v="enviada" aria-pressed="false">📤 Enviadas</button>
+    <button class="mv-chip" data-v="favorita" aria-pressed="false">💚 Favorita</button>
+    <button class="mv-chip" data-v="pendiente" aria-pressed="false">⏳ Pendientes</button>
   </div>
   <div id="mapa" style="flex:1;min-height:0"></div>
 </div>

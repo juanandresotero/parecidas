@@ -1836,9 +1836,18 @@ function cargarLeaflet(cb) {
   js.onerror = function () { cerrarMapa(); alert("No pude cargar el mapa. Revisá la conexión."); };
   document.head.appendChild(js);
 }
-var MAPA_RES = [];                        // las parecidas que van al mapa (con coords)
-var MAPA_VF = { sin: true, val: false };  // filtro de valoración (descartes NUNCA se ven)
-var DESCARTES = { descarte_1: 1, descarte_2: 1, descarte_3: 1, descartada_filtro: 1 };
+var MAPA_RES = [];   // las parecidas que van al mapa (con coords)
+// Filtro del mapa por ESTADO de valoración. Default: solo "sin valorar". Los estados que
+// NO están acá (los descartes 🔴) NUNCA se muestran.
+var MAPA_VF = { sin_valorar: true, a_enviar: false, enviada: false, favorita: false, pendiente: false };
+// Marcador "gota invertida" con el ícono de la valoración adentro (⭐/💚/📤/⏳).
+function iconoMapa(emoji) {
+  return L.divIcon({
+    className: "pin-wrap",
+    html: '<div class="pin-gota"><span>' + (emoji || "") + '</span></div>',
+    iconSize: [30, 40], iconAnchor: [15, 38], popupAnchor: [0, -36]
+  });
+}
 function abrirMapa() {
   // Lo MISMO que se ve en la lista: las que cumplen el filtro + las preservadas
   // (favoritas/⭐ que ya no cumplen pero se muestran). Así el mapa no muestra de menos.
@@ -1850,10 +1859,9 @@ function abrirMapa() {
   if (!MAPA_RES.length) { alert("Estas parecidas todavía no tienen ubicación en el mapa."); return; }
   var b = busquedaActiva();
   $("mapa-valfiltro").style.display = b ? "flex" : "none";   // filtro solo con cliente abierto
-  if (b) {
-    $("mv-sin").setAttribute("aria-pressed", MAPA_VF.sin ? "true" : "false");
-    $("mv-val").setAttribute("aria-pressed", MAPA_VF.val ? "true" : "false");
-  }
+  if (b) $("mapa-valfiltro").querySelectorAll(".mv-chip").forEach(function (ch) {
+    ch.setAttribute("aria-pressed", MAPA_VF[ch.getAttribute("data-v")] ? "true" : "false");
+  });
   $("mapa-overlay").style.display = "flex";
   cargarLeaflet(function () {
     if (!MAPA) {
@@ -1873,10 +1881,7 @@ function pintarMapa() {
   var b = busquedaActiva();
   var lista = MAPA_RES.filter(function (c) {
     if (!b) return true;                       // sin cliente: todas
-    var v = valDe(b, c.slug);
-    if (DESCARTES[v]) return false;            // descartadas: NUNCA en el mapa
-    if (v === "sin_valorar") return MAPA_VF.sin;
-    return MAPA_VF.val;                        // el resto (⭐/💚/📤/⏳) = "valoradas"
+    return !!MAPA_VF[valDe(b, c.slug)];        // solo los estados prendidos; descartes NUNCA
   });
   MAPA._grupo.clearLayers();
   var pts = [], usados = {};
@@ -1884,8 +1889,10 @@ function pintarMapa() {
     var lat = c.lat, lng = c.lng, k = lat.toFixed(5) + "," + lng.toFixed(5);
     if (usados[k]) { var n = usados[k]++; lat += (n % 3 - 1) * 0.00012; lng += (Math.floor(n / 3) - 1) * 0.00012; }
     else usados[k] = 1;
+    var emoji = b ? (VAL_ESTADOS[valDe(b, c.slug)] || {}).icono : "";
+    if (emoji === "⚪") emoji = "";            // "sin valorar": gota vacía (el ⚪ no se vería)
     var precio = fmtK(c.precio, c.moneda);
-    var m = L.marker([lat, lng]).bindPopup(
+    var m = L.marker([lat, lng], { icon: iconoMapa(emoji) }).bindPopup(
       '<b>' + esc(resumenCard(c)) + '</b><br>' +
       (precio ? esc(precio) + '<br>' : '') +
       '<a href="' + esc(linkDe(c)) + '" target="_blank" rel="noopener">Ver aviso</a>');
@@ -1988,11 +1995,13 @@ function initSegs() {
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
   $("btn-mapa").addEventListener("click", abrirMapa);
   $("btn-mapa-cerrar").addEventListener("click", cerrarMapa);
-  $("mv-sin").addEventListener("click", function () {
-    MAPA_VF.sin = !MAPA_VF.sin; this.setAttribute("aria-pressed", MAPA_VF.sin ? "true" : "false"); pintarMapa();
-  });
-  $("mv-val").addEventListener("click", function () {
-    MAPA_VF.val = !MAPA_VF.val; this.setAttribute("aria-pressed", MAPA_VF.val ? "true" : "false"); pintarMapa();
+  $("mapa-valfiltro").querySelectorAll(".mv-chip").forEach(function (ch) {
+    ch.addEventListener("click", function () {
+      var k = this.getAttribute("data-v");
+      MAPA_VF[k] = !MAPA_VF[k];
+      this.setAttribute("aria-pressed", MAPA_VF[k] ? "true" : "false");
+      pintarMapa();
+    });
   });
   // Notas del cliente
   var cerrarCE = function () { guardarNotasCliente(); cerrarOverlay("cliente-editor"); renderBusquedas(); };

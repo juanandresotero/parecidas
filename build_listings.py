@@ -430,8 +430,32 @@ def main():
     listado = bajar_listado()
     mvd_can = [it for it in listado
                if _depto(it.get("geoLabel")).lower() in DEPTOS_OK]
-    print(f"Listón: {len(listado)} total, {len(mvd_can)} en Mvd+Canelones",
-          file=sys.stderr)
+    # RESCATE: RE/MAX a veces publica propiedades SIN la zona cargada (geoLabel vacío) →
+    # se descartaban aunque sean de Mvd/Can. Si el TÍTULO nombra un barrio conocido (de las
+    # que sí tienen zona), la recupero con ese barrio. (No incluyo a ciegas: hay de otros
+    # deptos entre las vacías.)
+    _barrio_geo = {}   # norm(barrio) -> un geoLabel válido de ejemplo con ese barrio
+    for it in mvd_can:
+        _bn = _sin_acentos(_barrio(it.get("geoLabel")))
+        if _bn and _bn not in _barrio_geo:
+            _barrio_geo[_bn] = it.get("geoLabel")
+    _OTROS_DEPTOS = ("colonia", "maldonado", "rocha", "florida", "san jose", "paysandu",
+                     "salto", "rivera", "tacuarembo", "cerro largo", "treinta y tres",
+                     "artigas", "flores", "rio negro", "durazno", "soriano", "lavalleja")
+    _rescatadas = 0
+    for it in listado:
+        if (it.get("geoLabel") or "").strip():
+            continue
+        _tn = _sin_acentos(it.get("title") or "")
+        if any(_d in _tn for _d in _OTROS_DEPTOS):   # el título nombra OTRO depto → no rescatar
+            continue
+        for _bn, _gl in _barrio_geo.items():
+            if _bn and re.search(r"\b" + re.escape(_bn) + r"\b", _tn):
+                it["geoLabel"] = _gl          # le pongo un geoLabel válido de ese barrio
+                mvd_can.append(it); _rescatadas += 1
+                break
+    print(f"Listón: {len(listado)} total, {len(mvd_can)} en Mvd+Canelones "
+          f"(rescatadas sin zona: {_rescatadas})", file=sys.stderr)
     if limite:
         mvd_can = mvd_can[:limite]
         print(f"(prueba: solo {len(mvd_can)})", file=sys.stderr)
