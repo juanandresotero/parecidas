@@ -623,6 +623,13 @@ function ubicacionDe(b) {
   if (b && b.lat != null && b.lng != null) return { lat: b.lat, lng: b.lng };
   var p = b && BY_SLUG[b.slugActual || b.campSlug];
   if (p && p.lat != null && p.lng != null) return { lat: p.lat, lng: p.lng };
+  // Sin slug (búsqueda guardada a mano): la busco por DIRECCIÓN en el listado (coords
+  // exactas de RE/MAX). Cubre las propiedades activas guardadas sin pegar el link.
+  if (b && b.direccion) {
+    var nd = norm(b.direccion);
+    var m = DATA.filter(function (c) { return c.lat != null && c.direccion && norm(c.direccion) === nd; })[0];
+    if (m) return { lat: m.lat, lng: m.lng };
+  }
   return null;
 }
 function mapsLink(u) { return "https://www.google.com/maps?q=" + u.lat + "," + u.lng; }
@@ -644,20 +651,32 @@ function backfillUbicaciones() {
 function copiarUbicacion(b, btn) {
   var u = ubicacionDe(b);
   if (u) { copiarTexto(mapsLink(u), btn, "📍"); return; }
-  var slug = b && (b.slugActual || b.campSlug);
-  if (!slug) return;
   if (btn) btn.textContent = "…";
-  fetch(DET_EP + encodeURIComponent(slug)).then(function (r) { return r.json(); })
-    .then(function (d) {
-      var det = d && d.data ? (d.data.data || d.data) : null;
-      var lc = det && det.location && det.location.coordinates;
-      if (lc && lc.length >= 2) {
-        var arr = cargarBusquedas(), bb = arr.filter(function (x) { return x.id === b.id; })[0];
-        if (bb) { bb.lat = lc[1]; bb.lng = lc[0]; guardarBusquedas(arr); }   // guardo para la próxima
-        copiarTexto(mapsLink({ lat: lc[1], lng: lc[0] }), btn, "📍");
-      } else { if (btn) btn.textContent = "📍"; alert("No pude encontrar la ubicación de esta propiedad."); }
-    })
-    .catch(function () { if (btn) btn.textContent = "📍"; alert("No pude traer la ubicación. Revisá la conexión."); });
+  var guardar = function (lat, lng) {
+    var arr = cargarBusquedas(), bb = arr.filter(function (x) { return x.id === b.id; })[0];
+    if (bb) { bb.lat = lat; bb.lng = lng; guardarBusquedas(arr); }   // guardo para la próxima
+    copiarTexto(mapsLink({ lat: lat, lng: lng }), btn, "📍");
+  };
+  var fallar = function () { if (btn) btn.textContent = "📍"; alert("No pude encontrar la ubicación de esta propiedad."); };
+  // Último recurso: geocodificar la dirección con OpenStreetMap → coords aproximadas.
+  var porDireccion = function () {
+    if (!b.direccion) { fallar(); return; }
+    fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" +
+          encodeURIComponent(b.direccion + ", Montevideo, Uruguay"))
+      .then(function (r) { return r.json(); })
+      .then(function (a) { if (a && a[0]) guardar(parseFloat(a[0].lat), parseFloat(a[0].lon)); else fallar(); })
+      .catch(function () { if (btn) btn.textContent = "📍"; alert("No pude traer la ubicación. Revisá la conexión."); });
+  };
+  var slug = b && (b.slugActual || b.campSlug);
+  if (slug) {   // de RE/MAX: coords exactas por slug
+    fetch(DET_EP + encodeURIComponent(slug)).then(function (r) { return r.json(); })
+      .then(function (d) {
+        var det = d && d.data ? (d.data.data || d.data) : null;
+        var lc = det && det.location && det.location.coordinates;
+        if (lc && lc.length >= 2) guardar(lc[1], lc[0]); else porDireccion();
+      })
+      .catch(porDireccion);
+  } else porDireccion();
 }
 function copiarSeleccionadas() {
   var n = listaEnviar().length;
@@ -1289,9 +1308,9 @@ function renderBusquedas() {
 
     // Acciones: (📍 ubicación) + editar + borrar (sin "Abrir" — tocar la ficha ya la abre).
     var acc = document.createElement("div"); acc.className = "bi-acc";
-    // 📍 aparece si es de RE/MAX (tiene slug) — aunque no tenga coords guardadas: al tocarlo
-    // las busca en vivo. Así Stella y las que salieron del listado también lo tienen.
-    if (ubicacionDe(b) || b.slugActual || b.campSlug) {
+    // 📍 aparece si hay forma de ubicarla: coords, slug de RE/MAX, o dirección. Así también
+    // las guardadas a mano (con dirección) y las que salieron del listado tienen el botón.
+    if (ubicacionDe(b) || b.slugActual || b.campSlug || b.direccion) {
       var loc = document.createElement("button");
       loc.className = "bi-edit"; loc.textContent = "📍";
       loc.title = "Copiar ubicación (para pegar en WhatsApp)";
