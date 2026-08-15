@@ -389,6 +389,12 @@ def main():
             print(f"  detalle {i}/{len(mvd_can)} (fallidos {fallidos})",
                   file=sys.stderr)
         time.sleep(0.25)   # amable con la API
+    # ⚠️ RED DE SEGURIDAD: si el listado vino sospechosamente chico (un hipo de la API de
+    # RE/MAX: responde 200 pero vacío/truncado), NO pisar el listings.json bueno NI borrar
+    # el historial de primera_vez.json. Abortamos: mañana reintenta con los datos de ayer
+    # intactos. (En modo prueba LIMIT sí puede ser chico a propósito, no aplica.)
+    if not limite and len(filas) < 500:
+        sys.exit(f"Listado sospechosamente chico ({len(filas)} props): no piso los archivos, reintenta la próxima corrida")
     # "Subida hace N días": RE/MAX NO publica la fecha de alta, así que el robot registra
     # la PRIMERA vez que ve cada propiedad en `primera_vez.json`. Es preciso DE ACÁ EN
     # ADELANTE: en la 1ª corrida todo queda "preexistente" (visto_desde=None, sin cartel);

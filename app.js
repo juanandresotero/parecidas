@@ -20,6 +20,7 @@ var INT_EP = "https://api-ar.redremax.com/remaxweb-uy/api/listings/findByInterna
 var CDN = "https://d1acdg20u0pmxj.cloudfront.net/";
 
 var DATA = [];        // propiedades
+var BY_SLUG = {};     // índice slug → propiedad (O(1), se arma al cargar)
 var USD_RATE = null;  // UYU por USD (del archivo)
 var $ = function (id) { return document.getElementById(id); };
 
@@ -155,8 +156,8 @@ function pasa(c, f, slugActual) {
   if (slugActual && c.slug === slugActual) return false;            // no me devuelvo a mí mismo
   if (c.estado_pub && c.estado_pub !== "active") return false;      // reservada/negociación: no se ofrece
   if (f.operacion && c.operacion !== f.operacion) return false;
-  if (f.tipos.length && f.tipos.indexOf(tipoCat(c.tipo)) < 0) return false;
-  if (f.grupo && f.grupo.indexOf(norm(c.barrio)) < 0) return false;
+  if (f.tipos.length && f.tipos.indexOf(c._tipoCat || tipoCat(c.tipo)) < 0) return false;
+  if (f.grupo && f.grupo.indexOf(c._barrioN != null ? c._barrioN : norm(c.barrio)) < 0) return false;
   if (f.dmin != null && (c.dorm == null || c.dorm < f.dmin)) return false;
   if (f.dmax != null && (c.dorm == null || c.dorm > f.dmax)) return false;
   if (f.bmin != null && (c.banos == null || c.banos < f.bmin)) return false;
@@ -210,8 +211,8 @@ function refDeBusqueda() {
 function puntaje(c, ref) {
   var w = [64, 32, 16, 8, 4, 2, 1], p = 0;
   if (ref.operacion && c.operacion !== ref.operacion) p += w[0];
-  if (ref.barrios.length) p += w[1] * (ref.barrios.indexOf(norm(c.barrio)) >= 0 ? 0 : 0.5);
-  if (ref.tipos && ref.tipos.length && ref.tipos.indexOf(tipoCat(c.tipo)) < 0) p += w[2];
+  if (ref.barrios.length) p += w[1] * (ref.barrios.indexOf(c._barrioN != null ? c._barrioN : norm(c.barrio)) >= 0 ? 0 : 0.5);
+  if (ref.tipos && ref.tipos.length && ref.tipos.indexOf(c._tipoCat || tipoCat(c.tipo)) < 0) p += w[2];
   if (ref.precio_usd && c.precio_usd)
     p += w[3] * Math.min(1, Math.abs(c.precio_usd - ref.precio_usd) / ref.precio_usd);
   if (ref.dorm != null && c.dorm != null)
@@ -221,23 +222,20 @@ function puntaje(c, ref) {
   return p;
 }
 
-function propPorSlug(slug) {
-  for (var i = 0; i < DATA.length; i++) if (DATA[i].slug === slug) return DATA[i];
-  return null;
-}
+function propPorSlug(slug) { return BY_SLUG[slug] || null; }
 function filtrar(f, ref, slugActual) {
   var res = DATA.filter(function (c) { return pasa(c, f, slugActual); });
-  res.sort(function (a, b) {
-    var d = puntaje(a, ref) - puntaje(b, ref);
+  // Se calcula el puntaje UNA sola vez por propiedad (antes el sort lo recomputaba
+  // O(n·log n) veces). Los desempates quedan idénticos: 1º más nueva, 2º más barata.
+  var dec = res.map(function (c) { return { c: c, p: puntaje(c, ref) }; });
+  dec.sort(function (a, b) {
+    var d = a.p - b.p;
     if (Math.abs(d) > 1e-9) return d;
-    // Empate en parecido → primero la MÁS NUEVA (la que el robot vio primero, más
-    // reciente). visto_desde es fecha ISO ("2026-08-15") o null si es preexistente:
-    // las sin fecha quedan abajo del grupo empatado.
-    var va = a.visto_desde || "", vb = b.visto_desde || "";
-    if (va !== vb) return va < vb ? 1 : -1;                    // fecha mayor (más nueva) arriba
-    return (a.precio_usd || 1e12) - (b.precio_usd || 1e12);   // último desempate: más barata
+    var va = a.c.visto_desde || "", vb = b.c.visto_desde || "";
+    if (va !== vb) return va < vb ? 1 : -1;                          // fecha mayor (más nueva) arriba
+    return (a.c.precio_usd || 1e12) - (b.c.precio_usd || 1e12);     // último desempate: más barata
   });
-  return res;
+  return dec.map(function (x) { return x.c; });
 }
 // Las MEJORES 10 (tope). Los filtros NO son flexibles: se aflojan SOLO si hay
 // menos de 2 exactas, para no dejarte casi sin nada (de menor a mayor prioridad,
@@ -679,7 +677,7 @@ function traer() {
   var esIdInterno = esRemax && /^\d+-\d+$/.test(slug);
   // 1) ¿está en el archivo del día? (lo más rápido; solo si ya es un slug de texto)
   if (!esIdInterno) {
-    var enArchivo = DATA.filter(function (c) { return c.slug === slug; })[0];
+    var enArchivo = BY_SLUG[slug];
     if (enArchivo) { rellenar(enArchivo); hint.innerHTML = avisoTraido(); return; }
   }
   if (!esRemax) {
@@ -1015,8 +1013,8 @@ function borrarBusqueda(id) {
 // slug. Si ya no está publicada (reservada/baja → sale del listado), devuelve null.
 function fotoCampana(b) {
   var slug = b && (b.campSlug || b.slugActual);
-  if (!slug || typeof DATA === "undefined" || !DATA) return null;
-  var p = DATA.filter(function (c) { return c.slug === slug; })[0];
+  if (!slug) return null;
+  var p = BY_SLUG[slug];
   return (p && p.foto) ? p.foto : null;
 }
 
@@ -1030,6 +1028,17 @@ function renderBusquedas() {
   cont.innerHTML = "";
   arr.forEach(function (b) {
     var item = document.createElement("div"); item.className = "busq-item";
+
+    // Una sola pasada por ficha: antes matchesDe(b) escaneaba las ~2800 propiedades
+    // DOS veces por ficha (nuevas + sin evaluar). Ahora se recorre una vez y se sacan
+    // los dos números. Resultado idéntico.
+    var _m = matchesDe(b), _visto = {};
+    (b.vistas || []).forEach(function (s) { _visto[s] = 1; });
+    var nuev = 0, sinEval = 0;
+    _m.forEach(function (c) {
+      if (!_visto[c.slug]) nuev++;
+      if (valDe(b, c.slug) === "sin_valorar") sinEval++;
+    });
 
     // Avatar SOLO si está en campaña: la foto de la propiedad que publicita.
     if (b.campana) {
@@ -1060,7 +1069,6 @@ function renderBusquedas() {
 
     // Fila de chips: nuevas · campaña · recordatorio · sin evaluar · notas.
     var row = document.createElement("div"); row.className = "bi-row";
-    var nuev = nuevasDe(b);                          // parecidas nuevas desde la última vez
     if (nuev > 0) {
       var nb = document.createElement("span"); nb.className = "bi-chip nuevas";
       nb.textContent = "🆕 " + nuev + " nueva" + (nuev === 1 ? "" : "s");
@@ -1085,8 +1093,8 @@ function renderBusquedas() {
       rc.textContent = d >= 0 ? "⏰ vencido" : ("⏰ " + (-d) + (d === -1 ? " día" : " días"));
       row.appendChild(rc);
     }
-    // Sin evaluar (el círculo gris): parecidas que cumplen el filtro y siguen sin valorar.
-    var sinEval = matchesDe(b).filter(function (c) { return valDe(b, c.slug) === "sin_valorar"; }).length;
+    // Sin evaluar (el círculo gris): parecidas que cumplen el filtro y siguen sin valorar
+    // (ya calculado arriba en la pasada única).
     if (sinEval > 0) {
       var pe = document.createElement("span"); pe.className = "bi-chip pend";
       var dot = document.createElement("span"); dot.className = "bi-dot"; pe.appendChild(dot);
@@ -1400,6 +1408,7 @@ function restaurarEstado() {
   if (!est || !est.form) return;
   restoreForm(est.form);
   window.__busquedaActiva = est.busquedaActiva || null;
+  window.__formBaseline = snapshotFiltros();   // foto base tras recargar: sin cambios falsos
   buscar();
 }
 // Tocar "Parecidas" = borrar lo que se está viendo (form + resultados + memoria).
@@ -1538,7 +1547,12 @@ var VAL_ESTADOS = {
 var VAL_ORDEN = ["sin_valorar", "a_enviar", "favorita", "enviada", "pendiente",
                  "descartada_filtro", "descarte_1", "descarte_2", "descarte_3"];
 
-function valDe(busq, slug) { return (busq && busq.estados && busq.estados[slug]) || "sin_valorar"; }
+function valDe(busq, slug) {
+  var v = (busq && busq.estados && busq.estados[slug]) || "sin_valorar";
+  // Si quedó guardado un estado de una versión vieja que ya no existe, no romper:
+  // tratarlo como "sin valorar" (evita que VAL_ESTADOS[v] sea undefined y crashee el render).
+  return VAL_ESTADOS[v] ? v : "sin_valorar";
+}
 function setVal(slug, clave) {
   var b = busquedaActiva(); if (!b) return;
   var arr = cargarBusquedas();
@@ -1776,6 +1790,16 @@ function actualizarDolar() {
 function cargar() {
   fetch("listings.json").then(function (r) { return r.json(); }).then(function (d) {
     DATA = d.listings || [];
+    // Índice por slug (O(1)) + normalizaciones precalculadas (DATA no cambia después):
+    // evita recomputar norm()/tipoCat() en cada filtro y en cada comparación del orden.
+    // Las props traídas en vivo (fromDetalle/rellenarExterno) no pasan por acá → las
+    // funciones caen solas al cálculo directo (fallback).
+    BY_SLUG = {};
+    DATA.forEach(function (c) {
+      BY_SLUG[c.slug] = c;
+      c._barrioN = norm(c.barrio || "");
+      c._tipoCat = tipoCat(c.tipo || "");
+    });
     USD_RATE = d.usd_rate || null;
     actualizarDolar();   // pisa con el dólar del día (fresco) si el motor responde
     // Lista de barrios reales para el autocompletar (sin repetir, ordenados).
