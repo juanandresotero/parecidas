@@ -1188,6 +1188,13 @@ function abrirBusqueda(id) {
     guardarBusquedas(arr);
     cerrarOverlay("busquedas");
     buscar();
+    // Contacto del agente también al abrir un cliente guardado: de la propiedad guardada
+    // (window.__base) o, si no lo trae, del archivo del día por su slug. Antes solo se
+    // mostraba al pegar el link fresco, no al reabrir el cliente.
+    var _pAg = window.__base;
+    if ((!_pAg || (!_pAg.agente && !_pAg.agente_tel)) && (b.slugActual || b.campSlug))
+      _pAg = BY_SLUG[b.slugActual || b.campSlug] || _pAg;
+    mostrarAgente(_pAg);
     renderBadge();
     sincronizarPush();   // ya viste esta búsqueda → el robotito no te re-avisa lo mismo
     $("resultados").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2068,6 +2075,11 @@ function initSegs() {
     var n = soloNum($("ce-recdias").value);
     if (!n || n < 1) { $("ce-recordatorio").textContent = "Poné un número de días."; return; }
     setRecordatorio(n);
+    // Tick en el botón (suplanta "Poner") para que se vea que la acción se ejecutó.
+    var btn = this;
+    if (!btn.dataset.vuelve) btn.dataset.vuelve = btn.textContent;   // guarda "Poner"
+    btn.classList.add("ok"); btn.textContent = "✓ Puesto";
+    setTimeout(function () { btn.classList.remove("ok"); btn.textContent = btn.dataset.vuelve; }, 1400);
   });
   $("btn-ce-sinrec").addEventListener("click", function () { $("ce-recdias").value = ""; setRecordatorio(null); });
   $("btn-ce-campana").addEventListener("click", toggleCampanaCE);
