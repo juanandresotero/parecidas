@@ -22,17 +22,39 @@ import time
 import unicodedata
 import urllib.request
 
-# "Con renta" (vendida con inquilino) no es un campo de RE/MAX: viene en el título
-# ("con renta", "renta 6%", "rentado", "alquilada", "ocupada"…).
-RENTA_RE = re.compile(r"(renta|rentad|alquilad|ocupad)", re.I)
+# "Con renta" = vendida CON inquilino adentro (OCUPACIÓN real), no potencial de renta.
+# Se lee de título + descripción. Señales específicas para NO marcar "ideal para renta",
+# "rentabilidad", "genera renta", "desocupada", "se alquila" (que son potencial/oferta).
+RENTA_POS_RE = re.compile(
+    r"(con renta|c/ ?renta|rentad[oa]s?|ya alquilad|tiene renta|"
+    r"(actualmente|se encuentra|esta) alquilad|alquilad[oa]s? (hasta|desde|por|en)|"
+    r"con inquilin|contrato de alquiler vigente)", re.I)
+
+
+def _sin_acentos(s: str) -> str:
+    s = unicodedata.normalize("NFD", (s or "").lower())
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
 # Cochera: RE/MAX carga mal parkingSpaces (muchos ponen 0 teniendo cochera). Se
 # refuerza con el texto ("lo positivo gana"), cuidando el "sin cochera/garaje".
 COCHERA_RE = re.compile(r"(cochera|garaj|garage|\bgge\b)", re.I)
 SIN_COCHERA_RE = re.compile(r"sin\s+(cochera|garaj|garage)", re.I)
 
 
-def _tiene_renta(titulo: str) -> bool:
-    return bool(RENTA_RE.search(titulo or ""))
+# "con renta" en sentido marketing (invertir/vivir con renta = potencial, no ocupada).
+RENTA_MKT_RE = re.compile(r"(vivir|invertir|inversion|ideal|oportunidad|posibilidad|opcion)"
+                          r"(\W+\w+){0,2}\W+con renta")
+# Señal FUERTE de ocupación real (si está, gana aunque haya marketing cerca).
+RENTA_FUERTE_RE = re.compile(r"alquilad|rentad[oa]|con inquilin|contrato de alquiler|tiene renta")
+
+
+def _tiene_renta(texto: str) -> bool:
+    t = _sin_acentos(texto or "")
+    if not RENTA_POS_RE.search(t):
+        return False
+    # Si la única señal es "con renta" en sentido marketing y no hay ocupación real, no marcar.
+    if RENTA_MKT_RE.search(t) and not RENTA_FUERTE_RE.search(t):
+        return False
+    return True
 
 
 def _dice_cochera(texto: str) -> bool:
@@ -212,6 +234,12 @@ _MULTI_EXCLUIR = [
     "regimen de propiedad horizontal", "bajo regimen de propiedad horizontal",
     "bajo propiedad horizontal", "en propiedad horizontal",
     "regimen de p.h.", "regimen ph", "regimen de ph", "propiedad horizontal",
+    # falsos positivos verificados: la propiedad es UNA dentro de un conjunto, o "eran 2
+    # y ahora es 1". El número ("4 casas") describe OTRAS unidades del complejo, no lo que
+    # se vende. (Exclusiones corren PRIMERO, así ganan al patrón numérico.)
+    "casas agrupadas", "complejo que cuenta", "predio compartido",
+    "fueron unificadas", "unificadas en", "la ofrecida es", "propiedad ofrecida es la",
+    "otras 2 casas", "otras 3 casas", "otras 4 casas", "otras 5 casas", "otras 6 casas",
 ]
 
 _MULTI_POSITIVAS = [
@@ -237,11 +265,15 @@ _MULTI_POSITIVAS = [
     "mismo padron", "un mismo padron", "en el mismo padron", "en un mismo padron",
     "un solo padron",
     "mismo terreno", "en el mismo terreno", "en un mismo terreno",
-    # categóricos
+    # categóricos ("complejo de casas" SACADO: en RE/MAX = barrio privado, comprás UNA)
     "vivienda multifamiliar", "viviendas multifamiliares", "multifamiliar",
-    "bifamiliar", "trifamiliar", "doble vivienda", "triple vivienda", "complejo de casas",
+    "bifamiliar", "trifamiliar", "doble vivienda", "triple vivienda",
     "unidades independientes", "viviendas independientes", "casas independientes",
-    "totalmente independientes",
+    "propiedades independientes", "totalmente independientes",
+    # apto/apartamento/monoambiente/vivienda "al fondo" (sueltos): los avisos reales dicen
+    # "casa de 3 dorm y apartamento al fondo" sin decir "casa al frente". "casa al fondo"
+    # NO va suelta (hay 1 falso: "esta casa al fondo ofrece…") → queda solo en combo.
+    "apto al fondo", "apartamento al fondo", "monoambiente al fondo", "vivienda al fondo",
     # idiomáticos uruguayos ("frente y fondo" SOLO = ruido: jardín/patio/terreno al
     # frente y fondo. Medido en RE/MAX: ~90% falsos. Queda el inequívoco "casa al ...").
     "casa al frente y al fondo", "casa adelante y atras", "casa adelante y casa atras",
@@ -344,7 +376,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         # Estado de publicación: active | reserved | negotiation. Solo 'active' se
         # ofrece como parecida (reservada/en negociación NO están habilitadas).
         "estado_pub": (it.get("listingStatus") or {}).get("value") or "active",
-        "renta": _tiene_renta(it.get("title") or ""),   # vendida con inquilino
+        "renta": _tiene_renta(texto),   # vendida con inquilino (título + descripción)
         "cochera": cochera,          # True/False, o None si no se pudo leer el detalle
         # Gastos comunes (expensas): casi siempre en pesos. Solo si > 0.
         "gastos": gastos,

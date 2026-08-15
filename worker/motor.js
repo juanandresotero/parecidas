@@ -328,33 +328,57 @@ const UA_NAVEGADOR = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.
   "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 const UA_ML = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
 async function fetchHtml(target, ua) {
-  const r = await fetch(target, {
-    headers: {
-      "User-Agent": ua || UA_NAVEGADOR,
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "es-UY,es;q=0.9,en;q=0.8",
-      "Sec-Fetch-Mode": "navigate",
-      "Sec-Fetch-Site": "none",
-      "Sec-Fetch-Dest": "document",
-      "Upgrade-Insecure-Requests": "1",
-    },
-    cf: { cacheTtl: 0 },   // sin caché: la clave es la URL y no varía por UA (nos daba páginas viejas)
-  });
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  return await r.text();
+  const headers = {
+    "User-Agent": ua || UA_NAVEGADOR,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-UY,es;q=0.9,en;q=0.8",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-Dest": "document",
+    "Upgrade-Insecure-Requests": "1",
+  };
+  // Hasta 2 intentos: ML a veces tira 429/503 al bot (rate-limit pasajero).
+  for (let intento = 0; intento < 2; intento++) {
+    const r = await fetch(target, { headers, cf: { cacheTtl: 0 } });
+    if (r.ok) return await r.text();
+    if (intento === 0 && (r.status === 429 || r.status === 503)) {
+      await new Promise((res) => setTimeout(res, 500));
+      continue;
+    }
+    throw new Error("HTTP " + r.status);
+  }
 }
 
 // ------------------------------ Utilidades ------------------------------
-const RENTA_RE = /(renta|rentad|alquilad|ocupad)/i;
 const SIN_COCHERA_RE = /sin\s+(cochera|garaj|garage)/i;
 const COCHERA_RE = /(cochera|garaj|garage|\bgge\b)/i;
 
-// Número uruguayo: "120.000" = ciento veinte mil; "1.234,5" = mil doscientos...
+// "Con renta" = vendida CON inquilino adentro (ocupación real), NO potencial de renta.
+// Señales de OCUPACIÓN (específicas para no marcar "ideal para renta", "rentabilidad",
+// "genera renta", "desocupada", "se alquila"). Mismo criterio que el robot.
+function sinAcento(s) {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+const RENTA_POS = /(con renta|c\/ ?renta|rentad[oa]s?|ya alquilad|tiene renta|(actualmente|se encuentra|esta) alquilad|alquilad[oa]s? (hasta|desde|por|en)|con inquilin|contrato de alquiler vigente)/;
+// "con renta" de marketing (invertir/vivir con renta = potencial) vs ocupación real.
+const RENTA_MKT = /(vivir|invertir|inversion|ideal|oportunidad|posibilidad|opcion)(\W+\w+){0,2}\W+con renta/;
+const RENTA_FUERTE = /alquilad|rentad[oa]|con inquilin|contrato de alquiler|tiene renta/;
+function tieneRenta(texto) {
+  const t = sinAcento(texto);
+  if (!RENTA_POS.test(t)) return false;
+  if (RENTA_MKT.test(t) && !RENTA_FUERTE.test(t)) return false;   // marketing sin ocupación real
+  return true;
+}
+
+// Número uruguayo: "120.000" = ciento veinte mil; "1.234,5" = mil doscientos…; "54,5"=54,5.
+// Ojo: sin coma, un solo punto con 1-2 dígitos detrás es DECIMAL ("54.5"), no miles.
 function numUY(s) {
   if (s == null) return null;
   const t = String(s).replace(/[^\d.,]/g, "");
   if (!t) return null;
-  const n = Number(t.replace(/\./g, "").replace(",", "."));
+  let n;
+  if (t.indexOf(",") >= 0) n = Number(t.replace(/\./g, "").replace(",", "."));  // coma decimal
+  else n = /^\d+\.\d{1,2}$/.test(t) ? Number(t) : Number(t.replace(/\./g, "")); // 54.5 vs 120.000
   return isNaN(n) ? null : n;
 }
 
@@ -431,20 +455,30 @@ function parseMercadoLibre(html) {
   out.operacion = /\balquiler\b|\balquila\b|\barrienda\b/i.test(titulo) ? "rent" : "sale";
   out.tipo = titulo;                                        // la app (tipoCat) lo interpreta
   const md = titulo.match(/(\d+)\s*dormitorio/i); if (md) out.dorm = toInt(md[1]);
+  if (out.dorm == null) { const md2 = desc.match(/(\d+)\s*dormitorio/i); if (md2) out.dorm = toInt(md2[1]); }
   const head = (titulo.split(/\s[-–]\s/)[0] || "")
     .replace(/^\s*(alquiler|venta)\s+/i, "")
     .replace(/^\s*\S+\s+/, "")                              // saca la palabra del tipo
     .replace(/^\s*\d+\s+dormitorios?\s+/i, "");             // saca "N Dormitorios"
-  out.barrio = head.trim();
+  // Barrio del breadcrumb JSON-LD (limpio, es el último tramo); si no, el recorte del
+  // título (respaldo, suele salir sucio porque el vendedor pone el título a mano).
+  out.barrio = barrioBreadcrumb(html, true) || head.trim();
 
-  // m² de la descripción
-  const m2 = desc.match(/(\d+(?:[.,]\d+)?)\s*m²/i) || desc.match(/(\d+)\s*m2\b/i);
-  if (m2) out.m2_construidos = numUY(m2[1]);
+  // m² de la descripción, distinguiendo total/terreno de construido/edificado (el vendedor
+  // suele poner los dos); si no hay etiqueta, el primer "N m²" como construido (respaldo).
+  const mC = desc.match(/(?:constru\w*|edificad\w*|cubiert\w*)[^\d]{0,12}(\d+(?:[.,]\d+)?)\s*m/i);
+  const mT = desc.match(/(?:total|terreno)[^\d]{0,12}(\d+(?:[.,]\d+)?)\s*m/i);
+  if (mC) out.m2_construidos = numUY(mC[1]);
+  if (mT) out.m2_totales = numUY(mT[1]);
+  if (out.m2_construidos == null) {
+    const m2 = desc.match(/(\d+(?:[.,]\d+)?)\s*m²/i) || desc.match(/(\d+)\s*m2\b/i);
+    if (m2) out.m2_construidos = numUY(m2[1]);
+  }
 
   const texto = titulo + " " + desc;
   out.cochera = cocheraDe(texto, null);
   out.estado = estadoDe(texto, null);
-  out.renta = RENTA_RE.test(titulo);
+  out.renta = tieneRenta(texto);
   return out;
 }
 
@@ -483,9 +517,19 @@ function parseInfoCasas(html) {
     const op = String(pick(nodo, ["operationType", "operation_type", "operation"]) ||
       pickDeep(nodo, ["operation_type", "name"]) || "").toLowerCase();
     out.operacion = /alqui|arrend|rent/.test(op) ? "rent" : "sale";
-    // Estado SOLO del campo del nodo (escanear toda la página da falsos "a estrenar").
+    // Estado del NODO (no de toda la página, que da falsos "a estrenar" de otras props).
+    // InfoCasas lo trae en `antiquity` (0 = a estrenar) y `construction_year` (año futuro
+    // = pozo). Los campos construction_state_name/condition casi nunca existen.
+    const antiguedad = pick(nodo, ["antiquity", "antiguedad"]);
+    const anioCon = toInt(pick(nodo, ["construction_year", "constructionYear"]));
     const est = String(pick(nodo, ["construction_state_name", "constructionState", "condition"]) || "");
-    out.estado = estadoDe(est, null);
+    out.estado = estadoDe(est, antiguedad != null ? Number(antiguedad) : null);
+    // Año de construcción de ESTE año o futuro = obra nueva / pozo → a estrenar.
+    if (out.estado !== "a_estrenar" && anioCon && anioCon >= new Date().getFullYear())
+      out.estado = "a_estrenar";
+    // Renta: título + descripción del NODO (no toda la página). Detector de ocupación.
+    const descNodo = String(pick(nodo, ["description", "descripcion", "longDescription"]) || "");
+    out.renta = tieneRenta(titulo + " " + descNodo);
   }
 
   // Respaldo por texto si el JSON no trajo lo básico (0 cuenta como "no vino").
@@ -497,15 +541,15 @@ function parseInfoCasas(html) {
   if (cocheraDe(titulo, null) === true) out.cochera = true;
   if (!out.tipo) out.tipo = titulo;
   if (out.operacion === "sale" && /\balquiler\b|\balquila\b/i.test(titulo)) out.operacion = "rent";
-  out.renta = RENTA_RE.test(titulo);
+  out.renta = out.renta || tieneRenta(titulo);   // ya lo pudo marcar el nodo (título+desc)
   out.barrio = barrioInfoCasas(html);
   return out;
 }
 
-// Barrio de InfoCasas: sale del "camino de migas" (Inicio > Venta > Apartamentos >
-// Montevideo > POCITOS > ...). El barrio es el tramo que sigue a Montevideo/Canelones.
-// 1º el breadcrumb en JSON-LD (autoritativo); si no, los links del breadcrumb en el HTML.
-function barrioInfoCasas(html) {
+// Barrio desde el "camino de migas" (breadcrumb JSON-LD): el barrio es el tramo que sigue
+// a Montevideo/Canelones. En InfoCasas hay un tramo más después (la propiedad) → NO tomar
+// el último. En MercadoLibre el barrio ES el último → permitirUltimo=true.
+function barrioBreadcrumb(html, permitirUltimo) {
   var bloques = html.match(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi) || [];
   for (var i = 0; i < bloques.length; i++) {
     var cuerpo = bloques[i].replace(/^[\s\S]*?>/, "").replace(/<\/script>\s*$/i, "");
@@ -517,18 +561,19 @@ function barrioInfoCasas(html) {
       var items = d.itemListElement.map(function (e) {
         return String((e && (e.name || (e.item && e.item.name))) || "").trim();
       });
+      var tope = permitirUltimo ? items.length - 1 : items.length - 2;
       for (var k = 0; k < items.length; k++) {
-        // El barrio sigue a Montevideo/Canelones y NO es el último (el último = la propiedad).
-        if (/^(montevideo|canelones)$/i.test(items[k]) && k + 1 <= items.length - 2)
+        if (/^(montevideo|canelones)$/i.test(items[k]) && k + 1 <= tope && items[k + 1])
           return items[k + 1];
       }
     }
   }
-  // Respaldo: link del breadcrumb /(venta|alquiler)/<tipo>/(montevideo|canelones)/<barrio>.
+  // Respaldo (InfoCasas): link del breadcrumb /(venta|alquiler)/<tipo>/(mvd|can)/<barrio>.
   var m = html.match(/\/(?:venta|alquiler)\/[^\/"']+\/(?:montevideo|canelones)\/([a-z0-9\-]+)/i);
   if (m && !/^\d/.test(m[1])) return m[1].replace(/-/g, " ").trim();
   return "";
 }
+function barrioInfoCasas(html) { return barrioBreadcrumb(html, false); }
 
 // Recorre el árbol y devuelve el primer objeto que "parece" una propiedad.
 function buscarPropiedad(root) {
@@ -539,8 +584,11 @@ function buscarPropiedad(root) {
     if (!x || typeof x !== "object" || vistos.has(x)) continue;
     vistos.add(x);
     const keys = Object.keys(x);
-    const tieneM2 = keys.some((k) => /m2|surface|superficie|terrain|built/i.test(k));
-    const tienePrecio = keys.some((k) => /price|precio|amount/i.test(k));
+    // Excluir claves de PROMEDIO (avg_price / avg_price_m2 = nodo de estadísticas de la
+    // zona, un señuelo que cumpliría la heurística y devolvería precio/m² de la ZONA).
+    const noProm = (k) => !/avg|average|promed/i.test(k);
+    const tieneM2 = keys.some((k) => /m2|surface|superficie|terrain|built/i.test(k) && noProm(k));
+    const tienePrecio = keys.some((k) => /price|precio|amount/i.test(k) && noProm(k));
     const tieneDorm = keys.some((k) => /bedroom|dormitor|rooms/i.test(k));
     if (tienePrecio && (tieneM2 || tieneDorm)) return x;
     for (const k of keys) {

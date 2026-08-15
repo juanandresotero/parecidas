@@ -37,7 +37,8 @@ var $ = function (id) { return document.getElementById(id); };
 function norm(s) {
   return (s || "").normalize("NFC").toLowerCase()
     .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
-    .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n").trim();
+    .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")
+    .replace(/\s+/g, " ").trim();   // colapsa espacios dobles (barrios de otros portales)
 }
 function soloNum(s) {
   var d = (s == null ? "" : String(s)).replace(/[^\d]/g, "");
@@ -59,10 +60,14 @@ function esc(s) {   // blinda innerHTML contra caracteres raros en los datos de 
 // Grupo (lista de barrios normalizados) al que pertenece un barrio. Si no está en
 // ningún grupo, el grupo es solo ese barrio.
 var GRUPO_IDX = {};
+// norm(barrio) → nombre "lindo" de la lista de barrios de RE/MAX (para reconocer un
+// barrio válido aunque hoy no haya ninguna propiedad en él en el archivo del día).
+var BARRIO_CANON = {};
 (function () {
   (window.GRUPOS || []).forEach(function (g) {
     var ng = g.map(norm);
     ng.forEach(function (b) { GRUPO_IDX[b] = ng; });
+    g.forEach(function (b) { BARRIO_CANON[norm(b)] = b; });
   });
 })();
 function grupoDe(barrio) {
@@ -141,9 +146,11 @@ function leerFiltros() {
     cochera: segVal("f-coch"),
     estado: segVal("f-estado"),
     rentaSel: segMulti("f-renta"),   // ["con"|"multi"|"sin"] (multi-select, OR)
-    // Gastos comunes (solo alquiler): se ingresan en pesos.
-    gastosMinUsd: aUsd(soloNum($("f-gastos-min").value), "UYU"),
-    gastosMaxUsd: aUsd(soloNum($("f-gastos-max").value), "UYU")
+    // Gastos comunes (solo alquiler): se ingresan en pesos. Se leen SOLO si la operación
+    // es alquiler; en venta el campo está oculto pero conservaba su valor y filtraba
+    // escondido (tapaba ventas). Gateado por operación.
+    gastosMinUsd: segVal("f-oper") === "rent" ? aUsd(soloNum($("f-gastos-min").value), "UYU") : null,
+    gastosMaxUsd: segVal("f-oper") === "rent" ? aUsd(soloNum($("f-gastos-max").value), "UYU") : null
   };
 }
 // Mostrar el campo de gastos comunes solo cuando es Alquiler.
@@ -596,10 +603,14 @@ function rellenarExterno(d) {
   $("f-precio-max").value = d.precio ? fmtMiles(String(Math.round(d.precio * 1.15))) : "";
   setRango("f-cub", d.m2_construidos);
   setRango("f-padron", tc === "apto" ? 0 : d.m2_totales);   // aptos: sin padrón (RE/MAX no lo usa)
-  // Barrio: si el del portal coincide con uno de RE/MAX, lo cargo (1 barrio = su grupo).
+  // Barrio: si el del portal coincide con un barrio de RE/MAX, lo cargo (1 barrio = su
+  // grupo). Match contra los barrios del día Y contra la lista completa de RE/MAX
+  // (BARRIO_CANON), así reconoce barrios válidos aunque hoy no haya props en ellos.
   SELBARRIOS = [];
   if (d.barrio) {
-    var match = BARRIOS_ALL.filter(function (b) { return norm(b) === norm(d.barrio); })[0];
+    var nb = norm(d.barrio);
+    var match = BARRIOS_ALL.filter(function (b) { return norm(b) === nb; })[0]
+             || BARRIO_CANON[nb];
     if (match) SELBARRIOS = [match];
   }
   $("f-barrio").value = ""; renderChips(); pintarGrupo();
@@ -652,7 +663,8 @@ function mostrarAgente(c) {
 }
 function fromDetalle(det, slug) {
   var tipo = (det.type || {}).value || "";
-  var esApto = norm(tipo).indexOf("departamento") >= 0;
+  var nt = norm(tipo);
+  var esApto = nt.indexOf("departamento") >= 0 || nt === "ph" || nt.indexOf("penthouse") >= 0;
   var park = det.parkingSpaces;
   var conds = (det.conditions || []).map(function (x) { return norm(x && x.value); });
   var aEstrenar = conds.some(function (c) { return c.indexOf("estrenar") >= 0 || c.indexOf("construccion") >= 0; });
@@ -665,8 +677,15 @@ function fromDetalle(det, slug) {
     precio_usd: (det.currency || {}).value === "USD" ? (det.price ? Math.round(det.price) : null)
               : (USD_RATE && det.price ? Math.round(det.price / USD_RATE) : null),
     dorm: det.bedrooms,
+    // Baños totales = baños + toilet (igual que el robot). El endpoint de detalle trae
+    // bathrooms/toilets; si faltan los dos, queda null (no inventa un baño).
+    banos: (det.bathrooms != null || det.toilets != null)
+           ? ((det.bathrooms || 0) + (det.toilets || 0)) : null,
     direccion: det.displayAddress || "",
-    barrio: (det.geoLabel || "").split(",")[0].trim(),
+    // El barrio del DETALLE está en geo.label (NO en geoLabel, que solo existe en el
+    // listado). Sin esto el barrio quedaba vacío en links en vivo (cortos/nuevos) y se
+    // perdía el filtro de zona. Verificado contra la API real.
+    barrio: ((det.geo || {}).label || "").split(",")[0].trim(),
     m2_homog: homog(det.dimensionCovered, det.dimensionTotalBuilt, det.dimensionLand, esApto, det.dimensionSemicovered, det.dimensionUncovered),
     m2_padron: Math.round(det.dimensionLand || 0),
     cochera: (park != null) ? (park > 0) : null,
