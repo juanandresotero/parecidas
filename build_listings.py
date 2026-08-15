@@ -320,6 +320,11 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     es_apto = tipo.startswith("departamento") or tipo == "ph" or "penthouse" in tipo
     slug = it.get("slug") or ""
     src = det or it   # el detalle es más completo; si falló, uso el listón
+    # Coordenadas para el mapa: RE/MAX las da en location.coordinates = [lng, lat] (GeoJSON).
+    _loc = src.get("location") if isinstance(src.get("location"), dict) else {}
+    _coords = _loc.get("coordinates") if isinstance(_loc.get("coordinates"), list) else None
+    _lat = _coords[1] if (_coords and len(_coords) >= 2) else None
+    _lng = _coords[0] if (_coords and len(_coords) >= 2) else None
     cubiertos = src.get("dimensionCovered")
     totales = src.get("dimensionTotalBuilt")
     terreno = src.get("dimensionLand")
@@ -368,6 +373,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "m2_padron": round(terreno) if terreno else 0,   # el terreno del padrón
         "barrio": _barrio(it.get("geoLabel")),
         "depto": _depto(it.get("geoLabel")),
+        "lat": _lat, "lng": _lng,   # para el mapa
         "direccion": (det.get("displayAddress") if det else "") or "",
         "foto": foto_out,
         "agente": (it.get("associate") or {}).get("name") or "",
@@ -444,10 +450,10 @@ def main():
     _primera = _prev is None
     _prev = _prev or {}
     _mapa = {}
-    for _fila in filas:
-        _slug = _fila.get("slug")
+    for _row in filas:                   # OJO: NO usar '_fila' (choca con la función _fila())
+        _slug = _row.get("slug")
         if not _slug:
-            _fila["visto_desde"] = None
+            _row["visto_desde"] = None
             continue
         if _slug in _prev:
             _fecha = _prev[_slug]        # ya la conocíamos → su fecha original
@@ -456,7 +462,7 @@ def main():
         else:
             _fecha = _hoy                # apareció NUEVA de verdad
         _mapa[_slug] = _fecha
-        _fila["visto_desde"] = _fecha
+        _row["visto_desde"] = _fecha
     try:
         with open("primera_vez.json", "w", encoding="utf-8") as _f:
             json.dump(_mapa, _f, ensure_ascii=False)

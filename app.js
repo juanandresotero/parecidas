@@ -41,16 +41,29 @@ function norm(s) {
     .replace(/\s+/g, " ").trim();   // colapsa espacios dobles (barrios de otros portales)
 }
 function soloNum(s) {
-  var d = (s == null ? "" : String(s)).replace(/[^\d]/g, "");
+  // Corta la parte decimal ("80,5" → 80) para que no se convierta en 805; el punto de
+  // miles ("1.234.567") se saca igual. Precio/m²/dorm/baños se usan como enteros.
+  var t = (s == null ? "" : String(s)).split(",")[0];
+  var d = t.replace(/[^\d]/g, "");
   return d ? parseInt(d, 10) : null;
 }
+// Categorías finas. "Casa" y "Apto" son los grandes; el resto se agrupa bajo "Otros"
+// (ver OTROS_CATS), que en la UI se despliega en Terreno/Chacra/Campo/Quinta/Local/…
 function tipoCat(t) {
   t = norm(t);
   if (t.indexOf("departamento") >= 0 || t.indexOf("penthouse") >= 0 || t.indexOf("apart") >= 0 || t === "ph") return "apto";   // PH = apartamento
   if (t.indexOf("casa") >= 0) return "casa";
   if (t.indexOf("terreno") >= 0 || t.indexOf("lote") >= 0) return "terreno";
+  if (t.indexOf("chacra") >= 0) return "chacra";
+  if (t.indexOf("campo") >= 0) return "campo";
+  if (t.indexOf("quinta") >= 0) return "quinta";
+  if (t.indexOf("local") >= 0) return "local";
+  if (t.indexOf("oficina") >= 0) return "oficina";
+  if (t.indexOf("deposito") >= 0 || t.indexOf("galpon") >= 0 || t.indexOf("industrial") >= 0) return "deposito";
   return "otro";
 }
+// Todo lo que NO es casa ni apto = "Otros".
+var OTROS_CATS = ["terreno", "chacra", "campo", "quinta", "local", "oficina", "deposito", "otro"];
 function esc(s) {   // blinda innerHTML contra caracteres raros en los datos de RE/MAX
   return (s == null ? "" : String(s)).replace(/[&<>"']/g, function (c) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -70,6 +83,20 @@ var BARRIO_CANON = {};
     g.forEach(function (b) { BARRIO_CANON[norm(b)] = b; });
   });
 })();
+// APODOS de barrios: cómo los escriben OTROS portales (InfoCasas/ML) → nombre de RE/MAX.
+// Solo se usa cuando el nombre no matchea directo. Se puede ampliar cuando aparezca uno
+// que no engancha (clave en minúscula sin tildes; el valor tiene que ser un barrio real).
+var ALIAS_BARRIO = {
+  "pta carretas": "Punta Carretas", "punta carreta": "Punta Carretas",
+  "pta gorda": "Punta Gorda",
+  "pque batlle": "Parque Batlle", "parque batlle villa dolores": "Parque Batlle",
+  "villa dolores": "Parque Batlle",
+  "pque rodo": "Parque Rodó", "parque rodo": "Parque Rodó",
+  "pocitos nuevo": "Pocitos", "pocitos wtc": "Pocitos", "wtc": "Pocitos",
+  "cordon soho": "Cordón", "barrio sur": "Barrio Sur",
+  "tres cruces": "Tres Cruces", "la comercial": "La Comercial",
+  "prado nueva savona": "Prado", "aguada": "Aguada"
+};
 function grupoDe(barrio) {
   var n = norm(barrio);
   if (!n) return null;
@@ -129,9 +156,9 @@ function leerFiltros() {
   // 1 barrio → su grupo (similares). 2+ → solo esos exactos. 0 → da igual.
   var grupo = SELBARRIOS.length === 1 ? grupoDe(SELBARRIOS[0])
             : (SELBARRIOS.length > 1 ? barriosSel() : null);
-  return {
+  var f = {
     operacion: segVal("f-oper"),                 // siempre 'sale' o 'rent'
-    tipos: segMulti("f-tipo"),                    // casa/apto/terreno (vacío = cualquiera)
+    tipos: tiposSeleccionados(),                  // casa/apto/otros(expandido) (vacío = cualquiera)
     grupo: grupo,
     dmin: stepVal("f-dmin"),
     dmax: stepVal("f-dmax"),
@@ -152,6 +179,36 @@ function leerFiltros() {
     gastosMinUsd: segVal("f-oper") === "rent" ? aUsd(soloNum($("f-gastos-min").value), "UYU") : null,
     gastosMaxUsd: segVal("f-oper") === "rent" ? aUsd(soloNum($("f-gastos-max").value), "UYU") : null
   };
+  // Mín > máx: en vez de dar "0 encontradas" sin explicar, se intercambian (era lo que
+  // el usuario quiso: ese rango). Aplica a todos los pares mín/máx.
+  [["precioMinUsd", "precioMaxUsd"], ["cubMin", "cubMax"], ["padronMin", "padronMax"],
+   ["dmin", "dmax"], ["bmin", "bmax"], ["gastosMinUsd", "gastosMaxUsd"]].forEach(function (p) {
+    var a = f[p[0]], b = f[p[1]];
+    if (a != null && b != null && a > b) { f[p[0]] = b; f[p[1]] = a; }
+  });
+  return f;
+}
+// Tipos elegidos, expandiendo "Otros": sin sub-opción elegida = cualquier otro tipo;
+// con sub-opciones = solo esas.
+function tiposSeleccionados() {
+  var sel = segMulti("f-tipo"), sub = segMulti("f-tipo-otros"), out = [];
+  sel.forEach(function (v) { if (v !== "otros") out.push(v); });
+  if (sel.indexOf("otros") >= 0) out = out.concat(sub.length ? sub : OTROS_CATS);
+  return out;
+}
+// Muestra el desplegable de "Otros" solo cuando el botón Otros está prendido.
+function toggleOtros() {
+  $("f-tipo-otros").style.display = segMulti("f-tipo").indexOf("otros") >= 0 ? "" : "none";
+}
+// Setea el tipo desde un link: casa/apto van directos; el resto = "Otros" (+ su sub-tipo).
+function setTipoFino(tc) {
+  if (tc === "casa" || tc === "apto") {
+    setSegMulti("f-tipo", [tc]); setSegMulti("f-tipo-otros", []);
+  } else {
+    setSegMulti("f-tipo", ["otros"]);
+    setSegMulti("f-tipo-otros", OTROS_CATS.indexOf(tc) >= 0 && tc !== "otro" ? [tc] : []);
+  }
+  toggleOtros();
 }
 // Mostrar el campo de gastos comunes solo cuando es Alquiler.
 function toggleGastos() {
@@ -446,8 +503,11 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
   if (!total) {
     $("cuenta").textContent = "0 encontradas";
     cont.innerHTML = '<div class="vacio">No hay parecidas con esos filtros. Probá aflojar alguno (dejalo vacío / “Da igual”).</div>';
+    $("btn-mapa").style.display = "none";
     return;
   }
+  // Botón del mapa: solo si al menos una parecida tiene ubicación (coordenadas).
+  $("btn-mapa").style.display = res.some(function (c) { return c.lat != null; }) ? "" : "none";
   var txt = (total > res.length)                   // se aplicó el tope de 10
     ? "las " + res.length + " más parecidas (de " + total + ")"
     : total + (total === 1 ? " encontrada" : " encontradas");
@@ -571,7 +631,7 @@ function rellenar(c) {
   setSeg("f-oper", c.operacion === "rent" ? "rent" : "sale");
   setSeg("f-moneda", (c.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(c.tipo);
-  setSegMulti("f-tipo", tc === "otro" ? [] : [tc]);
+  setTipoFino(tc);
   // precio: sin mínimo (más barato sirve), máximo +15%. m²: ±25%.
   $("f-precio-min").value = "";
   $("f-precio-max").value = c.precio ? fmtMiles(String(Math.round(c.precio * 1.15))) : "";
@@ -598,7 +658,7 @@ function rellenarExterno(d) {
   setSeg("f-oper", d.operacion === "rent" ? "rent" : "sale");
   setSeg("f-moneda", (d.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(d.tipo || "");
-  setSegMulti("f-tipo", tc === "otro" ? [] : [tc]);
+  setTipoFino(tc);
   $("f-precio-min").value = "";
   $("f-precio-max").value = d.precio ? fmtMiles(String(Math.round(d.precio * 1.15))) : "";
   setRango("f-cub", d.m2_construidos);
@@ -610,7 +670,8 @@ function rellenarExterno(d) {
   if (d.barrio) {
     var nb = norm(d.barrio);
     var match = BARRIOS_ALL.filter(function (b) { return norm(b) === nb; })[0]
-             || BARRIO_CANON[nb];
+             || BARRIO_CANON[nb]
+             || ALIAS_BARRIO[nb];    // apodo de otro portal → nombre de RE/MAX
     if (match) SELBARRIOS = [match];
   }
   $("f-barrio").value = ""; renderChips(); pintarGrupo();
@@ -866,6 +927,7 @@ function snapshotForm() {
   return {
     link: $("link").value,
     oper: segVal("f-oper"), moneda: segVal("f-moneda"), tipos: segMulti("f-tipo"),
+    tiposOtros: segMulti("f-tipo-otros"),
     precioMin: $("f-precio-min").value, precioMax: $("f-precio-max").value,
     cubMin: $("f-cub-min").value, cubMax: $("f-cub-max").value,
     padronMin: $("f-padron-min").value, padronMax: $("f-padron-max").value,
@@ -882,6 +944,7 @@ function restoreForm(s) {
   setSeg("f-oper", s.oper || "sale");
   setSeg("f-moneda", s.moneda || (s.oper === "rent" ? "UYU" : "USD"));
   setSegMulti("f-tipo", s.tipos || []);
+  setSegMulti("f-tipo-otros", s.tiposOtros || []); toggleOtros();
   $("f-precio-min").value = s.precioMin || ""; $("f-precio-max").value = s.precioMax || "";
   $("f-cub-min").value = s.cubMin || ""; $("f-cub-max").value = s.cubMax || "";
   $("f-padron-min").value = s.padronMin || ""; $("f-padron-max").value = s.padronMax || "";
@@ -1475,7 +1538,8 @@ function restaurarEstado() {
 function limpiarTodo() {
   try { localStorage.removeItem(ESTADO_KEY); } catch (e) {}
   $("link").value = "";
-  setSeg("f-oper", "sale"); setSeg("f-moneda", "USD"); setSegMulti("f-tipo", []);
+  setSeg("f-oper", "sale"); setSeg("f-moneda", "USD");
+  setSegMulti("f-tipo", []); setSegMulti("f-tipo-otros", []); toggleOtros();
   ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max",
    "f-gastos-min", "f-gastos-max"]
     .forEach(function (id) { $(id).value = ""; });
@@ -1651,6 +1715,51 @@ window.addEventListener("appinstalled", function () {
 });
 
 // -------------------------- Arranque + eventos --------------------------
+// -------------------------- Mapa de las parecidas (Leaflet) --------------------------
+var MAPA = null;
+// Carga Leaflet (CSS + JS) la primera vez que se abre el mapa (no pesa en el arranque).
+function cargarLeaflet(cb) {
+  if (window.L) { cb(); return; }
+  var css = document.createElement("link");
+  css.rel = "stylesheet"; css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(css);
+  var js = document.createElement("script");
+  js.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  js.onload = cb;
+  js.onerror = function () { cerrarMapa(); alert("No pude cargar el mapa. Revisá la conexión."); };
+  document.head.appendChild(js);
+}
+function abrirMapa() {
+  // TODAS las que cumplen el filtro (no solo las 10 de la lista) que tengan ubicación.
+  var f = leerFiltros(), ref = refDeBusqueda();
+  var res = filtrar(f, ref, window.__slugActual || null);
+  var conCoord = res.filter(function (c) { return c.lat != null && c.lng != null; });
+  if (!conCoord.length) { alert("Estas parecidas todavía no tienen ubicación en el mapa."); return; }
+  $("mapa-titulo").textContent = "Parecidas en el mapa (" + conCoord.length + ")";
+  $("mapa-overlay").style.display = "flex";
+  cargarLeaflet(function () {
+    if (!MAPA) {
+      MAPA = L.map("mapa");
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(MAPA);
+      MAPA._grupo = L.layerGroup().addTo(MAPA);
+    }
+    MAPA._grupo.clearLayers();
+    var pts = [];
+    conCoord.forEach(function (c) {
+      var precio = fmtK(c.precio, c.moneda);
+      var m = L.marker([c.lat, c.lng]).bindPopup(
+        '<b>' + esc(resumenCard(c)) + '</b><br>' +
+        (precio ? esc(precio) + '<br>' : '') +
+        '<a href="' + esc(linkDe(c)) + '" target="_blank" rel="noopener">Ver aviso</a>');
+      MAPA._grupo.addLayer(m); pts.push([c.lat, c.lng]);
+    });
+    MAPA.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });
+    setTimeout(function () { MAPA.invalidateSize(); }, 120);   // el mapa arrancó oculto
+  });
+}
+function cerrarMapa() { $("mapa-overlay").style.display = "none"; }
+
 function initSegs() {
   ["f-oper", "f-coch", "f-estado", "f-moneda"].forEach(function (id) {   // una sola opción
     $(id).addEventListener("click", function (e) {
@@ -1665,11 +1774,12 @@ function initSegs() {
     toggleGastos();
   });
   // Tipo: varios a la vez (toggle independiente por botón)
-  ["f-tipo", "f-renta"].forEach(function (id) {   // multi-select: se pueden prender varios
+  ["f-tipo", "f-tipo-otros", "f-renta"].forEach(function (id) {   // multi-select
     $(id).addEventListener("click", function (e) {
       if (e.target.tagName !== "BUTTON") return;
       var b = e.target;
       b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") === "true" ? "false" : "true");
+      if (id === "f-tipo") toggleOtros();   // mostrar/ocultar el desplegable de "Otros"
     });
   });
   ["f-dmin", "f-dmax", "f-bmin", "f-bmax"].forEach(function (id) {
@@ -1740,6 +1850,8 @@ function initSegs() {
   });
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
+  $("btn-mapa").addEventListener("click", abrirMapa);
+  $("btn-mapa-cerrar").addEventListener("click", cerrarMapa);
   // Notas del cliente
   var cerrarCE = function () { guardarNotasCliente(); cerrarOverlay("cliente-editor"); renderBusquedas(); };
   $("btn-ce-cerrar").addEventListener("click", cerrarCE);

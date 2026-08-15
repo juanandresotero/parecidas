@@ -395,7 +395,18 @@
           <div class="seg seg-multi" id="f-tipo">
             <button data-v="casa" aria-pressed="false">Casa</button>
             <button data-v="apto" aria-pressed="false">Apto</button>
+            <button data-v="otros" aria-pressed="false">Otros ▾</button>
+          </div>
+          <!-- Sub-opciones de "Otros" (se muestran al tocar Otros). Sin elegir ninguna =
+               cualquier otro tipo; eligiendo, solo esos. -->
+          <div class="seg seg-multi" id="f-tipo-otros" style="display:none;margin-top:6px;flex-wrap:wrap">
             <button data-v="terreno" aria-pressed="false">Terreno</button>
+            <button data-v="chacra" aria-pressed="false">Chacra</button>
+            <button data-v="campo" aria-pressed="false">Campo</button>
+            <button data-v="quinta" aria-pressed="false">Quinta</button>
+            <button data-v="local" aria-pressed="false">Local</button>
+            <button data-v="oficina" aria-pressed="false">Oficina</button>
+            <button data-v="deposito" aria-pressed="false">Depósito</button>
           </div>
         </div>
         <div class="f full">
@@ -489,6 +500,7 @@
       <div class="res-head"><h2>Parecidas</h2><span class="n" id="cuenta"></span></div>
       <button class="btn btn-guardar-busq" id="btn-guardar-busq">🔖 Guardar esta búsqueda</button>
       <button class="btn btn-guardar-busq" id="btn-guardar-cambios" style="display:none">💾 Guardar cambios en este cliente</button>
+      <button class="btn btn-guardar-busq" id="btn-mapa" style="display:none">🗺️ Ver las parecidas en el mapa</button>
       <div class="cards" id="cards"></div>
     </div>
   </div>
@@ -496,6 +508,15 @@
 <div class="multibar" id="multibar" style="display:none">
   <button class="btn btn-enviar" id="btn-multienviar">📲 Enviar (0)</button>
   <button class="btn btn-copiar-sel" id="btn-multicopy">📋 Copiar (0)</button>
+</div>
+
+<!-- Mapa de las parecidas (pantalla completa; Leaflet se carga al abrirlo) -->
+<div id="mapa-overlay" style="display:none;position:fixed;inset:0;z-index:1000;background:#f4f5f7;flex-direction:column">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.12)">
+    <b id="mapa-titulo" style="font-size:16px">Parecidas en el mapa</b>
+    <button class="btn" id="btn-mapa-cerrar" style="width:auto;padding:7px 15px;background:#eef2f7;color:#12203a;border:0;border-radius:10px;font-weight:600">✕ Cerrar</button>
+  </div>
+  <div id="mapa" style="flex:1;min-height:0"></div>
 </div>
 
 <script src="barrios.js"></script>

@@ -203,11 +203,19 @@ function norm(s) {
     .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
     .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n").trim();
 }
+// Igual que el tipoCat de la app (categorías finas), para que los avisos de "parecidas
+// nuevas" del robotito cuadren con lo que filtra la app.
 function tipoCat(t) {
   t = norm(t);
   if (t.indexOf("departamento") >= 0 || t.indexOf("penthouse") >= 0 || t.indexOf("apart") >= 0 || t === "ph") return "apto";
   if (t.indexOf("casa") >= 0) return "casa";
   if (t.indexOf("terreno") >= 0 || t.indexOf("lote") >= 0) return "terreno";
+  if (t.indexOf("chacra") >= 0) return "chacra";
+  if (t.indexOf("campo") >= 0) return "campo";
+  if (t.indexOf("quinta") >= 0) return "quinta";
+  if (t.indexOf("local") >= 0) return "local";
+  if (t.indexOf("oficina") >= 0) return "oficina";
+  if (t.indexOf("deposito") >= 0 || t.indexOf("galpon") >= 0 || t.indexOf("industrial") >= 0) return "deposito";
   return "otro";
 }
 function pasa(c, f, slugActual) {
