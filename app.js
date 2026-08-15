@@ -182,11 +182,11 @@ function leerFiltros() {
     cochera: segVal("f-coch"),
     estado: segVal("f-estado"),
     rentaSel: segMulti("f-renta"),   // ["con"|"multi"|"sin"] (multi-select, OR)
-    // Gastos comunes (solo alquiler): se ingresan en pesos. Se leen SOLO si la operación
-    // es alquiler; en venta el campo está oculto pero conservaba su valor y filtraba
-    // escondido (tapaba ventas). Gateado por operación.
-    gastosMinUsd: segVal("f-oper") === "rent" ? aUsd(soloNum($("f-gastos-min").value), "UYU") : null,
-    gastosMaxUsd: segVal("f-oper") === "rent" ? aUsd(soloNum($("f-gastos-max").value), "UYU") : null
+    // Gastos comunes (en pesos): aplican en alquiler y en aptos (ver gastosAplica). Se leen
+    // SOLO cuando aplica; si no, el campo está oculto y no debe filtrar escondido (antes
+    // tapaba ventas de otros tipos).
+    gastosMinUsd: gastosAplica() ? aUsd(soloNum($("f-gastos-min").value), "UYU") : null,
+    gastosMaxUsd: gastosAplica() ? aUsd(soloNum($("f-gastos-max").value), "UYU") : null
   };
   // Mín > máx: en vez de dar "0 encontradas" sin explicar, se intercambian (era lo que
   // el usuario quiso: ese rango). Aplica a todos los pares mín/máx.
@@ -219,9 +219,14 @@ function setTipoFino(tc) {
   }
   toggleOtros();
 }
-// Mostrar el campo de gastos comunes solo cuando es Alquiler.
+// Los gastos comunes aplican en ALQUILER (se pagan aparte) y en APTOS (un apartamento casi
+// siempre tiene gastos comunes, se venda o se alquile). En esos casos se muestra el campo y
+// se filtra; en el resto queda oculto y no filtra.
+function gastosAplica() {
+  return segVal("f-oper") === "rent" || segMulti("f-tipo").indexOf("apto") >= 0;
+}
 function toggleGastos() {
-  $("f-gastos-wrap").style.display = segVal("f-oper") === "rent" ? "" : "none";
+  $("f-gastos-wrap").style.display = gastosAplica() ? "" : "none";
 }
 function aUsd(monto, moneda) {
   if (!monto) return null;
@@ -704,6 +709,7 @@ function rellenar(c) {
   setSeg("f-moneda", (c.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(c.tipo);
   setTipoFino(tc);
+  toggleGastos();   // apto o alquiler → mostrar gastos comunes (ya con el tipo puesto)
   // precio: sin mínimo (más barato sirve), máximo +15%. m²: ±25%.
   $("f-precio-min").value = "";
   $("f-precio-max").value = c.precio ? fmtMiles(String(Math.round(c.precio * 1.15))) : "";
@@ -732,6 +738,7 @@ function rellenarExterno(d) {
   setSeg("f-moneda", (d.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(d.tipo || "");
   setTipoFino(tc);
+  toggleGastos();   // apto o alquiler → mostrar gastos comunes (ya con el tipo puesto)
   $("f-precio-min").value = "";
   $("f-precio-max").value = d.precio ? fmtMiles(String(Math.round(d.precio * 1.15))) : "";
   setRango("f-cub", d.m2_construidos);
@@ -1667,6 +1674,19 @@ function avisarDatosViejos(generadoAt) {
   if (dias != null && dias > 3) { $("datos-dias").textContent = dias; el.style.display = ""; }
   else el.style.display = "none";
 }
+// Fecha de los datos, SIEMPRE visible abajo (así se sabe de cuándo es lo que se está viendo).
+// generado_at viene como "AAAA-MM-DD". Se muestra dd/mm/aaaa + "hoy / ayer / hace N días".
+function mostrarFechaDatos(generadoAt) {
+  var el = $("datos-fecha");
+  if (!el) return;
+  if (!generadoAt) { el.textContent = ""; return; }
+  var p = String(generadoAt).slice(0, 10).split("-");   // ["2026","08","15"]
+  var fecha = p.length >= 3 ? (+p[2] + "/" + +p[1] + "/" + p[0]) : String(generadoAt);
+  var dias = diasDesde(generadoAt);
+  var cuando = dias === 0 ? "hoy" : (dias === 1 ? "ayer"
+             : (dias != null && dias > 1 ? "hace " + dias + " días" : ""));
+  el.innerHTML = "📅 Datos actualizados: <b>" + fecha + "</b>" + (cuando ? " (" + cuando + ")" : "");
+}
 // "Hace N días" desde el ÚLTIMO ENVÍO real (Enviar por WhatsApp o "Le escribí hoy").
 // Si nunca le mandó nada, lo dice claro (no cuenta desde que se creó la búsqueda).
 function textoContacto(b) {
@@ -1906,12 +1926,18 @@ function pintarMapa() {
       '<a href="' + esc(linkDe(c)) + '" target="_blank" rel="noopener">Ver aviso</a>');
     MAPA._grupo.addLayer(m); pts.push([lat, lng]);
   });
-  // La propiedad del link pegado (referencia): marcador CASA 🏠, siempre visible.
+  // La propiedad de referencia (el link pegado / la del cliente): marcador CASA 🏠, siempre
+  // visible. Las coordenadas salen de window.__base (link recién pegado) o, si se está
+  // viendo un cliente guardado, de las coordenadas guardadas del cliente (b.lat/b.lng): en
+  // clientes viejos el __base restaurado no las tenía y la casa no aparecía.
   var base = window.__base;
-  if (base && base.lat != null && base.lng != null) {
-    var mb = L.marker([base.lat, base.lng], { icon: iconoBase(), zIndexOffset: 1000 })
-      .bindPopup('<b>🏠 La propiedad del link</b>' + (base.direccion ? '<br>' + esc(base.direccion) : ''));
-    MAPA._grupo.addLayer(mb); pts.push([base.lat, base.lng]);
+  var blat = (base && base.lat != null) ? base.lat : (b && b.lat != null ? b.lat : null);
+  var blng = (base && base.lng != null) ? base.lng : (b && b.lng != null ? b.lng : null);
+  if (blat != null && blng != null) {
+    var dirBase = (base && base.direccion) || (b && b.direccion) || "";
+    var mb = L.marker([blat, blng], { icon: iconoBase(), zIndexOffset: 1000 })
+      .bindPopup('<b>🏠 La propiedad de referencia</b>' + (dirBase ? '<br>' + esc(dirBase) : ''));
+    MAPA._grupo.addLayer(mb); pts.push([blat, blng]);
   }
   $("mapa-titulo").textContent = "Parecidas en el mapa (" + lista.length + ")";
   if (pts.length) MAPA.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });
@@ -1937,7 +1963,7 @@ function initSegs() {
       if (e.target.tagName !== "BUTTON") return;
       var b = e.target;
       b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") === "true" ? "false" : "true");
-      if (id === "f-tipo") toggleOtros();   // mostrar/ocultar el desplegable de "Otros"
+      if (id === "f-tipo") { toggleOtros(); toggleGastos(); }   // "Otros" + gastos si es apto
     });
   });
   ["f-dmin", "f-dmax", "f-bmin", "f-bmax"].forEach(function (id) {
@@ -2141,6 +2167,7 @@ function cargar() {
     USD_RATE = d.usd_rate || null;
     backfillUbicaciones();   // guarda las coords en las búsquedas viejas (mientras la prop esté en el listado)
     avisarDatosViejos(d.generado_at);   // cartel si el robot diario dejó de actualizar
+    mostrarFechaDatos(d.generado_at);   // fecha de los datos, siempre visible abajo
     actualizarDolar();   // pisa con el dólar del día (fresco) si el motor responde
     // Lista de barrios reales para el autocompletar (sin repetir, ordenados).
     var vistos = {};
