@@ -431,9 +431,10 @@ def main():
     mvd_can = [it for it in listado
                if _depto(it.get("geoLabel")).lower() in DEPTOS_OK]
     # RESCATE: RE/MAX a veces publica propiedades SIN la zona cargada (geoLabel vacío) →
-    # se descartaban aunque sean de Mvd/Can. Si el TÍTULO nombra un barrio conocido (de las
-    # que sí tienen zona), la recupero con ese barrio. (No incluyo a ciegas: hay de otros
-    # deptos entre las vacías.)
+    # se descartaban aunque sean de Mvd/Can. Pero la UBICACIÓN (coordenadas) SIEMPRE está,
+    # porque el agente la pone en el mapa al publicar. Así que uso las coordenadas para
+    # decidir si es de Mvd/Can (más confiable que el título). El barrio lo saco del título
+    # si nombra uno conocido; si no, queda sin barrio pero CON ubicación (mapa + botón 📍).
     _barrio_geo = {}   # norm(barrio) -> un geoLabel válido de ejemplo con ese barrio
     for it in mvd_can:
         _bn = _sin_acentos(_barrio(it.get("geoLabel")))
@@ -449,13 +450,22 @@ def main():
         _tn = _sin_acentos(it.get("title") or "")
         if any(_d in _tn for _d in _OTROS_DEPTOS):   # el título nombra OTRO depto → no rescatar
             continue
-        for _bn, _gl in _barrio_geo.items():
-            if _bn and re.search(r"\b" + re.escape(_bn) + r"\b", _tn):
-                it["geoLabel"] = _gl          # le pongo un geoLabel válido de ese barrio
-                mvd_can.append(it); _rescatadas += 1
-                break
+        _det = _fetch_detalle(it.get("slug") or "")
+        _c = ((_det or {}).get("location") or {}).get("coordinates")
+        if not (_c and len(_c) >= 2):
+            continue
+        _lng, _lat = _c[0], _c[1]
+        if not (-34.95 <= _lat <= -34.45 and -56.55 <= _lng <= -55.25):   # caja Mvd+Canelones
+            continue
+        _gl = next((g for _bn, g in _barrio_geo.items()
+                    if _bn and re.search(r"\b" + re.escape(_bn) + r"\b", _tn)), None)
+        if not _gl:   # sin barrio conocido: dept por las coords (Mvd ciudad vs Canelones)
+            _dep = "Montevideo" if (-34.96 <= _lat <= -34.84 and -56.45 <= _lng <= -56.00) else "Canelones"
+            _gl = ", , " + _dep
+        it["geoLabel"] = _gl
+        mvd_can.append(it); _rescatadas += 1
     print(f"Listón: {len(listado)} total, {len(mvd_can)} en Mvd+Canelones "
-          f"(rescatadas sin zona: {_rescatadas})", file=sys.stderr)
+          f"(rescatadas sin zona, por coordenadas: {_rescatadas})", file=sys.stderr)
     if limite:
         mvd_can = mvd_can[:limite]
         print(f"(prueba: solo {len(mvd_can)})", file=sys.stderr)

@@ -320,10 +320,10 @@ function filtrar(f, ref, slugActual) {
   });
   return dec.map(function (x) { return x.c; });
 }
-// Las MEJORES 10 (tope). Los filtros NO son flexibles: se aflojan SOLO si hay
-// menos de 2 exactas, para no dejarte casi sin nada (de menor a mayor prioridad,
-// avisando cuál). Si hay 3 exactas → muestra 3; si hay 40 → las 10 más parecidas.
-var TOPE_RESULTADOS = 10;
+// Se muestran TODAS las que cumplen el filtro (ordenadas por más parecida). Hay un tope
+// alto solo por las dudas (búsquedas sin casi filtros); en la práctica los filtros duros
+// dejan pocas. Antes era 10 y Juan quería ver todas.
+var TOPE_RESULTADOS = 300;
 function buscar() {
   toggleGastos();   // asegura que el campo de gastos comunes esté visible si es alquiler
   var f = leerFiltros();
@@ -1848,6 +1848,14 @@ function iconoMapa(emoji) {
     iconSize: [30, 40], iconAnchor: [15, 38], popupAnchor: [0, -36]
   });
 }
+// Marcador CASA 🏠 para la propiedad del link pegado (la referencia).
+function iconoBase() {
+  return L.divIcon({
+    className: "pin-wrap",
+    html: '<div class="pin-gota pin-base"><span>🏠</span></div>',
+    iconSize: [38, 50], iconAnchor: [19, 48], popupAnchor: [0, -46]
+  });
+}
 function abrirMapa() {
   // Lo MISMO que se ve en la lista: las que cumplen el filtro + las preservadas
   // (favoritas/⭐ que ya no cumplen pero se muestran). Así el mapa no muestra de menos.
@@ -1898,6 +1906,13 @@ function pintarMapa() {
       '<a href="' + esc(linkDe(c)) + '" target="_blank" rel="noopener">Ver aviso</a>');
     MAPA._grupo.addLayer(m); pts.push([lat, lng]);
   });
+  // La propiedad del link pegado (referencia): marcador CASA 🏠, siempre visible.
+  var base = window.__base;
+  if (base && base.lat != null && base.lng != null) {
+    var mb = L.marker([base.lat, base.lng], { icon: iconoBase(), zIndexOffset: 1000 })
+      .bindPopup('<b>🏠 La propiedad del link</b>' + (base.direccion ? '<br>' + esc(base.direccion) : ''));
+    MAPA._grupo.addLayer(mb); pts.push([base.lat, base.lng]);
+  }
   $("mapa-titulo").textContent = "Parecidas en el mapa (" + lista.length + ")";
   if (pts.length) MAPA.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });
 }
