@@ -34,6 +34,16 @@ RENTA_POS_RE = re.compile(
 def _sin_acentos(s: str) -> str:
     s = unicodedata.normalize("NFD", (s or "").lower())
     return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+
+# Hectáreas en el texto → m² (1 ha = 10.000). Entiende "3Ha", "5 has", "2 hectáreas".
+# (?![a-z]) evita agarrar "3 hab" (habitaciones).
+def _hectareas_m2(texto: str):
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*(hectareas?|has?)(?![a-z])", _sin_acentos(texto))
+    if not m:
+        return None
+    n = float(m.group(1).replace(",", "."))
+    return round(n * 10000) if n > 0 else None
 # Cochera: RE/MAX carga mal parkingSpaces (muchos ponen 0 teniendo cochera). Se
 # refuerza con el texto ("lo positivo gana"), cuidando el "sin cochera/garaje".
 COCHERA_RE = re.compile(r"(cochera|garaj|garage|\bgge\b)", re.I)
@@ -325,6 +335,13 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     _coords = _loc.get("coordinates") if isinstance(_loc.get("coordinates"), list) else None
     _lat = _coords[1] if (_coords and len(_coords) >= 2) else None
     _lng = _coords[0] if (_coords and len(_coords) >= 2) else None
+    # Padrón: RE/MAX infla los campos (ej. "3 ha" → dimensionLand 300.000.000 basura). Si
+    # el texto dice hectáreas y el dato es 0 o absurdo, uso las hectáreas (× 10.000).
+    _terreno = src.get("dimensionLand") or 0
+    _padron = round(_terreno) if _terreno else 0
+    _ha = _hectareas_m2((it.get("title") or "") + " " + ((det.get("description") or "") if det else ""))
+    if _ha and (_padron <= 0 or _padron > 5000000):
+        _padron = _ha
     cubiertos = src.get("dimensionCovered")
     totales = src.get("dimensionTotalBuilt")
     terreno = src.get("dimensionLand")
@@ -370,7 +387,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "banos": banos_tot,   # baños + toilet (total)
         "multiunidad": es_multiunidad(texto),   # varias viviendas en un mismo padrón
         "m2_homog": _homog(cubiertos, totales, terreno, es_apto, semi, descub),
-        "m2_padron": round(terreno) if terreno else 0,   # el terreno del padrón
+        "m2_padron": _padron,   # el terreno del padrón (hectáreas → m² si RE/MAX lo infló)
         "barrio": _barrio(it.get("geoLabel")),
         "depto": _depto(it.get("geoLabel")),
         "lat": _lat, "lng": _lng,   # para el mapa

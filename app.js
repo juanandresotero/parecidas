@@ -47,6 +47,14 @@ function soloNum(s) {
   var d = t.replace(/[^\d]/g, "");
   return d ? parseInt(d, 10) : null;
 }
+// Hectáreas en un texto → m² (1 ha = 10.000 m²). Entiende "3Ha", "5 has", "2 hectáreas".
+// El lookahead (?![a-z]) evita agarrar "3 hab" (habitaciones) como hectáreas.
+function hectareasM2(texto) {
+  var m = norm(texto).match(/(\d+(?:[.,]\d+)?)\s*(hectareas?|has?)(?![a-z])/);
+  if (!m) return null;
+  var n = parseFloat(m[1].replace(",", "."));
+  return (n > 0) ? Math.round(n * 10000) : null;
+}
 // Categorías finas. "Casa" y "Apto" son los grandes; el resto se agrupa bajo "Otros"
 // (ver OTROS_CATS), que en la UI se despliega en Terreno/Chacra/Campo/Quinta/Local/…
 function tipoCat(t) {
@@ -60,10 +68,11 @@ function tipoCat(t) {
   if (t.indexOf("local") >= 0) return "local";
   if (t.indexOf("oficina") >= 0) return "oficina";
   if (t.indexOf("deposito") >= 0 || t.indexOf("galpon") >= 0 || t.indexOf("industrial") >= 0) return "deposito";
-  return "otro";
+  if (t.indexOf("cochera") >= 0 || t.indexOf("garaje") >= 0) return "cochera";
+  return "otro";   // edificio, hotel, consultorio, fondo de comercio, etc. = "Varios"
 }
-// Todo lo que NO es casa ni apto = "Otros".
-var OTROS_CATS = ["terreno", "chacra", "campo", "quinta", "local", "oficina", "deposito", "otro"];
+// Todo lo que NO es casa ni apto = "Otros" (incluye "otro" = Varios).
+var OTROS_CATS = ["terreno", "chacra", "campo", "quinta", "local", "oficina", "deposito", "cochera", "otro"];
 function esc(s) {   // blinda innerHTML contra caracteres raros en los datos de RE/MAX
   return (s == null ? "" : String(s)).replace(/[&<>"']/g, function (c) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -607,6 +616,20 @@ function copiarTexto(texto, btn, vuelve) {
     navigator.clipboard.writeText(texto).then(done, function () { prompt("Copiá:", texto); });
   else prompt("Copiá:", texto);
 }
+// Ubicación (coordenadas) de la propiedad de una búsqueda guardada: primero las que se
+// guardaron con la búsqueda; si no, las de la propiedad en el archivo del día (BY_SLUG).
+function ubicacionDe(b) {
+  if (b && b.lat != null && b.lng != null) return { lat: b.lat, lng: b.lng };
+  var p = b && BY_SLUG[b.slugActual || b.campSlug];
+  if (p && p.lat != null && p.lng != null) return { lat: p.lat, lng: p.lng };
+  return null;
+}
+// Copia un link de Google Maps con las coordenadas (al pegarlo en WhatsApp muestra el
+// mapita). NO usa el texto de la dirección (que a veces sale con ceros de más).
+function copiarUbicacion(b, btn) {
+  var u = ubicacionDe(b); if (!u) return;
+  copiarTexto("https://www.google.com/maps?q=" + u.lat + "," + u.lng, btn, "📍");
+}
 function copiarSeleccionadas() {
   var n = listaEnviar().length;
   if (!n) return;
@@ -729,9 +752,19 @@ function fromDetalle(det, slug) {
   var park = det.parkingSpaces;
   var conds = (det.conditions || []).map(function (x) { return norm(x && x.value); });
   var aEstrenar = conds.some(function (c) { return c.indexOf("estrenar") >= 0 || c.indexOf("construccion") >= 0; });
+  // Coordenadas del mapa (RE/MAX: location.coordinates = [lng, lat]).
+  var _lc = (det.location && det.location.coordinates) || null;
+  // Superficie del padrón: RE/MAX INFLA la de los campos (ej. "3 ha" → dimensionLand
+  // 300.000.000 m², basura). Si el texto dice hectáreas y el dato es 0 o absurdo, uso las
+  // hectáreas del texto (× 10.000).
+  var _land = Math.round(det.dimensionLand || 0);
+  var _haM2 = hectareasM2((det.title || "") + " " + (det.description || ""));
+  if (_haM2 && (_land <= 0 || _land > 5000000)) _land = _haM2;
   return {
     slug: slug,
     link: "https://www.remax.com.uy/listings/" + slug,
+    lat: (_lc && _lc.length >= 2) ? _lc[1] : null,
+    lng: (_lc && _lc.length >= 2) ? _lc[0] : null,
     tipo: tipo,
     operacion: (det.operation || {}).value || "",
     precio: det.price, moneda: (det.currency || {}).value || "",
@@ -748,7 +781,7 @@ function fromDetalle(det, slug) {
     // perdía el filtro de zona. Verificado contra la API real.
     barrio: ((det.geo || {}).label || "").split(",")[0].trim(),
     m2_homog: homog(det.dimensionCovered, det.dimensionTotalBuilt, det.dimensionLand, esApto, det.dimensionSemicovered, det.dimensionUncovered),
-    m2_padron: Math.round(det.dimensionLand || 0),
+    m2_padron: _land,
     cochera: (park != null) ? (park > 0) : null,
     estado: aEstrenar ? "a_estrenar" : "usada",
     estado_pub: (det.listingStatus || {}).value || "active",
@@ -989,10 +1022,15 @@ function guardarBusquedaActual(nombre, tel, direccion, campana) {
   var slugActual = window.__slugActual || null;
   var matches = DATA.filter(function (c) { return pasa(c, f, slugActual); });
   var esCamp = !!(campana && slugActual);   // campaña solo si vino de un link de RE/MAX
+  // Coordenadas de la propiedad (para el botón "Copiar ubicación"): del link en vivo
+  // (window.__base) o del archivo del día (BY_SLUG). Se guardan para que sobrevivan
+  // aunque la propiedad se reserve y salga del listado.
+  var _pb = window.__base || (slugActual ? BY_SLUG[slugActual] : null) || {};
   var b = {
     id: String(Date.now()) + Math.random().toString(36).slice(2, 7),
     nombre: nombre, tel: tel, direccion: direccion || "", creada: new Date().toISOString(),
     form: snapshotForm(), filtro: f, slugActual: slugActual,
+    lat: _pb.lat != null ? _pb.lat : null, lng: _pb.lng != null ? _pb.lng : null,
     vistas: matches.map(function (c) { return c.slug; }),   // lo que ya vio hoy
     campana: esCamp, campSlug: esCamp ? slugActual : null, campEstado: "", campAck: ""
   };
@@ -1218,8 +1256,17 @@ function renderBusquedas() {
     if (row.children.length) info.appendChild(row);
     item.appendChild(info);
 
-    // Acciones: editar + borrar (sin "Abrir" — tocar la ficha ya la abre).
+    // Acciones: (📍 ubicación) + editar + borrar (sin "Abrir" — tocar la ficha ya la abre).
     var acc = document.createElement("div"); acc.className = "bi-acc";
+    var _u = ubicacionDe(b);
+    if (_u) {   // solo si la propiedad tiene ubicación en el mapa
+      var loc = document.createElement("button");
+      loc.className = "bi-edit"; loc.textContent = "📍";
+      loc.title = "Copiar ubicación (para pegar en WhatsApp)";
+      loc.setAttribute("aria-label", "Copiar ubicación");
+      loc.onclick = function (e) { e.stopPropagation(); copiarUbicacion(b, loc); };
+      acc.appendChild(loc);
+    }
     var edit = document.createElement("button");
     edit.className = "bi-edit" + (novedadVista("lapiz") ? "" : " nuevo");
     edit.textContent = "✎"; edit.title = "Notas y recordatorio";

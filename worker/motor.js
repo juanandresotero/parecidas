@@ -216,6 +216,7 @@ function tipoCat(t) {
   if (t.indexOf("local") >= 0) return "local";
   if (t.indexOf("oficina") >= 0) return "oficina";
   if (t.indexOf("deposito") >= 0 || t.indexOf("galpon") >= 0 || t.indexOf("industrial") >= 0) return "deposito";
+  if (t.indexOf("cochera") >= 0 || t.indexOf("garaje") >= 0) return "cochera";
   return "otro";
 }
 function pasa(c, f, slugActual) {
@@ -393,6 +394,13 @@ function numUY(s) {
 function textoPlano(html) {
   return html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ");
 }
+// Hectáreas en el texto → m² (1 ha = 10.000). Entiende "3Ha", "5 has", "2 hectáreas".
+function hectareasM2(texto) {
+  const m = sinAcento(texto).match(/(\d+(?:[.,]\d+)?)\s*(hectareas?|has?)(?![a-z])/);
+  if (!m) return null;
+  const n = parseFloat(m[1].replace(",", "."));
+  return n > 0 ? Math.round(n * 10000) : null;
+}
 
 // Busca "Etiqueta … 123" en el texto de la ficha técnica y devuelve el número.
 function specNum(texto, etiqueta) {
@@ -487,6 +495,9 @@ function parseMercadoLibre(html) {
   out.cochera = cocheraDe(texto, null);
   out.estado = estadoDe(texto, null);
   out.renta = tieneRenta(texto);
+  // Campo/chacra en hectáreas → m² (si es más grande que lo parseado, manda la hectárea).
+  const _ha = hectareasM2(texto);
+  if (_ha && !(out.m2_totales > _ha)) out.m2_totales = _ha;
   return out;
 }
 
@@ -551,6 +562,9 @@ function parseInfoCasas(html) {
   if (out.operacion === "sale" && /\balquiler\b|\balquila\b/i.test(titulo)) out.operacion = "rent";
   out.renta = out.renta || tieneRenta(titulo);   // ya lo pudo marcar el nodo (título+desc)
   out.barrio = barrioInfoCasas(html);
+  // Campo/chacra en hectáreas → m² (del título, que suele decir "Campo 5 Hectáreas").
+  const _ha = hectareasM2(titulo);
+  if (_ha && !(out.m2_totales > _ha)) out.m2_totales = _ha;
   return out;
 }
 
