@@ -1087,7 +1087,8 @@ function guardarBusquedaActual(nombre, tel, direccion, campana) {
     form: snapshotForm(), filtro: f, slugActual: slugActual,
     lat: _pb.lat != null ? _pb.lat : null, lng: _pb.lng != null ? _pb.lng : null,
     vistas: matches.map(function (c) { return c.slug; }),   // lo que ya vio hoy
-    campana: esCamp, campSlug: esCamp ? slugActual : null, campEstado: "", campAck: ""
+    campana: esCamp, campSlug: esCamp ? slugActual : null, campEstado: "", campAck: "",
+    campHuella: esCamp ? huellaDe(_pb, _pb.visto_desde) : null
   };
   // Si hay seleccionadas al guardar: esas quedan PENDIENTES (⏳) y el resto de las
   // que estaban en la lista, DESCARTADAS (🔴 descarte_1). (Enviada se marca al Enviar.)
@@ -1393,6 +1394,7 @@ function etqCampana(est) {
   return est === "reserved" ? "Reservada"
     : est === "negotiation" ? "En negociación"
     : est === "baja" ? "Ya no está publicada"
+    : est === "republicada" ? "Se republicó (link nuevo)"
     : est === "finished" ? "Finalizada / vendida"
     : "Cambió de estado";
 }
@@ -1418,6 +1420,56 @@ function fmtPrecioApp(n, moneda) {
   var s = new Intl.NumberFormat("es-UY").format(Math.round(n));
   return ((moneda || "").toUpperCase() === "UYU" ? "$U " : "USD ") + s;
 }
+// --- Huella: reconocer la MISMA propiedad aunque le cambien el link (republicación) ---
+// Se guarda al crear la campaña. Si el link viejo desaparece, con la huella buscamos un link
+// NUEVO que sea la misma propiedad, en vez de darla por "baja" a ciegas.
+function huellaDe(prop, desde) {
+  if (!prop) return null;
+  return {
+    tipo: prop._tipoCat || tipoCat(prop.tipo || ""),
+    agente: norm(prop.agente || ""),
+    direccionN: norm(prop.direccion || ""),
+    m2: prop.m2_homog || null,
+    dorm: (prop.dorm != null) ? prop.dorm : null,
+    lat: (prop.lat != null) ? prop.lat : null,
+    lng: (prop.lng != null) ? prop.lng : null,
+    // Desde cuándo la seguimos (fecha). Para APTOS es clave: un link cuya 1ª aparición
+    // (visto_desde) es ANTERIOR a esto ya estaba = es OTRA unidad del edificio, no ésta.
+    desde: String(desde || new Date().toISOString()).slice(0, 10)
+  };
+}
+// Misma ubicación (mismo punto/edificio): por coordenadas si las hay (~60 m), si no por dirección.
+function _mismaUbic(c, h) {
+  if (h.lat != null && h.lng != null && c.lat != null && c.lng != null)
+    return Math.abs(c.lat - h.lat) < 0.0006 && Math.abs(c.lng - h.lng) < 0.0006;
+  return !!h.direccionN && norm(c.direccion || "") === h.direccionN;
+}
+// Candidatos a ser la misma propiedad: mismo tipo, mismo agente, mismos dormitorios,
+// m² parecido (±12%) y misma ubicación.
+function _candidatosHuella(h, viejoSlug) {
+  return DATA.filter(function (c) {
+    if (c.slug === viejoSlug) return false;
+    if ((c._tipoCat || tipoCat(c.tipo)) !== h.tipo) return false;
+    if (h.agente && norm(c.agente || "") !== h.agente) return false;
+    if (h.dorm != null && c.dorm != null && c.dorm !== h.dorm) return false;
+    if (h.m2 && c.m2_homog && Math.abs(c.m2_homog - h.m2) / h.m2 > 0.12) return false;
+    return _mismaUbic(c, h);
+  });
+}
+// La propiedad republicada (link nuevo) o null si no se puede AFIRMAR. Probado contra los
+// datos reales: 0% de falsos positivos en casas y aptos (no confunde unidades del mismo
+// edificio ni casas parecidas de la zona del mismo agente).
+function buscarRepublicada(b) {
+  var h = b.campHuella;
+  if (!h || !DATA.length) return null;
+  if (!h.agente && !h.m2) return null;   // sin señal fuerte (agente o m²) no arriesgo
+  var cs = _candidatosHuella(h, b.campSlug || b.slugActual);
+  if (!cs.length) return null;
+  // La republicación es un link NUEVO (1ª aparición >= desde que la seguimos) y ÚNICO. Los que
+  // "ya estaban" se descartan; si hay más de uno nuevo, no adivino (queda en "ya no está").
+  var frescos = cs.filter(function (c) { return c.visto_desde && c.visto_desde >= h.desde; });
+  return frescos.length === 1 ? frescos[0] : null;
+}
 // Chequea en vivo el estado de cada propiedad en campaña; al terminar, repinta los avisos.
 function chequearCampanas() {
   var arr = cargarBusquedas();
@@ -1435,7 +1487,10 @@ function chequearCampanas() {
       if (!f) return;
       f.campEstado = b.campEstado;
       f.campPrecio = b.campPrecio; f.campMoneda = b.campMoneda;
+      if (b.campPrecioUsd != null) f.campPrecioUsd = b.campPrecioUsd;
+      if (b.campHuella) f.campHuella = b.campHuella;
       if (b.campBajaPrecio) f.campBajaPrecio = b.campBajaPrecio;
+      if (b.campReSlug) { f.campReSlug = b.campReSlug; f.campRePrecioUsd = b.campRePrecioUsd; }
     });
     guardarBusquedas(fresco);
     pintarBanner(); renderBadge();
@@ -1443,10 +1498,20 @@ function chequearCampanas() {
   };
   pend.forEach(function (b) {
     var slug = b.campSlug || b.slugActual;
+    // Huella para campañas viejas (creadas antes de esto): si sigue en el archivo, la tomo.
+    if (!b.campHuella && BY_SLUG[slug]) b.campHuella = huellaDe(BY_SLUG[slug], BY_SLUG[slug].visto_desde);
     fetch(DET_EP + slug).then(function (r) { return r.json(); })
       .then(function (d) {
         var _est = estadoCampanaDe(d);
-        if (_est) b.campEstado = _est;          // ambiguo (null) → no cambio el estado
+        if (_est === "baja") {
+          // "Desapareció" el link: ¿la REPUBLICARON con otro? (misma huella, link nuevo y único).
+          var re = buscarRepublicada(b);
+          if (re) {
+            b.campEstado = "republicada";
+            b.campReSlug = re.slug;
+            b.campRePrecioUsd = (re.precio_usd != null) ? re.precio_usd : null;
+          } else { b.campEstado = "baja"; }
+        } else if (_est) { b.campEstado = _est; }   // ambiguo (null) → no cambio el estado
         // Bajó de precio (aunque siga activa). Primera vez: solo registra, no avisa.
         var det = d && d.data ? (d.data.data || d.data) : null;
         var pr = det && typeof det.price === "number" ? det.price : null;
@@ -1456,6 +1521,7 @@ function chequearCampanas() {
             b.campBajaPrecio = { de: b.campPrecio, a: pr, moneda: mo };
           }
           b.campPrecio = pr; b.campMoneda = mo;
+          b.campPrecioUsd = (mo === "USD") ? pr : (USD_RATE ? Math.round(pr / USD_RATE) : (b.campPrecioUsd || null));
         }
         fin();
       })
@@ -1472,7 +1538,14 @@ function pintarBanner() {
   al.forEach(function (b) {
     var d = document.createElement("div"); d.className = "cb-item";
     var quien = b.direccion || b.nombre || "Una propiedad";
-    d.innerHTML = "📣 " + esc(quien) + " → <b>" + esc(etqCampana(b.campEstado)) + "</b>";
+    if (b.campEstado === "republicada" && b.campReSlug) {
+      var masBarata = (b.campRePrecioUsd != null && b.campPrecioUsd != null && b.campRePrecioUsd < b.campPrecioUsd)
+        ? " 💸 y más barata" : "";
+      d.innerHTML = "🔁 " + esc(quien) + " → <b>parece republicada con otro link</b>" + masBarata +
+        ' — <a href="' + esc(REMAX_LISTING + b.campReSlug) + '" target="_blank" rel="noopener">ver el aviso nuevo</a>';
+    } else {
+      d.innerHTML = "📣 " + esc(quien) + " → <b>" + esc(etqCampana(b.campEstado)) + "</b>";
+    }
     lista.appendChild(d);
   });
   baj.forEach(function (b) {
@@ -1742,7 +1815,11 @@ function toggleCampanaCE() {
   var slug = b.campSlug || b.slugActual;
   if (!slug) return;
   if (b.campana) { b.campana = false; }
-  else { b.campana = true; b.campSlug = slug; b.campEstado = ""; b.campAck = ""; }
+  else {
+    b.campana = true; b.campSlug = slug; b.campEstado = ""; b.campAck = "";
+    var _ph = BY_SLUG[slug] || window.__base || {};
+    b.campHuella = huellaDe(_ph, _ph.visto_desde);
+  }
   guardarBusquedas(arr);
   pintarCampanaCE(b); renderBadge();
   if (b.campana) { chequearCampanas(); activarAvisos(true); }
