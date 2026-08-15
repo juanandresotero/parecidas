@@ -652,6 +652,7 @@ function setRango(id, val) {   // llena mín/máx con ±25% del valor del link
 }
 function rellenar(c) {
   setSeg("f-oper", c.operacion === "rent" ? "rent" : "sale");
+  toggleGastos();   // si el link es un alquiler, mostrar el filtro de gastos comunes
   setSeg("f-moneda", (c.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(c.tipo);
   setTipoFino(tc);
@@ -679,6 +680,7 @@ function rellenar(c) {
 // de RE/MAX, así que Juan lo agrega a mano si quiere filtrar por zona.
 function rellenarExterno(d) {
   setSeg("f-oper", d.operacion === "rent" ? "rent" : "sale");
+  toggleGastos();   // si el link es un alquiler, mostrar el filtro de gastos comunes
   setSeg("f-moneda", (d.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(d.tipo || "");
   setTipoFino(tc);
