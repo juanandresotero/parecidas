@@ -230,7 +230,12 @@ function filtrar(f, ref, slugActual) {
   res.sort(function (a, b) {
     var d = puntaje(a, ref) - puntaje(b, ref);
     if (Math.abs(d) > 1e-9) return d;
-    return (a.precio_usd || 1e12) - (b.precio_usd || 1e12);   // desempate: más barata
+    // Empate en parecido → primero la MÁS NUEVA (la que el robot vio primero, más
+    // reciente). visto_desde es fecha ISO ("2026-08-15") o null si es preexistente:
+    // las sin fecha quedan abajo del grupo empatado.
+    var va = a.visto_desde || "", vb = b.visto_desde || "";
+    if (va !== vb) return va < vb ? 1 : -1;                    // fecha mayor (más nueva) arriba
+    return (a.precio_usd || 1e12) - (b.precio_usd || 1e12);   // último desempate: más barata
   });
   return res;
 }
