@@ -1184,6 +1184,7 @@ function abrirBusqueda(id) {
     window.__formBaseline = snapshotFiltros();                    // foto base: recién abierto = sin cambios
     window.__ultimaVista = null;                                  // baseline nuevo (no descarta al abrir)
     b.vistas = matchesDe(b).map(function (c) { return c.slug; });  // marca como visto → apaga el numerito
+    if (b.recordarAt) b.recordAck = b.recordarAt;                 // lo abrió → apaga el destello del reloj
     guardarBusquedas(arr);
     cerrarOverlay("busquedas");
     buscar();
@@ -1228,6 +1229,7 @@ function renderBusquedas() {
   cont.innerHTML = "";
   arr.forEach(function (b) {
     var item = document.createElement("div"); item.className = "busq-item";
+    if (recordatorioVencidoSinAbrir(b)) item.className += " flash-reloj";   // destella hasta abrirlo
 
     // Una sola pasada por ficha: antes matchesDe(b) escaneaba las ~2800 propiedades
     // DOS veces por ficha (nuevas + sin evaluar). Ahora se recorre una vez y se sacan
@@ -1697,6 +1699,7 @@ var __clienteEdit = null;
 function abrirClienteEditor(id) {
   var b = cargarBusquedas().filter(function (x) { return x.id === id; })[0];
   if (!b) return;
+  apagarDestelloReloj(id);  // tocar ✎/📝 también cuenta como "lo vio" → apaga el destello
   marcarNovedad("lapiz");   // ya la usó → deja de estar en amarillo
   __clienteEdit = id;
   $("ce-nombre").textContent = b.nombre || "Cliente";
@@ -1754,6 +1757,19 @@ function marcarContactado() {
   var arr = cargarBusquedas();
   var b = arr.filter(function (x) { return x.id === __clienteEdit; })[0];
   if (b) { b.ultimoContacto = new Date().toISOString(); guardarBusquedas(arr); pintarContactoCE(b); }
+}
+// El recordatorio venció (llegó/pasó la fecha) y Juan NO abrió el cliente desde entonces:
+// mientras esté así, el card destella. Al abrirlo se marca recordAck y deja de destellar.
+function recordatorioVencidoSinAbrir(b) {
+  return !!(b && b.recordarAt && diasDesde(b.recordarAt) >= 0 && b.recordAck !== b.recordarAt);
+}
+// Apaga el destello (lo tocó = lo vio). Guarda recordAck = la fecha vencida actual.
+function apagarDestelloReloj(id) {
+  var arr = cargarBusquedas(), cambio = false;
+  arr.forEach(function (x) {
+    if (x.id === id && x.recordarAt && x.recordAck !== x.recordarAt) { x.recordAck = x.recordarAt; cambio = true; }
+  });
+  if (cambio) guardarBusquedas(arr);
 }
 // Temporizador de recordatorio (lo setea Juan por cliente). due = ya llegó la fecha.
 function recordatorioTexto(b) {

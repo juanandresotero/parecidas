@@ -197,6 +197,15 @@
   .bi-chip.pend{background:var(--surface);color:var(--muted)}
   .bi-chip.nuevas{background:var(--brand);color:#fff}
   .bi-chip.baja{background:#ffe8cc;color:#c05600}
+  /* Recordatorio VENCIDO sin abrir: el card entero destella en rojo con el reloj en el medio
+     (se va y viene) hasta tocarlo. El destello NO se come el toque (pointer-events:none) →
+     un solo toque abre Y apaga. */
+  .busq-item{position:relative}
+  .busq-item.flash-reloj::after{content:"⏰";position:absolute;inset:0;border-radius:12px;
+    display:flex;align-items:center;justify-content:center;font-size:38px;background:var(--red);
+    color:#fff;pointer-events:none;z-index:4;animation:flashReloj 1.1s ease-in-out infinite}
+  @keyframes flashReloj{0%,100%{opacity:0}45%,70%{opacity:1}}
+  @media (prefers-reduced-motion:reduce){.busq-item.flash-reloj::after{animation:none;opacity:.92}}
   .subida-tag{display:inline-block;font-size:10.5px;font-weight:700;color:#0b7a3b;
     background:#e4f6ec;border-radius:999px;padding:1px 8px;margin:3px 0}
   .bi-dot{width:8px;height:8px;border-radius:50%;background:#9aa7ba;display:inline-block}
