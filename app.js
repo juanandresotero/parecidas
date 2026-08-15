@@ -182,9 +182,9 @@ function leerFiltros() {
     cochera: segVal("f-coch"),
     estado: segVal("f-estado"),
     rentaSel: segMulti("f-renta"),   // ["con"|"multi"|"sin"] (multi-select, OR)
-    // Gastos comunes (en pesos): aplican en alquiler y en aptos (ver gastosAplica). Se leen
-    // SOLO cuando aplica; si no, el campo está oculto y no debe filtrar escondido (antes
-    // tapaba ventas de otros tipos).
+    // Gastos comunes (en pesos): solo aplican al apartamento (ver gastosAplica). Se leen SOLO
+    // cuando aplica; si no, el campo está oculto y no debe filtrar escondido (antes tapaba
+    // casas y ventas de otros tipos).
     gastosMinUsd: gastosAplica() ? aUsd(soloNum($("f-gastos-min").value), "UYU") : null,
     gastosMaxUsd: gastosAplica() ? aUsd(soloNum($("f-gastos-max").value), "UYU") : null
   };
@@ -219,11 +219,11 @@ function setTipoFino(tc) {
   }
   toggleOtros();
 }
-// Los gastos comunes aplican en ALQUILER (se pagan aparte) y en APTOS (un apartamento casi
-// siempre tiene gastos comunes, se venda o se alquile). En esos casos se muestra el campo y
-// se filtra; en el resto queda oculto y no filtra.
+// Los gastos comunes son un gasto de EDIFICIO: los tiene el apartamento (o PH, que acá cuenta
+// como apto), NO una casa — se venda o se alquile. Por eso el campo se muestra y filtra SOLO
+// cuando está elegido "Apto" (una casa en alquiler no tiene gastos comunes).
 function gastosAplica() {
-  return segVal("f-oper") === "rent" || segMulti("f-tipo").indexOf("apto") >= 0;
+  return segMulti("f-tipo").indexOf("apto") >= 0;
 }
 function toggleGastos() {
   $("f-gastos-wrap").style.display = gastosAplica() ? "" : "none";
@@ -330,7 +330,7 @@ function filtrar(f, ref, slugActual) {
 // dejan pocas. Antes era 10 y Juan quería ver todas.
 var TOPE_RESULTADOS = 300;
 function buscar() {
-  toggleGastos();   // asegura que el campo de gastos comunes esté visible si es alquiler
+  toggleGastos();   // asegura que el campo de gastos comunes esté visible si es un apto
   var f = leerFiltros();
   var ref = refDeBusqueda();
   var slugActual = window.__slugActual || null;
@@ -705,11 +705,10 @@ function setRango(id, val) {   // llena mín/máx con ±25% del valor del link
 }
 function rellenar(c) {
   setSeg("f-oper", c.operacion === "rent" ? "rent" : "sale");
-  toggleGastos();   // si el link es un alquiler, mostrar el filtro de gastos comunes
   setSeg("f-moneda", (c.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(c.tipo);
   setTipoFino(tc);
-  toggleGastos();   // apto o alquiler → mostrar gastos comunes (ya con el tipo puesto)
+  toggleGastos();   // si el link es un apto, mostrar gastos comunes (ya con el tipo puesto)
   // precio: sin mínimo (más barato sirve), máximo +15%. m²: ±25%.
   $("f-precio-min").value = "";
   $("f-precio-max").value = c.precio ? fmtMiles(String(Math.round(c.precio * 1.15))) : "";
@@ -734,11 +733,10 @@ function rellenar(c) {
 // de RE/MAX, así que Juan lo agrega a mano si quiere filtrar por zona.
 function rellenarExterno(d) {
   setSeg("f-oper", d.operacion === "rent" ? "rent" : "sale");
-  toggleGastos();   // si el link es un alquiler, mostrar el filtro de gastos comunes
   setSeg("f-moneda", (d.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(d.tipo || "");
   setTipoFino(tc);
-  toggleGastos();   // apto o alquiler → mostrar gastos comunes (ya con el tipo puesto)
+  toggleGastos();   // si el link es un apto, mostrar gastos comunes (ya con el tipo puesto)
   $("f-precio-min").value = "";
   $("f-precio-max").value = d.precio ? fmtMiles(String(Math.round(d.precio * 1.15))) : "";
   setRango("f-cub", d.m2_construidos);
