@@ -255,12 +255,21 @@ async function estadoRemax(slug) {
       encodeURIComponent(slug), { headers: { "User-Agent": "parecidas/1.0" } });
     const d = await r.json();
     const det = d && d.data ? (d.data.data || d.data) : null;
-    if (!det || !det.slug) return { estado: "baja", precio: null, moneda: "" };
-    return {
-      estado: (det.listingStatus || {}).value || "active",
-      precio: typeof det.price === "number" ? det.price : null,
-      moneda: (det.currency || {}).value || "",
-    };
+    if (det && det.slug) {
+      return {
+        estado: (det.listingStatus || {}).value || "active",
+        precio: typeof det.price === "number" ? det.price : null,
+        moneda: (det.currency || {}).value || "",
+      };
+    }
+    // data null: distinguir "borrada de verdad" de un hipo pasajero. RE/MAX manda un
+    // mensaje explícito ("No se encuentra propiedad con slug…") SOLO cuando ya no existe.
+    // Sin ese mensaje (respuesta rara/vacía), devolvemos null = no tocar, no falsa alarma.
+    const msg = String((d && d.message) || "");
+    if (d && d.data === null && /no se encuentra propiedad/i.test(msg)) {
+      return { estado: "baja", precio: null, moneda: "" };
+    }
+    return null;
   } catch (e) { return null; }
 }
 function fmtPrecio(n, moneda) {

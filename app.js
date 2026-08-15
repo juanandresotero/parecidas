@@ -22,6 +22,16 @@ var CDN = "https://d1acdg20u0pmxj.cloudfront.net/";
 var DATA = [];        // propiedades
 var BY_SLUG = {};     // índice slug → propiedad (O(1), se arma al cargar)
 var USD_RATE = null;  // UYU por USD (del archivo)
+// El archivo de datos NO guarda el link ni el prefijo de la foto (para pesar menos):
+// se reconstruyen acá. Compatibles con archivos viejos: si ya viene el link/foto entera,
+// se usa tal cual.
+var REMAX_LISTING = "https://www.remax.com.uy/listings/";
+var FOTO_CDN = "https://d1acdg20u0pmxj.cloudfront.net/";
+function linkDe(c) { return (c && c.link) || (c && c.slug ? REMAX_LISTING + c.slug : ""); }
+function fotoDe(c) {
+  var f = (c && c.foto) || "";
+  return !f ? "" : (/^https?:/i.test(f) ? f : FOTO_CDN + f);
+}
 var $ = function (id) { return document.getElementById(id); };
 
 function norm(s) {
@@ -385,7 +395,7 @@ function estrellasCards() {
 function listaEnviar() { return SEL.length ? SEL : (esCampActiva() ? estrellasCards() : SEL); }
 function textoSeleccionadas() {
   return listaEnviar().map(function (c, i) {
-    return (i + 1) + ". " + resumen(c) + "\n" + linkAssoc(c.link);
+    return (i + 1) + ". " + resumen(c) + "\n" + linkAssoc(linkDe(c));
   }).join("\n\n");
 }
 // Enviar por WhatsApp: si hay cliente con número → abre su chat; si no → WhatsApp
@@ -476,8 +486,9 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
     }
     card.appendChild(col);
     CARDS.push({ slug: c.slug, numEl: num, card: card });
-    var foto = c.foto ? '<img class="foto" src="' + esc(c.foto) + '" alt="" loading="lazy">'
-                      : '<div class="foto ph">🏠</div>';
+    var _fu = fotoDe(c);
+    var foto = _fu ? '<img class="foto" src="' + esc(_fu) + '" alt="" loading="lazy">'
+                   : '<div class="foto ph">🏠</div>';
     var chips = [];
     if (c.m2_homog) chips.push(c.m2_homog + " m²");
     if (c.cochera === true) chips.push("🚗 cochera");
@@ -496,7 +507,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
       }
     }
     var link = document.createElement("a");
-    link.className = "card-link"; link.href = c.link; link.target = "_blank"; link.rel = "noopener";
+    link.className = "card-link"; link.href = linkDe(c); link.target = "_blank"; link.rel = "noopener";
     link.style.cssText = "display:flex;gap:11px;flex:1;min-width:0;align-items:center";
     link.innerHTML = foto +
       '<div class="info">' +
@@ -816,6 +827,20 @@ function cargarBusquedas() {
 function guardarBusquedas(arr) {
   try { localStorage.setItem(BUSQ_KEY, JSON.stringify(arr)); } catch (e) {}
 }
+// Migración 1 sola vez: las búsquedas guardadas ANTES del filtro renta-multi tenían
+// `b.filtro.renta` ("con"/"sin") en vez de `b.filtro.rentaSel` []. Sin esto, pasa()
+// ignora la renta en esas búsquedas → matchesDe/contadores/vigilancia cuentan de más.
+function migrarBusquedas() {
+  var arr = cargarBusquedas(), cambio = false;
+  arr.forEach(function (b) {
+    if (b.filtro && b.filtro.rentaSel == null) {
+      b.filtro.rentaSel = b.filtro.renta ? [b.filtro.renta] : [];
+      delete b.filtro.renta;
+      cambio = true;
+    }
+  });
+  if (cambio) guardarBusquedas(arr);
+}
 
 // Foto del formulario tal cual está, para poder reabrir la búsqueda idéntica.
 function snapshotForm() {
@@ -1015,7 +1040,7 @@ function fotoCampana(b) {
   var slug = b && (b.campSlug || b.slugActual);
   if (!slug) return null;
   var p = BY_SLUG[slug];
-  return (p && p.foto) ? p.foto : null;
+  return p ? (fotoDe(p) || null) : null;
 }
 
 function renderBusquedas() {
@@ -1179,8 +1204,12 @@ function etqCampana(est) {
 }
 function estadoCampanaDe(d) {
   var det = d && d.data ? (d.data.data || d.data) : null;
-  if (!det || !det.slug) return "baja";                 // data null = ya no publicada
-  return (det.listingStatus || {}).value || "active";
+  if (det && det.slug) return (det.listingStatus || {}).value || "active";
+  // data null: "baja" SOLO si RE/MAX confirma que no existe (mensaje explícito). Si es
+  // una respuesta rara/vacía (hipo), devuelve null = no cambiar (evita falsa "baja").
+  var msg = String((d && d.message) || "");
+  if (d && d.data === null && /no se encuentra propiedad/i.test(msg)) return "baja";
+  return null;
 }
 function campEnAlerta(b) { return b.campana && b.campEstado && b.campEstado !== "active"; }
 function campAlertas() { return cargarBusquedas().filter(campEnAlerta); }
@@ -1203,7 +1232,18 @@ function chequearCampanas() {
   var falta = pend.length;
   var fin = function () {
     if (--falta > 0) return;
-    guardarBusquedas(arr);
+    // Releer FRESCO y aplicar SOLO los campos de campaña por id. Así, si el usuario
+    // editó algo (nota, recordatorio, valoración, guardó otra búsqueda) mientras
+    // esperábamos la red, no se lo pisamos con el 'arr' viejo que retuvimos.
+    var fresco = cargarBusquedas();
+    pend.forEach(function (b) {
+      var f = fresco.filter(function (x) { return x.id === b.id; })[0];
+      if (!f) return;
+      f.campEstado = b.campEstado;
+      f.campPrecio = b.campPrecio; f.campMoneda = b.campMoneda;
+      if (b.campBajaPrecio) f.campBajaPrecio = b.campBajaPrecio;
+    });
+    guardarBusquedas(fresco);
     pintarBanner(); renderBadge();
     if ($("busquedas").style.display === "flex") renderBusquedas();
   };
@@ -1211,7 +1251,8 @@ function chequearCampanas() {
     var slug = b.campSlug || b.slugActual;
     fetch(DET_EP + slug).then(function (r) { return r.json(); })
       .then(function (d) {
-        b.campEstado = estadoCampanaDe(d);
+        var _est = estadoCampanaDe(d);
+        if (_est) b.campEstado = _est;          // ambiguo (null) → no cambio el estado
         // Bajó de precio (aunque siga activa). Primera vez: solo registra, no avisa.
         var det = d && d.data ? (d.data.data || d.data) : null;
         var pr = det && typeof det.price === "number" ? det.price : null;
@@ -1821,6 +1862,7 @@ function cargar() {
 }
 
 initSegs();
+migrarBusquedas();   // normaliza búsquedas viejas (filtro de renta) antes de contar nada
 cargar();
 // Al abrir la app: cerrar notificaciones colgadas (saca el "1" pegado del ícono).
 limpiarNotifsColgadas();

@@ -1,5 +1,5 @@
 // Service worker: deja andar la app sin conexión y sirve los datos frescos.
-var CACHE = "parecidas-v59";
+var CACHE = "parecidas-v60";
 // Robotito de Cloudflare (fijo y público). El aviso viene "vacío"; acá le pedimos al
 // robotito qué decir (así no hace falta cifrar el mensaje = mucho más simple).
 var MOTOR = "https://parecidas-motor.cualcaxsiempre.workers.dev";
@@ -68,12 +68,26 @@ self.addEventListener("notificationclick", function (e) {
 self.addEventListener("fetch", function (e) {
   if (e.request.method !== "GET") return;
   var u = new URL(e.request.url);
-  var propia = u.origin === location.origin;
-  if (!propia && !u.pathname.endsWith("listings.json")) return;
-  // Red PRIMERO (siempre lo más fresco: los cambios se ven al toque). Si no hay
-  // señal, sirve lo último guardado (anda offline). Guarda cada respuesta buena.
-  e.respondWith(fetch(e.request).then(function (r) {
-    var cp = r.clone(); caches.open(CACHE).then(function (c) { c.put(e.request, cp); });
-    return r;
-  }).catch(function () { return caches.match(e.request); }));
+  if (u.origin !== location.origin) return;            // solo lo propio
+  var esDatos = u.pathname.endsWith("listings.json");
+  if (esDatos) {
+    // DATOS: red PRIMERO (siempre lo más fresco: precios/estado del día). Si no hay
+    // señal, sirve lo último guardado (anda offline). Guarda cada respuesta buena.
+    e.respondWith(fetch(e.request).then(function (r) {
+      var cp = r.clone(); caches.open(CACHE).then(function (c) { c.put(e.request, cp); });
+      return r;
+    }).catch(function () { return caches.match(e.request); }));
+    return;
+  }
+  // SHELL (index / app.js / barrios.js / manifest / íconos): del caché AL INSTANTE y se
+  // actualiza en segundo plano (stale-while-revalidate) → arranque inmediato aunque la
+  // señal esté mal. Al entrar una versión nueva del SW, el index se auto-recarga
+  // (controllerchange). REQUISITO: bumpear CACHE en cada deploy (ya se hace).
+  e.respondWith(caches.match(e.request).then(function (cached) {
+    var red = fetch(e.request).then(function (r) {
+      var cp = r.clone(); caches.open(CACHE).then(function (c) { c.put(e.request, cp); });
+      return r;
+    }).catch(function () { return cached; });
+    return cached || red;
+  }));
 });

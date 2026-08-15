@@ -315,11 +315,14 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     _toilets = det.get("toilets") if det else None
     banos_tot = (((_banos or 0) + (_toilets or 0))
                  if (_banos is not None or _toilets is not None) else None)
+    # foto: se guarda SIN el prefijo del CDN (la app lo repone) para achicar el archivo.
+    # Si algún día una foto viene de otro host, se guarda entera (la app la usa tal cual).
+    _foto_url = _foto(it.get("photos"))
+    foto_out = _foto_url[len(CDN):] if _foto_url.startswith(CDN) else _foto_url
+    # NOTA: `link` (= remax+slug), `titulo`, `agente_id` e `id` NO se guardan: la app no
+    # los usa (el link lo reconstruye del slug). Ahorra ~40% del archivo.
     return {
-        "id": it.get("id"),
         "slug": slug,
-        "link": LISTING_URL + slug if slug else "",
-        "titulo": it.get("title") or "",
         "tipo": tipo,
         "operacion": (it.get("operation") or {}).get("value") or "",
         "precio": it.get("price"),
@@ -334,8 +337,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "barrio": _barrio(it.get("geoLabel")),
         "depto": _depto(it.get("geoLabel")),
         "direccion": (det.get("displayAddress") if det else "") or "",
-        "foto": _foto(it.get("photos")),
-        "agente_id": (it.get("associate") or {}).get("id") or "",
+        "foto": foto_out,
         "agente": (it.get("associate") or {}).get("name") or "",
         "agente_tel": _tel_agente(it.get("associate") or {}),
         "estado": "a_estrenar" if a_estrenar else ("usada" if det else ""),
