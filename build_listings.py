@@ -425,6 +425,7 @@ def bajar_listado() -> list:
 
 def main():
     limite = int(os.environ.get("LIMIT", "0"))
+    dry = bool(os.environ.get("DRY_RUN"))   # prueba: corre todo pero NO escribe archivos
     print("Bajando el listón…", file=sys.stderr)
     listado = bajar_listado()
     mvd_can = [it for it in listado
@@ -480,13 +481,18 @@ def main():
             _fecha = _hoy                # apareció NUEVA de verdad
         _mapa[_slug] = _fecha
         _row["visto_desde"] = _fecha
-    try:
-        with open("primera_vez.json", "w", encoding="utf-8") as _f:
-            json.dump(_mapa, _f, ensure_ascii=False)
-    except Exception:
-        pass
+    if not dry:
+        try:
+            with open("primera_vez.json", "w", encoding="utf-8") as _f:
+                json.dump(_mapa, _f, ensure_ascii=False)
+        except Exception:
+            pass
 
-    out = {"listings": filas, "usd_rate": rate, "total": len(filas)}
+    # `generado_at` = cuándo se armó el archivo. La app avisa si esto quedó viejo (robot caído).
+    out = {"listings": filas, "usd_rate": rate, "total": len(filas), "generado_at": _hoy}
+    if dry:
+        print(f"DRY RUN OK: {len(filas)} propiedades (prueba, no se escribió nada)")
+        return
     with open("listings.json", "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False)
     print(f"OK: {len(filas)} propiedades ({fallidos} sin detalle) -> listings.json")

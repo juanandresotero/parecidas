@@ -1609,6 +1609,15 @@ function diasDesde(iso) {
   if (!iso) return null;
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
+// Cartel "datos viejos": si el archivo se armó hace más de 3 días, el robot diario
+// probablemente esté caído → avisar en la app (el robot corre todos los días).
+function avisarDatosViejos(generadoAt) {
+  var dias = generadoAt ? diasDesde(generadoAt) : null;
+  var el = $("datos-viejos");
+  if (!el) return;
+  if (dias != null && dias > 3) { $("datos-dias").textContent = dias; el.style.display = ""; }
+  else el.style.display = "none";
+}
 // "Hace N días" desde el ÚLTIMO ENVÍO real (Enviar por WhatsApp o "Le escribí hoy").
 // Si nunca le mandó nada, lo dice claro (no cuenta desde que se creó la búsqueda).
 function textoContacto(b) {
@@ -2022,6 +2031,7 @@ function cargar() {
       c._tipoCat = tipoCat(c.tipo || "");
     });
     USD_RATE = d.usd_rate || null;
+    avisarDatosViejos(d.generado_at);   // cartel si el robot diario dejó de actualizar
     actualizarDolar();   // pisa con el dólar del día (fresco) si el motor responde
     // Lista de barrios reales para el autocompletar (sin repetir, ordenados).
     var vistos = {};

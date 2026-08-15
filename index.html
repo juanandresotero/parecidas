@@ -253,6 +253,12 @@
     <button class="ajustes-btn" id="btn-ajustes" title="Ajustes" aria-label="Ajustes">⚙️</button>
   </div>
 
+  <!-- Aviso si los datos quedaron viejos (el robot diario dejó de actualizar) -->
+  <div id="datos-viejos" style="display:none;background:#fff8e1;border:1px solid #e6b800;border-radius:12px;padding:10px 12px;margin:8px 0;color:#5c4a00;font-size:14px;line-height:1.35">
+    ⚠️ <b>Ojo:</b> las propiedades no se actualizan hace <b><span id="datos-dias"></span> días</b>
+    (normalmente se refrescan solas cada día). Puede que el robot esté fallando — avisale a quien maneja la app.
+  </div>
+
   <div class="ajustes" id="ajustes" style="display:none">
     <div class="ajustes-card">
       <div class="ajustes-head"><b>Ajustes</b><button id="btn-ajustes-cerrar" aria-label="Cerrar">✕</button></div>

@@ -1,16 +1,36 @@
 name: Actualizar propiedades
 
-# Corre 1 vez por día (y se puede correr a mano desde la pestaña Actions).
+# La corrida REAL: 1 vez por día (y se puede correr a mano desde la pestaña Actions).
+# La PRUEBA: cada vez que se cambia el robot, para cazar errores antes de la corrida diaria.
 on:
   schedule:
     - cron: "0 9 * * *"   # 09:00 UTC ≈ 06:00 Uruguay
   workflow_dispatch: {}
+  push:
+    paths:
+      - "build_listings.py"
 
 permissions:
   contents: write
 
 jobs:
+  # PRUEBA rápida (solo en push): corre el robot con pocas propiedades y SIN escribir
+  # archivos, para cazar errores de código (como el choque de nombres que lo dejó caído
+  # semanas) enseguida. Si falla, GitHub lo marca en rojo y avisa por mail.
+  prueba:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prueba del robot (sin escribir)
+        run: LIMIT=3 DRY_RUN=1 python build_listings.py
+
+  # Corrida REAL (diaria o a mano): baja todo y guarda el archivo.
   actualizar:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
