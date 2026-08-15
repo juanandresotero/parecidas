@@ -201,7 +201,7 @@
     background:#e4f6ec;border-radius:999px;padding:1px 8px;margin:3px 0}
   .bi-dot{width:8px;height:8px;border-radius:50%;background:#9aa7ba;display:inline-block}
   .bi-vernotas{cursor:pointer;font-size:15px;line-height:1;padding:0 2px}
-  .bi-acc{display:flex;flex-direction:column;gap:7px;flex:none}
+  .bi-acc{display:flex;flex-direction:row;gap:5px;flex:none;align-items:center}
   .bi-contacto{font-size:11.5px;color:var(--muted);margin-top:1px}
   .bi-contacto.tarde{color:#b45309;font-weight:700}
   .bi-nota{font-size:11.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line);
@@ -213,7 +213,7 @@
   .rec-input span{font-size:13px;color:var(--muted);font-weight:700}
   .rec-input .btn{padding:10px 16px}
   .bi-edit{border:1px solid var(--line);background:var(--surface);color:var(--brand);
-    border-radius:10px;padding:7px 12px;font-size:19px;cursor:pointer;flex-shrink:0;line-height:1}
+    border-radius:10px;padding:6px 8px;font-size:16px;cursor:pointer;flex-shrink:0;line-height:1}
   .ce-recordatorio{font-size:13px;color:var(--brand);font-weight:700;margin:8px 0 0;min-height:16px}
   .ce-recordatorio.due{color:var(--red)}
   .camp-banner{background:#fff2f4;border:1px solid var(--red);border-radius:12px;
@@ -241,6 +241,9 @@
     padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0}
   .bi-del{border:none;background:transparent;color:var(--muted);cursor:pointer;
     font-size:16px;padding:4px;flex-shrink:0}
+  .mv-chip{border:1px solid var(--line);background:var(--surface);color:var(--muted);
+    border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+  .mv-chip[aria-pressed="true"]{background:var(--brand);color:#fff;border-color:var(--brand)}
 </style>
 </head>
 <body>
@@ -523,6 +526,12 @@
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.12)">
     <b id="mapa-titulo" style="font-size:16px">Parecidas en el mapa</b>
     <button class="btn" id="btn-mapa-cerrar" style="width:auto;padding:7px 15px;background:#eef2f7;color:#12203a;border:0;border-radius:10px;font-weight:600">✕ Cerrar</button>
+  </div>
+  <!-- Filtro por valoración (solo con un cliente abierto). Las descartadas NUNCA aparecen. -->
+  <div id="mapa-valfiltro" style="display:none;gap:8px;padding:8px 14px;background:#fff;border-top:1px solid #eef2f7;align-items:center">
+    <span style="font-size:12.5px;color:#5a6b86">Ver:</span>
+    <button id="mv-sin" class="mv-chip" aria-pressed="true">⚪ Sin evaluar</button>
+    <button id="mv-val" class="mv-chip" aria-pressed="false">⭐ Valoradas</button>
   </div>
   <div id="mapa" style="flex:1;min-height:0"></div>
 </div>

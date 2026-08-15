@@ -325,6 +325,7 @@ function filtrar(f, ref, slugActual) {
 // avisando cuál). Si hay 3 exactas → muestra 3; si hay 40 → las 10 más parecidas.
 var TOPE_RESULTADOS = 10;
 function buscar() {
+  toggleGastos();   // asegura que el campo de gastos comunes esté visible si es alquiler
   var f = leerFiltros();
   var ref = refDeBusqueda();
   var slugActual = window.__slugActual || null;
@@ -624,11 +625,39 @@ function ubicacionDe(b) {
   if (p && p.lat != null && p.lng != null) return { lat: p.lat, lng: p.lng };
   return null;
 }
+function mapsLink(u) { return "https://www.google.com/maps?q=" + u.lat + "," + u.lng; }
+// Guarda las coords en las búsquedas viejas (que se guardaron antes de esta función),
+// mientras la propiedad siga en el listado del día. Así sobreviven si después se reserva.
+function backfillUbicaciones() {
+  var arr = cargarBusquedas(), cambio = false;
+  arr.forEach(function (b) {
+    if ((b.lat == null || b.lng == null)) {
+      var p = BY_SLUG[b.slugActual || b.campSlug];
+      if (p && p.lat != null && p.lng != null) { b.lat = p.lat; b.lng = p.lng; cambio = true; }
+    }
+  });
+  if (cambio) guardarBusquedas(arr);
+}
 // Copia un link de Google Maps con las coordenadas (al pegarlo en WhatsApp muestra el
-// mapita). NO usa el texto de la dirección (que a veces sale con ceros de más).
+// mapita). NO usa el texto de la dirección (que a veces sale con ceros de más). Si no hay
+// coords guardadas (la prop ya salió del listado), las busca EN VIVO en RE/MAX por slug.
 function copiarUbicacion(b, btn) {
-  var u = ubicacionDe(b); if (!u) return;
-  copiarTexto("https://www.google.com/maps?q=" + u.lat + "," + u.lng, btn, "📍");
+  var u = ubicacionDe(b);
+  if (u) { copiarTexto(mapsLink(u), btn, "📍"); return; }
+  var slug = b && (b.slugActual || b.campSlug);
+  if (!slug) return;
+  if (btn) btn.textContent = "…";
+  fetch(DET_EP + encodeURIComponent(slug)).then(function (r) { return r.json(); })
+    .then(function (d) {
+      var det = d && d.data ? (d.data.data || d.data) : null;
+      var lc = det && det.location && det.location.coordinates;
+      if (lc && lc.length >= 2) {
+        var arr = cargarBusquedas(), bb = arr.filter(function (x) { return x.id === b.id; })[0];
+        if (bb) { bb.lat = lc[1]; bb.lng = lc[0]; guardarBusquedas(arr); }   // guardo para la próxima
+        copiarTexto(mapsLink({ lat: lc[1], lng: lc[0] }), btn, "📍");
+      } else { if (btn) btn.textContent = "📍"; alert("No pude encontrar la ubicación de esta propiedad."); }
+    })
+    .catch(function () { if (btn) btn.textContent = "📍"; alert("No pude traer la ubicación. Revisá la conexión."); });
 }
 function copiarSeleccionadas() {
   var n = listaEnviar().length;
@@ -1260,8 +1289,9 @@ function renderBusquedas() {
 
     // Acciones: (📍 ubicación) + editar + borrar (sin "Abrir" — tocar la ficha ya la abre).
     var acc = document.createElement("div"); acc.className = "bi-acc";
-    var _u = ubicacionDe(b);
-    if (_u) {   // solo si la propiedad tiene ubicación en el mapa
+    // 📍 aparece si es de RE/MAX (tiene slug) — aunque no tenga coords guardadas: al tocarlo
+    // las busca en vivo. Así Stella y las que salieron del listado también lo tienen.
+    if (ubicacionDe(b) || b.slugActual || b.campSlug) {
       var loc = document.createElement("button");
       loc.className = "bi-edit"; loc.textContent = "📍";
       loc.title = "Copiar ubicación (para pegar en WhatsApp)";
@@ -1787,13 +1817,24 @@ function cargarLeaflet(cb) {
   js.onerror = function () { cerrarMapa(); alert("No pude cargar el mapa. Revisá la conexión."); };
   document.head.appendChild(js);
 }
+var MAPA_RES = [];                        // las parecidas que van al mapa (con coords)
+var MAPA_VF = { sin: true, val: false };  // filtro de valoración (descartes NUNCA se ven)
+var DESCARTES = { descarte_1: 1, descarte_2: 1, descarte_3: 1, descartada_filtro: 1 };
 function abrirMapa() {
-  // TODAS las que cumplen el filtro (no solo las 10 de la lista) que tengan ubicación.
+  // Lo MISMO que se ve en la lista: las que cumplen el filtro + las preservadas
+  // (favoritas/⭐ que ya no cumplen pero se muestran). Así el mapa no muestra de menos.
   var f = leerFiltros(), ref = refDeBusqueda();
   var res = filtrar(f, ref, window.__slugActual || null);
-  var conCoord = res.filter(function (c) { return c.lat != null && c.lng != null; });
-  if (!conCoord.length) { alert("Estas parecidas todavía no tienen ubicación en el mapa."); return; }
-  $("mapa-titulo").textContent = "Parecidas en el mapa (" + conCoord.length + ")";
+  var vistos = {}; res.forEach(function (c) { vistos[c.slug] = 1; });
+  (RENDER_RES || []).forEach(function (c) { if (!vistos[c.slug]) { res.push(c); vistos[c.slug] = 1; } });
+  MAPA_RES = res.filter(function (c) { return c.lat != null && c.lng != null; });
+  if (!MAPA_RES.length) { alert("Estas parecidas todavía no tienen ubicación en el mapa."); return; }
+  var b = busquedaActiva();
+  $("mapa-valfiltro").style.display = b ? "flex" : "none";   // filtro solo con cliente abierto
+  if (b) {
+    $("mv-sin").setAttribute("aria-pressed", MAPA_VF.sin ? "true" : "false");
+    $("mv-val").setAttribute("aria-pressed", MAPA_VF.val ? "true" : "false");
+  }
   $("mapa-overlay").style.display = "flex";
   cargarLeaflet(function () {
     if (!MAPA) {
@@ -1802,19 +1843,37 @@ function abrirMapa() {
         { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(MAPA);
       MAPA._grupo = L.layerGroup().addTo(MAPA);
     }
-    MAPA._grupo.clearLayers();
-    var pts = [];
-    conCoord.forEach(function (c) {
-      var precio = fmtK(c.precio, c.moneda);
-      var m = L.marker([c.lat, c.lng]).bindPopup(
-        '<b>' + esc(resumenCard(c)) + '</b><br>' +
-        (precio ? esc(precio) + '<br>' : '') +
-        '<a href="' + esc(linkDe(c)) + '" target="_blank" rel="noopener">Ver aviso</a>');
-      MAPA._grupo.addLayer(m); pts.push([c.lat, c.lng]);
-    });
-    MAPA.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });
+    pintarMapa();
     setTimeout(function () { MAPA.invalidateSize(); }, 120);   // el mapa arrancó oculto
   });
+}
+// Dibuja los marcadores según el filtro de valoración. Los que están en el MISMO punto
+// (mismo edificio) se separan un poquito para que se vean todos (antes se tapaban).
+function pintarMapa() {
+  if (!MAPA) return;
+  var b = busquedaActiva();
+  var lista = MAPA_RES.filter(function (c) {
+    if (!b) return true;                       // sin cliente: todas
+    var v = valDe(b, c.slug);
+    if (DESCARTES[v]) return false;            // descartadas: NUNCA en el mapa
+    if (v === "sin_valorar") return MAPA_VF.sin;
+    return MAPA_VF.val;                        // el resto (⭐/💚/📤/⏳) = "valoradas"
+  });
+  MAPA._grupo.clearLayers();
+  var pts = [], usados = {};
+  lista.forEach(function (c) {
+    var lat = c.lat, lng = c.lng, k = lat.toFixed(5) + "," + lng.toFixed(5);
+    if (usados[k]) { var n = usados[k]++; lat += (n % 3 - 1) * 0.00012; lng += (Math.floor(n / 3) - 1) * 0.00012; }
+    else usados[k] = 1;
+    var precio = fmtK(c.precio, c.moneda);
+    var m = L.marker([lat, lng]).bindPopup(
+      '<b>' + esc(resumenCard(c)) + '</b><br>' +
+      (precio ? esc(precio) + '<br>' : '') +
+      '<a href="' + esc(linkDe(c)) + '" target="_blank" rel="noopener">Ver aviso</a>');
+    MAPA._grupo.addLayer(m); pts.push([lat, lng]);
+  });
+  $("mapa-titulo").textContent = "Parecidas en el mapa (" + lista.length + ")";
+  if (pts.length) MAPA.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });
 }
 function cerrarMapa() { $("mapa-overlay").style.display = "none"; }
 
@@ -1910,6 +1969,12 @@ function initSegs() {
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
   $("btn-mapa").addEventListener("click", abrirMapa);
   $("btn-mapa-cerrar").addEventListener("click", cerrarMapa);
+  $("mv-sin").addEventListener("click", function () {
+    MAPA_VF.sin = !MAPA_VF.sin; this.setAttribute("aria-pressed", MAPA_VF.sin ? "true" : "false"); pintarMapa();
+  });
+  $("mv-val").addEventListener("click", function () {
+    MAPA_VF.val = !MAPA_VF.val; this.setAttribute("aria-pressed", MAPA_VF.val ? "true" : "false"); pintarMapa();
+  });
   // Notas del cliente
   var cerrarCE = function () { guardarNotasCliente(); cerrarOverlay("cliente-editor"); renderBusquedas(); };
   $("btn-ce-cerrar").addEventListener("click", cerrarCE);
@@ -2031,6 +2096,7 @@ function cargar() {
       c._tipoCat = tipoCat(c.tipo || "");
     });
     USD_RATE = d.usd_rate || null;
+    backfillUbicaciones();   // guarda las coords en las búsquedas viejas (mientras la prop esté en el listado)
     avisarDatosViejos(d.generado_at);   // cartel si el robot diario dejó de actualizar
     actualizarDolar();   // pisa con el dólar del día (fresco) si el motor responde
     // Lista de barrios reales para el autocompletar (sin repetir, ordenados).
