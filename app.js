@@ -254,11 +254,15 @@ function pasa(c, f, slugActual) {
   if (f.precioMaxUsd != null && (c.precio_usd == null || c.precio_usd > f.precioMaxUsd)) return false;
   if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
   if (f.cubMax != null && (c.m2_homog == null || c.m2_homog > f.cubMax)) return false;
-  if (f.padronMin != null && (c.m2_padron == null || c.m2_padron < f.padronMin)) return false;
-  if (f.padronMax != null && (c.m2_padron == null || c.m2_padron > f.padronMax)) return false;
-  if (f.cochera === "si" && c.cochera !== true) return false;
-  if (f.cochera === "no" && c.cochera !== false) return false;
-  if (f.estado && c.estado !== f.estado) return false;
+  // Padrón desconocido (0 = el robot no lo pudo leer) NO excluye; solo compara si hay valor real.
+  if (f.padronMin != null && c.m2_padron && c.m2_padron < f.padronMin) return false;
+  if (f.padronMax != null && c.m2_padron && c.m2_padron > f.padronMax) return false;
+  // Cochera / Estado: dato DESCONOCIDO (null / "") NO excluye — solo si el valor conocido
+  // contradice el filtro. Antes tiraba 78 props activas sin ese dato cargado, y como estado y
+  // cochera se autocompletan al pegar un link, pegaba en casi toda búsqueda (indulgente, como gastos).
+  if (f.cochera === "si" && c.cochera === false) return false;
+  if (f.cochera === "no" && c.cochera === true) return false;
+  if (f.estado && c.estado && c.estado !== f.estado) return false;
   // Renta / varias unidades (multi-select, OR): la propiedad pasa si cumple ALGUNA de
   // las opciones elegidas. Nada elegido = no filtra (da igual).
   if (f.rentaSel && f.rentaSel.length) {
@@ -800,6 +804,20 @@ function mostrarAgente(c) {
     btn.style.display = "none";
   }
 }
+// Detección de renta consistente con el robot (título como señal dura + POS sobre título+desc,
+// con supresor de marketing), para links EN VIVO que no están en el archivo del día. Antes acá
+// se leía con un regex crudo solo del título (sobre/sub-detectaba y sesgaba toda la búsqueda).
+var _RENTA_POS = /(con renta|c\/ ?renta|rentad[oa]s?|arrendad[oa]s?|ya alquilad|tiene renta|(actualmente|se encuentra|esta) alquilad|alquilad[oa]s? (hasta|desde|por|en|actualmente)|(todos|ambos|ambas|locales?|unidades?|apartamentos?)\W+(comerciales?\W+)?alquilad|\(alquilad|con inquilin|contrato de alquiler vigente)/;
+var _RENTA_MKT = /(vivir|invertir|inversion|ideal|oportunidad|posibilidad|opcion)(\W+\w+){0,2}\W+con renta/;
+var _RENTA_FUERTE = /alquilad|arrendad|rentad[oa]|con inquilin|contrato de alquiler|tiene renta/;
+var _TITULO_MKT = /(ideal|invertir|inversion|vivir|oportunidad|para renta|posibilidad|opcion)/;
+function rentaDeTexto(titulo, desc) {
+  var tit = norm(titulo || ""), t = norm((titulo || "") + " " + (desc || ""));
+  if (tit.indexOf("con renta") >= 0 && !_TITULO_MKT.test(tit)) return true;
+  if (!_RENTA_POS.test(t)) return false;
+  if (_RENTA_MKT.test(t) && !_RENTA_FUERTE.test(t)) return false;
+  return true;
+}
 function fromDetalle(det, slug) {
   var tipo = (det.type || {}).value || "";
   var nt = norm(tipo);
@@ -840,7 +858,7 @@ function fromDetalle(det, slug) {
     cochera: (park != null) ? (park > 0) : null,
     estado: aEstrenar ? "a_estrenar" : "usada",
     estado_pub: (det.listingStatus || {}).value || "active",
-    renta: /(renta|rentad|alquilad|ocupad)/i.test(det.title || ""),
+    renta: rentaDeTexto(det.title, det.description),
     agente: (det.associate || {}).name || "",
     agente_tel: telAgente(det.associate)
   };

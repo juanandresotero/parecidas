@@ -201,7 +201,8 @@ function mergeBusquedas(prev, incoming) {
 function norm(s) {
   return (s || "").normalize("NFC").toLowerCase()
     .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
-    .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n").trim();
+    .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")
+    .replace(/\s+/g, " ").trim();   // colapsa espacios internos, igual que el norm de la app
 }
 // Igual que el tipoCat de la app (categorías finas), para que los avisos de "parecidas
 // nuevas" del robotito cuadren con lo que filtra la app.
@@ -233,11 +234,12 @@ function pasa(c, f, slugActual) {
   if (f.precioMaxUsd != null && (c.precio_usd == null || c.precio_usd > f.precioMaxUsd)) return false;
   if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
   if (f.cubMax != null && (c.m2_homog == null || c.m2_homog > f.cubMax)) return false;
-  if (f.padronMin != null && (c.m2_padron == null || c.m2_padron < f.padronMin)) return false;
-  if (f.padronMax != null && (c.m2_padron == null || c.m2_padron > f.padronMax)) return false;
-  if (f.cochera === "si" && c.cochera !== true) return false;
-  if (f.cochera === "no" && c.cochera !== false) return false;
-  if (f.estado && c.estado !== f.estado) return false;
+  // Dato DESCONOCIDO (padrón 0, cochera null, estado "") NO excluye — indulgente, igual que la app.
+  if (f.padronMin != null && c.m2_padron && c.m2_padron < f.padronMin) return false;
+  if (f.padronMax != null && c.m2_padron && c.m2_padron > f.padronMax) return false;
+  if (f.cochera === "si" && c.cochera === false) return false;
+  if (f.cochera === "no" && c.cochera === true) return false;
+  if (f.estado && c.estado && c.estado !== f.estado) return false;
   // Renta / varias unidades (multi-select, OR). Nada elegido = no filtra.
   if (f.rentaSel && f.rentaSel.length) {
     var okR = false;
@@ -368,12 +370,16 @@ const COCHERA_RE = /(cochera|garaj|garage|\bgge\b)/i;
 function sinAcento(s) {
   return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
-const RENTA_POS = /(con renta|c\/ ?renta|rentad[oa]s?|ya alquilad|tiene renta|(actualmente|se encuentra|esta) alquilad|alquilad[oa]s? (hasta|desde|por|en)|con inquilin|contrato de alquiler vigente)/;
+const RENTA_POS = /(con renta|c\/ ?renta|rentad[oa]s?|arrendad[oa]s?|ya alquilad|tiene renta|(actualmente|se encuentra|esta) alquilad|alquilad[oa]s? (hasta|desde|por|en|actualmente)|(todos|ambos|ambas|locales?|unidades?|apartamentos?)\W+(comerciales?\W+)?alquilad|\(alquilad|con inquilin|contrato de alquiler vigente)/;
 // "con renta" de marketing (invertir/vivir con renta = potencial) vs ocupación real.
 const RENTA_MKT = /(vivir|invertir|inversion|ideal|oportunidad|posibilidad|opcion)(\W+\w+){0,2}\W+con renta/;
-const RENTA_FUERTE = /alquilad|rentad[oa]|con inquilin|contrato de alquiler|tiene renta/;
-function tieneRenta(texto) {
+const RENTA_FUERTE = /alquilad|arrendad|rentad[oa]|con inquilin|contrato de alquiler|tiene renta/;
+const TITULO_MKT = /(ideal|invertir|inversion|vivir|oportunidad|para renta|posibilidad|opcion)/;
+function tieneRenta(texto, titulo) {
   const t = sinAcento(texto);
+  const tit = sinAcento(titulo || "");
+  // "con renta" en el TÍTULO = señal dura (salvo título de marketing). Igual criterio que el robot.
+  if (tit.indexOf("con renta") >= 0 && !TITULO_MKT.test(tit)) return true;
   if (!RENTA_POS.test(t)) return false;
   if (RENTA_MKT.test(t) && !RENTA_FUERTE.test(t)) return false;   // marketing sin ocupación real
   return true;
@@ -548,7 +554,7 @@ function parseInfoCasas(html) {
       out.estado = "a_estrenar";
     // Renta: título + descripción del NODO (no toda la página). Detector de ocupación.
     const descNodo = String(pick(nodo, ["description", "descripcion", "longDescription"]) || "");
-    out.renta = tieneRenta(titulo + " " + descNodo);
+    out.renta = tieneRenta(titulo + " " + descNodo, titulo);
   }
 
   // Respaldo por texto si el JSON no trajo lo básico (0 cuenta como "no vino").
@@ -560,7 +566,7 @@ function parseInfoCasas(html) {
   if (cocheraDe(titulo, null) === true) out.cochera = true;
   if (!out.tipo) out.tipo = titulo;
   if (out.operacion === "sale" && /\balquiler\b|\balquila\b/i.test(titulo)) out.operacion = "rent";
-  out.renta = out.renta || tieneRenta(titulo);   // ya lo pudo marcar el nodo (título+desc)
+  out.renta = out.renta || tieneRenta(titulo, titulo);   // ya lo pudo marcar el nodo (título+desc)
   out.barrio = barrioInfoCasas(html);
   // Campo/chacra en hectáreas → m² (del título, que suele decir "Campo 5 Hectáreas").
   const _ha = hectareasM2(titulo);

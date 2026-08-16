@@ -26,9 +26,10 @@ import urllib.request
 # Se lee de título + descripción. Señales específicas para NO marcar "ideal para renta",
 # "rentabilidad", "genera renta", "desocupada", "se alquila" (que son potencial/oferta).
 RENTA_POS_RE = re.compile(
-    r"(con renta|c/ ?renta|rentad[oa]s?|ya alquilad|tiene renta|"
-    r"(actualmente|se encuentra|esta) alquilad|alquilad[oa]s? (hasta|desde|por|en)|"
-    r"con inquilin|contrato de alquiler vigente)", re.I)
+    r"(con renta|c/ ?renta|rentad[oa]s?|arrendad[oa]s?|ya alquilad|tiene renta|"
+    r"(actualmente|se encuentra|esta) alquilad|alquilad[oa]s? (hasta|desde|por|en|actualmente)|"
+    r"(todos|ambos|ambas|locales?|unidades?|apartamentos?)\W+(comerciales?\W+)?alquilad|"
+    r"\(alquilad|con inquilin|contrato de alquiler vigente)", re.I)
 
 
 def _sin_acentos(s: str) -> str:
@@ -54,11 +55,18 @@ SIN_COCHERA_RE = re.compile(r"sin\s+(cochera|garaj|garage)", re.I)
 RENTA_MKT_RE = re.compile(r"(vivir|invertir|inversion|ideal|oportunidad|posibilidad|opcion)"
                           r"(\W+\w+){0,2}\W+con renta")
 # Señal FUERTE de ocupación real (si está, gana aunque haya marketing cerca).
-RENTA_FUERTE_RE = re.compile(r"alquilad|rentad[oa]|con inquilin|contrato de alquiler|tiene renta")
+RENTA_FUERTE_RE = re.compile(r"alquilad|arrendad|rentad[oa]|con inquilin|contrato de alquiler|tiene renta")
+# Título en sentido marketing (para no marcar un "con renta" de título que igual es potencial).
+_TITULO_MKT_RE = re.compile(r"(ideal|invertir|inversion|vivir|oportunidad|para renta|posibilidad|opcion)")
 
 
-def _tiene_renta(texto: str) -> bool:
+def _tiene_renta(texto: str, titulo: str = "") -> bool:
     t = _sin_acentos(texto or "")
+    tit = _sin_acentos(titulo or "")
+    # "con renta" en el TÍTULO = señal DURA (RE/MAX lo pone cuando la vende ALQUILADA), salvo que
+    # el título mismo sea marketing. No la apaga el supresor global (antes se perdían esas ventas).
+    if ("con renta" in tit) and not _TITULO_MKT_RE.search(tit):
+        return True
     if not RENTA_POS_RE.search(t):
         return False
     # Si la única señal es "con renta" en sentido marketing y no hay ocupación real, no marcar.
@@ -304,6 +312,21 @@ _MULTI_COMBO_A = ["casa al frente", "casa adelante", "casa de adelante", "vivien
 _MULTI_COMBO_B = ["apto al fondo", "apartamento al fondo", "casa al fondo", "casita al fondo",
                   "monoambiente al fondo", "unidad al fondo", "segunda unidad", "unidad trasera",
                   "segunda casa", "apartamento trasero", "casa trasera"]
+# Segunda vivienda pegada con "+" o "mas" (casa + apto, casa mas monoambiente). Corren DESPUÉS de
+# las exclusiones, así los edificios/PH no entran. Medido: recupera ~15 reales, 0 falsos positivos.
+_MULTI_POS_RX = [
+    re.compile(r"\bmas\s+(aptos?|apartamentos?|monoambientes?|casita)\b"),
+    re.compile(r"\+\s*(aptos?|apartamentos?|monoambientes?|casita)\b"),
+]
+# Bloques de renta numéricos ("casa + 4 apartamentos", "venta 3 apartamentos", "opcion 2 viviendas",
+# "padron unico con 7 unidades"). Exigen SUSTANTIVO tras el número (si no, agarran m²/dormitorios).
+_MULTI_NUM_RX = [
+    re.compile(r"\bcasa\s+\+\s*[2-9]?\s*(apartamentos?|aptos?)\b"),
+    re.compile(r"\bcasa\b[^.]{0,15}\bmas\s+[2-9]\s+(apartamentos?|aptos?)\b"),
+    re.compile(r"\bopcion\s+[2-9]\s+(viviendas|casas|apartamentos?|aptos?)\b"),
+    re.compile(r"\bventa\s+(de\s+)?[2-9]\s+apartamentos?\b"),
+    re.compile(r"\bpadron unico\s+(con|de)\s+[2-9]\s+(unidades|viviendas|apartamentos?|aptos?|casas)\b"),
+]
 
 def es_multiunidad(texto: str):
     """True/False si el aviso describe varias viviendas en un mismo padrón. None si no
@@ -319,6 +342,12 @@ def es_multiunidad(texto: str):
             return True
     for m in re.finditer(r"\b([2-9])\s+([a-z]+)\b", t):   # patrón numérico restringido
         if m.group(2) in _MULTI_NUM_OK:
+            return True
+    for rx in _MULTI_POS_RX:                # "casa + apto" / "casa mas monoambiente"
+        if rx.search(t):
+            return True
+    for rx in _MULTI_NUM_RX:                # "casa + 4 apartamentos", "padron unico con 7 unidades"
+        if rx.search(t):
             return True
     if any(a in t for a in _MULTI_COMBO_A) and any(b in t for b in _MULTI_COMBO_B):
         return True                         # combinación frente + otra-unidad
@@ -399,7 +428,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         # Estado de publicación: active | reserved | negotiation. Solo 'active' se
         # ofrece como parecida (reservada/en negociación NO están habilitadas).
         "estado_pub": (it.get("listingStatus") or {}).get("value") or "active",
-        "renta": _tiene_renta(texto),   # vendida con inquilino (título + descripción)
+        "renta": _tiene_renta(texto, it.get("title") or ""),   # vendida con inquilino (título = señal dura)
         "cochera": cochera,          # True/False, o None si no se pudo leer el detalle
         # Gastos comunes (expensas): casi siempre en pesos. Solo si > 0.
         "gastos": gastos,
@@ -440,16 +469,14 @@ def main():
         _bn = _sin_acentos(_barrio(it.get("geoLabel")))
         if _bn and _bn not in _barrio_geo:
             _barrio_geo[_bn] = it.get("geoLabel")
-    _OTROS_DEPTOS = ("colonia", "maldonado", "rocha", "florida", "san jose", "paysandu",
-                     "salto", "rivera", "tacuarembo", "cerro largo", "treinta y tres",
-                     "artigas", "flores", "rio negro", "durazno", "soriano", "lavalleja")
     _rescatadas = 0
     for it in listado:
         if (it.get("geoLabel") or "").strip():
             continue
         _tn = _sin_acentos(it.get("title") or "")
-        if any(_d in _tn for _d in _OTROS_DEPTOS):   # el título nombra OTRO depto → no rescatar
-            continue
+        # NO filtramos por nombre de departamento en el título: la CAJA de coordenadas (abajo) es
+        # la autoridad y rechaza lo que cae fuera de Mvd+Canelones. Un guard por substring chocaba
+        # con localidades reales (Colonia Nicolich, San José de Carrasco, La Floresta).
         _det = _fetch_detalle(it.get("slug") or "")
         _c = ((_det or {}).get("location") or {}).get("coordinates")
         if not (_c and len(_c) >= 2):
