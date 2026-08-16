@@ -1,4 +1,4 @@
-"""Robot diario: baja las propiedades de RE/MAX (Montevideo + Canelones), entra al
+"""Robot diario: baja las propiedades de RE/MAX (todo Uruguay, todas las oficinas), entra al
 detalle de cada una y arma un archivo liviano (listings.json) con TODO precalculado
 para que la web app del celu filtre parecidas al instante.
 
