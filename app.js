@@ -2097,19 +2097,21 @@ function initSegs() {
   // de cosas que nunca conoció, ni encadenarle varias ventanitas. Se marca todo como visto
   // → arranca limpio y solo verá las novedades de acá en adelante. El que YA usó la app sí
   // ve las novedades nuevas. (Juan 2026-08-14)
+  // Todas las ventanitas de novedades, en orden VIEJA → NUEVA. Al sumar una nueva, va al final.
+  var NEWS = ["news", "news-agente", "news-avisos"];
   if (!novedadVista("iniciado")) {
-    if (esPrimeraVezEnLaApp()) ["news", "news-agente", "news-avisos"].forEach(marcarNovedad);
+    if (esPrimeraVezEnLaApp()) NEWS.forEach(marcarNovedad);
     marcarNovedad("iniciado");
   }
-  // Cartel de novedades (una sola vez). Muestro UNO por apertura para no encimar.
   pintarMarcaNueva();
   pintarAjustesNuevo();
-  if (!novedadVista("news")) {
-    abrirOverlay("news"); marcarNovedad("news-agente"); marcarNovedad("news-avisos");
-  } else if (!novedadVista("news-agente")) {
-    abrirOverlay("news-agente");
-  } else if (!novedadVista("news-avisos")) {
-    abrirOverlay("news-avisos");
+  // De las novedades pendientes, mostrar SOLO LA ÚLTIMA (la más nueva). Las viejas pendientes
+  // se dan por vistas (quedaron superadas): si alguien no entró en varios cambios, no se le
+  // encadenan 4 ventanitas — ve solo la última. (Juan 2026-08-15)
+  var newsPend = NEWS.filter(function (k) { return !novedadVista(k); });
+  if (newsPend.length) {
+    newsPend.slice(0, -1).forEach(marcarNovedad);      // las viejas pendientes → dadas por vistas
+    abrirOverlay(newsPend[newsPend.length - 1]);        // la más nueva se muestra (se marca al cerrarla)
   }
   var cerrarNews = function () { marcarNovedad("news"); cerrarOverlay("news"); };
   $("btn-news-ok").addEventListener("click", cerrarNews);
