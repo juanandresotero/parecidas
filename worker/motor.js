@@ -220,12 +220,19 @@ function tipoCat(t) {
   if (t.indexOf("cochera") >= 0 || t.indexOf("garaje") >= 0) return "cochera";
   return "otro";
 }
+// Región (Montevideo+Canelones = una) para no mezclar ciudades. Igual que la app.
+function regionDe(depto) {
+  var d = norm(depto || "");
+  if (!d) return null;
+  return (d === "montevideo" || d === "canelones") ? "metro" : d;
+}
 function pasa(c, f, slugActual) {
   if (slugActual && c.slug === slugActual) return false;
   if (c.estado_pub && c.estado_pub !== "active") return false;
   if (f.operacion && c.operacion !== f.operacion) return false;
   if (f.tipos && f.tipos.length && f.tipos.indexOf(tipoCat(c.tipo)) < 0) return false;
   if (f.grupo && f.grupo.indexOf(norm(c.barrio)) < 0) return false;
+  if (f.region && c.depto && regionDe(c.depto) !== f.region) return false;   // no mezclar ciudades
   if (f.dmin != null && (c.dorm == null || c.dorm < f.dmin)) return false;
   if (f.dmax != null && (c.dorm == null || c.dorm > f.dmax)) return false;
   if (f.bmin != null && (c.banos == null || c.banos < f.bmin)) return false;

@@ -161,6 +161,14 @@ function setStep(id, v) {
   $(id).querySelector("span").textContent = (v == null) ? "—" : v;
 }
 
+// Región para NO mezclar ciudades con barrios del mismo nombre (ej. "Centro" está en casi todas):
+// Montevideo+Canelones cuentan como UNA sola ("metro", son pegados y comparten zona); cada otro
+// departamento, el suyo. Vacío/desconocido = null → no filtra por región (búsqueda a mano).
+function regionDe(depto) {
+  var d = norm(depto || "");
+  if (!d) return null;
+  return (d === "montevideo" || d === "canelones") ? "metro" : d;
+}
 function leerFiltros() {
   // 1 barrio → su grupo (similares). 2+ → solo esos exactos. 0 → da igual.
   var grupo = SELBARRIOS.length === 1 ? grupoDe(SELBARRIOS[0])
@@ -169,6 +177,7 @@ function leerFiltros() {
     operacion: segVal("f-oper"),                 // siempre 'sale' o 'rent'
     tipos: tiposSeleccionados(),                  // casa/apto/otros(expandido) (vacío = cualquiera)
     grupo: grupo,
+    region: regionDe((window.__base && window.__base.depto) || ""),   // no mezclar ciudades (Mvd+Can = una)
     dmin: stepVal("f-dmin"),
     dmax: stepVal("f-dmax"),
     bmin: stepVal("f-bmin"),   // baños (total = baño + toilet)
@@ -246,6 +255,9 @@ function pasa(c, f, slugActual) {
   if (f.operacion && c.operacion !== f.operacion) return false;
   if (f.tipos.length && f.tipos.indexOf(c._tipoCat || tipoCat(c.tipo)) < 0) return false;
   if (f.grupo && f.grupo.indexOf(c._barrioN != null ? c._barrioN : norm(c.barrio)) < 0) return false;
+  // No mezclar ciudades: si la búsqueda arrancó de una propiedad, solo su región (Mvd+Can = una).
+  // Dato desconocido (c.depto vacío) NO excluye (indulgente).
+  if (f.region && c.depto && regionDe(c.depto) !== f.region) return false;
   if (f.dmin != null && (c.dorm == null || c.dorm < f.dmin)) return false;
   if (f.dmax != null && (c.dorm == null || c.dorm > f.dmax)) return false;
   if (f.bmin != null && (c.banos == null || c.banos < f.bmin)) return false;
@@ -853,6 +865,8 @@ function fromDetalle(det, slug) {
     // listado). Sin esto el barrio quedaba vacío en links en vivo (cortos/nuevos) y se
     // perdía el filtro de zona. Verificado contra la API real.
     barrio: ((det.geo || {}).label || "").split(",")[0].trim(),
+    // Departamento = último tramo del geo.label (para la región: no mezclar ciudades).
+    depto: (((det.geo || {}).label || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean).pop()) || "",
     m2_homog: homog(det.dimensionCovered, det.dimensionTotalBuilt, det.dimensionLand, esApto, det.dimensionSemicovered, det.dimensionUncovered),
     m2_padron: _land,
     cochera: (park != null) ? (park > 0) : null,

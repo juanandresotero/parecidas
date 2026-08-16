@@ -8,7 +8,7 @@ Precalcula, con la MISMA cuenta que Auto-Meta (homogeneización v2 validada con 
 - cochera (sí/no) y estado (usada / a_estrenar), que solo viven en el detalle.
 
 Sin secretos: la API de RE/MAX es pública. Amable: pausa corta entre pedidos.
-Uso:  python build_listings.py            (todo Mvd+Canelones, ~2500, tarda)
+Uso:  python build_listings.py            (todo Uruguay, todas las oficinas, ~3500, tarda)
       LIMIT=25 python build_listings.py   (prueba rápida con 25)
 """
 from __future__ import annotations
@@ -85,7 +85,6 @@ DET_EP = API + "/findBySlug/"
 CDN = "https://d1acdg20u0pmxj.cloudfront.net/"
 LISTING_URL = "https://www.remax.com.uy/listings/"
 PAGE_SIZE = 100
-DEPTOS_OK = {"montevideo", "canelones"}
 
 
 def _http_json(url: str, timeout: float = 30.0):
@@ -457,15 +456,16 @@ def main():
     dry = bool(os.environ.get("DRY_RUN"))   # prueba: corre todo pero NO escribe archivos
     print("Bajando el listón…", file=sys.stderr)
     listado = bajar_listado()
-    mvd_can = [it for it in listado
-               if _depto(it.get("geoLabel")).lower() in DEPTOS_OK]
+    # Cobertura NACIONAL: todas las propiedades con zona cargada, de cualquier departamento
+    # (todas las oficinas de RE/MAX). Las que vienen sin zona las levanta el rescate (abajo).
+    props_uy = [it for it in listado if (it.get("geoLabel") or "").strip()]
     # RESCATE: RE/MAX a veces publica propiedades SIN la zona cargada (geoLabel vacío) →
     # se descartaban aunque sean de Mvd/Can. Pero la UBICACIÓN (coordenadas) SIEMPRE está,
     # porque el agente la pone en el mapa al publicar. Así que uso las coordenadas para
     # decidir si es de Mvd/Can (más confiable que el título). El barrio lo saco del título
     # si nombra uno conocido; si no, queda sin barrio pero CON ubicación (mapa + botón 📍).
     _barrio_geo = {}   # norm(barrio) -> un geoLabel válido de ejemplo con ese barrio
-    for it in mvd_can:
+    for it in props_uy:
         _bn = _sin_acentos(_barrio(it.get("geoLabel")))
         if _bn and _bn not in _barrio_geo:
             _barrio_geo[_bn] = it.get("geoLabel")
@@ -490,22 +490,22 @@ def main():
             _dep = "Montevideo" if (-34.96 <= _lat <= -34.84 and -56.45 <= _lng <= -56.00) else "Canelones"
             _gl = ", , " + _dep
         it["geoLabel"] = _gl
-        mvd_can.append(it); _rescatadas += 1
-    print(f"Listón: {len(listado)} total, {len(mvd_can)} en Mvd+Canelones "
+        props_uy.append(it); _rescatadas += 1
+    print(f"Listón: {len(listado)} total, {len(props_uy)} con zona (todo Uruguay) "
           f"(rescatadas sin zona, por coordenadas: {_rescatadas})", file=sys.stderr)
     if limite:
-        mvd_can = mvd_can[:limite]
-        print(f"(prueba: solo {len(mvd_can)})", file=sys.stderr)
+        props_uy = props_uy[:limite]
+        print(f"(prueba: solo {len(props_uy)})", file=sys.stderr)
     rate = _usd_rate()
     print(f"Dólar: {rate}", file=sys.stderr)
     filas, fallidos = [], 0
-    for i, it in enumerate(mvd_can, 1):
+    for i, it in enumerate(props_uy, 1):
         det = _fetch_detalle(it.get("slug") or "")
         if det is None:
             fallidos += 1
         filas.append(_fila(it, det, rate))
         if i % 100 == 0:
-            print(f"  detalle {i}/{len(mvd_can)} (fallidos {fallidos})",
+            print(f"  detalle {i}/{len(props_uy)} (fallidos {fallidos})",
                   file=sys.stderr)
         time.sleep(0.25)   # amable con la API
     # ⚠️ RED DE SEGURIDAD: si el listado vino sospechosamente chico (un hipo de la API de
