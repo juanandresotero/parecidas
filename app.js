@@ -741,8 +741,9 @@ function rellenar(c) {
   // Regla de Juan: si el link tiene renta → parecidas con renta; si no → sin renta.
   setSegMulti("f-renta", [c.renta ? "con" : "sin"]);
   window.__slugActual = c.slug || null;
-  window.__base = c;                       // referencia para ordenar "más parecida"
+  window.__base = c;                       // referencia para ordenar "más parecida" y mi link
   mostrarAgente(c);
+  mostrarMiLink(c);
 }
 // Llena el formulario con lo que trajo el motorcito (InfoCasas / MercadoLibre).
 // El barrio NO se autocompleta: los nombres de esos portales no coinciden con los
@@ -784,6 +785,7 @@ function rellenarExterno(d) {
     m2_homog: d.m2_construidos || null, barrio: ""
   };
   mostrarAgente(null);   // InfoCasas/MercadoLibre: no tenemos el agente de RE/MAX
+  mostrarMiLink(null);   // ...ni associate (el link con contacto es solo para RE/MAX)
 }
 function etiquetaEstadoPub(e) {
   return e === "reserved" ? "Reservada" : (e === "negotiation" ? "En negociación" : "");
@@ -815,6 +817,34 @@ function mostrarAgente(c) {
     window.__agente = null;
     btn.style.display = "none";
   }
+}
+// Botón "Copiar mi link + dirección": deja en el portapapeles el link de la propiedad CON el
+// associate de Juan (así el cliente que entra por ese link queda a su nombre) + la dirección
+// escrita. Solo para propiedades de RE/MAX (el associate no aplica a InfoCasas/MercadoLibre).
+// Vive en el encabezado de la búsqueda —NO en la lista de guardadas— y aparece igual al abrir
+// un cliente guardado (comparte el mismo lugar que el contacto del agente).
+function mostrarMiLink(c) {
+  var btn = $("btn-mi-link");
+  if (!btn) return;
+  var link = linkDe(c);
+  var esRemax = !!link && link.indexOf("remax") >= 0;
+  if (c && esRemax) {
+    window.__miLinkProp = c;
+    btn.textContent = "📋 Copiar mi link + dirección";
+    btn.dataset.vuelve = "📋 Copiar mi link + dirección";
+    btn.style.display = "";
+  } else {
+    window.__miLinkProp = null;
+    btn.style.display = "none";
+  }
+}
+function copiarMiLink() {
+  var c = window.__miLinkProp;
+  if (!c) return;
+  var dir = (c.direccion || "").trim();
+  var texto = (dir ? dir + "\n" : "") + linkAssoc(linkDe(c));
+  copiarTexto(texto, $("btn-mi-link"),
+    $("btn-mi-link").dataset.vuelve || "📋 Copiar mi link + dirección");
 }
 // Detección de renta consistente con el robot (título como señal dura + POS sobre título+desc,
 // con supresor de marketing), para links EN VIVO que no están en el archivo del día. Antes acá
@@ -881,6 +911,7 @@ function traer() {
   var link = $("link").value.trim();
   var hint = $("hint");
   mostrarAgente(null);   // se reesconde; lo vuelven a mostrar rellenar/fromDetalle si hay agente
+  mostrarMiLink(null);
   if (!link) { hint.textContent = "Pegá un link, o completá los datos a mano abajo."; return; }
   var esRemax = /remax\.com\.uy/i.test(link);
   var slug = slugDeLink(link);
@@ -1228,6 +1259,7 @@ function abrirBusqueda(id) {
     if ((!_pAg || (!_pAg.agente && !_pAg.agente_tel)) && (b.slugActual || b.campSlug))
       _pAg = BY_SLUG[b.slugActual || b.campSlug] || _pAg;
     mostrarAgente(_pAg);
+    mostrarMiLink(_pAg);
     renderBadge();
     sincronizarPush();   // ya viste esta búsqueda → el robotito no te re-avisa lo mismo
     $("resultados").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1770,6 +1802,7 @@ function limpiarTodo() {
   SEL = []; CARDS = []; RENDER_RES = []; actualizarMulticopy();
   $("cards").innerHTML = ""; $("resultados").style.display = "none"; $("hint").innerHTML = "";
   mostrarAgente(null);
+  mostrarMiLink(null);
 }
 
 // -------------------------- Notas + recordatorio por cliente --------------------------
@@ -2164,6 +2197,7 @@ function initSegs() {
     copiarTexto(texto, $("btn-agente"),
       $("btn-agente").dataset.vuelve || "📇 Copiar contacto del agente");
   });
+  $("btn-mi-link").addEventListener("click", copiarMiLink);
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
   $("btn-mapa").addEventListener("click", abrirMapa);
