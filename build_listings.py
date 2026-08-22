@@ -423,7 +423,10 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "foto": foto_out,
         "agente": (it.get("associate") or {}).get("name") or "",
         "agente_tel": _tel_agente(it.get("associate") or {}),
-        "estado": "a_estrenar" if a_estrenar else ("usada" if det else ""),
+        # entrepreneurship = emprendimiento/desarrollo (obra nueva) → SIEMPRE a estrenar. Su ficha
+        # (findBySlug) FALLA siempre, así que sin esto quedaban con estado "" y el filtro "Usada"
+        # los colaba (Juan 2026-08-18). a_estrenar también sale de conditions ("estrenar"/"construccion").
+        "estado": "a_estrenar" if (a_estrenar or it.get("entrepreneurship")) else ("usada" if det else ""),
         # Estado de publicación: active | reserved | negotiation. Solo 'active' se
         # ofrece como parecida (reservada/en negociación NO están habilitadas).
         "estado_pub": (it.get("listingStatus") or {}).get("value") or "active",
