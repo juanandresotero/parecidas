@@ -233,10 +233,12 @@ function pasa(c, f, slugActual) {
   if (f.tipos && f.tipos.length && f.tipos.indexOf(tipoCat(c.tipo)) < 0) return false;
   if (f.grupo && f.grupo.indexOf(norm(c.barrio)) < 0) return false;
   if (f.region && c.depto && regionDe(c.depto) !== f.region) return false;   // no mezclar ciudades
-  if (f.dmin != null && (c.dorm == null || c.dorm < f.dmin)) return false;
-  if (f.dmax != null && (c.dorm == null || c.dorm > f.dmax)) return false;
-  if (f.bmin != null && (c.banos == null || c.banos < f.bmin)) return false;
-  if (f.bmax != null && (c.banos == null || c.banos > f.bmax)) return false;
+  // dorm/baños: 0 = "da igual" (no filtra). Con !=null, un TOPE de 0 (o una búsqueda vieja
+  // guardada con máx 0) dejaba 0 resultados. Espejo de pasa() en app.js.
+  if (f.dmin && (c.dorm == null || c.dorm < f.dmin)) return false;
+  if (f.dmax && (c.dorm == null || c.dorm > f.dmax)) return false;
+  if (f.bmin && (c.banos == null || c.banos < f.bmin)) return false;
+  if (f.bmax && (c.banos == null || c.banos > f.bmax)) return false;
   if (f.precioMinUsd != null && (c.precio_usd == null || c.precio_usd < f.precioMinUsd)) return false;
   if (f.precioMaxUsd != null && (c.precio_usd == null || c.precio_usd > f.precioMaxUsd)) return false;
   if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;

@@ -178,10 +178,13 @@ function leerFiltros() {
     tipos: tiposSeleccionados(),                  // casa/apto/otros(expandido) (vacío = cualquiera)
     grupo: grupo,
     region: regionDe((window.__base && window.__base.depto) || ""),   // no mezclar ciudades (Mvd+Can = una)
-    dmin: stepVal("f-dmin"),
-    dmax: stepVal("f-dmax"),
-    bmin: stepVal("f-bmin"),   // baños (total = baño + toilet)
-    bmax: stepVal("f-bmax"),
+    // 0 = "da igual" (NO filtra): el 1er toque del "+" cae en 0, y un TOPE de 0 (máx 0 dorms/
+    // baños) dejaba 0 resultados en silencio (casi todo tiene 1+). Un MÍNIMO de 0 tampoco debe
+    // excluir a los que no tienen el dato. Recién desde 1 filtra de verdad.
+    dmin: stepVal("f-dmin") || null,
+    dmax: stepVal("f-dmax") || null,
+    bmin: stepVal("f-bmin") || null,   // baños (total = baño + toilet)
+    bmax: stepVal("f-bmax") || null,
     precioMinUsd: precioAUsd(soloNum($("f-precio-min").value)),
     precioMaxUsd: precioAUsd(soloNum($("f-precio-max").value)),
     cubMin: soloNum($("f-cub-min").value),
@@ -258,10 +261,11 @@ function pasa(c, f, slugActual) {
   // No mezclar ciudades: si la búsqueda arrancó de una propiedad, solo su región (Mvd+Can = una).
   // Dato desconocido (c.depto vacío) NO excluye (indulgente).
   if (f.region && c.depto && regionDe(c.depto) !== f.region) return false;
-  if (f.dmin != null && (c.dorm == null || c.dorm < f.dmin)) return false;
-  if (f.dmax != null && (c.dorm == null || c.dorm > f.dmax)) return false;
-  if (f.bmin != null && (c.banos == null || c.banos < f.bmin)) return false;
-  if (f.bmax != null && (c.banos == null || c.banos > f.bmax)) return false;
+  // dorm/baños: 0 = "da igual" (no filtra). Con !=null, un TOPE de 0 dejaba 0 resultados.
+  if (f.dmin && (c.dorm == null || c.dorm < f.dmin)) return false;
+  if (f.dmax && (c.dorm == null || c.dorm > f.dmax)) return false;
+  if (f.bmin && (c.banos == null || c.banos < f.bmin)) return false;
+  if (f.bmax && (c.banos == null || c.banos > f.bmax)) return false;
   if (f.precioMinUsd != null && (c.precio_usd == null || c.precio_usd < f.precioMinUsd)) return false;
   if (f.precioMaxUsd != null && (c.precio_usd == null || c.precio_usd > f.precioMaxUsd)) return false;
   if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
@@ -1084,8 +1088,8 @@ function snapshotForm() {
     padronMin: $("f-padron-min").value, padronMax: $("f-padron-max").value,
     gastosMin: $("f-gastos-min").value, gastosMax: $("f-gastos-max").value,
     barrios: SELBARRIOS.slice(),
-    dmin: stepVal("f-dmin"), dmax: stepVal("f-dmax"),
-    bmin: stepVal("f-bmin"), bmax: stepVal("f-bmax"),
+    dmin: stepVal("f-dmin") || null, dmax: stepVal("f-dmax") || null,
+    bmin: stepVal("f-bmin") || null, bmax: stepVal("f-bmax") || null,
     coch: segVal("f-coch"), estado: segVal("f-estado"), rentaSel: segMulti("f-renta"),
     base: window.__base || null, slugActual: window.__slugActual || null
   };
