@@ -524,12 +524,80 @@ function enviarSeleccionadas() {
   }
 }
 
+// -------------------------- Estimador de alquiler --------------------------
+// "¿Cuánto se puede alquilar la propiedad del link?" Usa los ALQUILERES parecidos del pool
+// (mismo tipo/región, barrio exacto→zona si hay pocos, dorms ±1, m² homogeneizado ±25%).
+// La franja NO es un ±% inventado: sale de la DISPERSIÓN REAL — percentil 25-75 del precio
+// por m² de los comparables, × los m² de la propiedad. El número del medio (mediana) es la
+// estimación principal. Validado leave-one-out contra 243 alquileres reales (ancho real ≈ ±14%,
+// por eso el ±5% mentía). Solo aparece si hay una propiedad de referencia (link pegado).
+function estimarAlquiler(base) {
+  if (!base || !base.m2_homog) return null;
+  var bt = tipoCat(base.tipo), bd = base.dorm, bm = base.m2_homog;
+  var br = regionDe(base.depto), bb = norm(base.barrio), bg = grupoDe(base.barrio);
+  function comps(mismoBarrio) {
+    return DATA.filter(function (c) {
+      if (c.operacion !== "rent" || !c.precio_usd || !c.m2_homog) return false;
+      if (c.estado_pub && c.estado_pub !== "active") return false;      // reservada/negociación no
+      if (tipoCat(c.tipo) !== bt) return false;
+      if (br && c.depto && regionDe(c.depto) !== br) return false;      // no mezclar ciudades
+      var cb = norm(c.barrio);
+      if (mismoBarrio) { if (cb !== bb) return false; }
+      else if (bg && bg.indexOf(cb) < 0) return false;                 // afloja: mismo grupo/zona
+      if (bd != null && c.dorm != null && Math.abs(c.dorm - bd) > 1) return false;
+      if (Math.abs(c.m2_homog - bm) / bm > 0.25) return false;         // m² ±25%
+      return true;
+    });
+  }
+  var lista = comps(true), zona = "el mismo barrio";
+  if (lista.length < 5) { lista = comps(false); zona = "la zona"; }    // pocos exactos → amplío
+  if (lista.length < 3) return { pocos: true, n: lista.length };        // muy pocos: no estimo
+  var xm2 = lista.map(function (c) { return c.precio_usd / c.m2_homog; })
+                 .sort(function (a, b) { return a - b; });
+  function pctl(q) {
+    var i = (xm2.length - 1) * q, lo = Math.floor(i), hi = Math.min(lo + 1, xm2.length - 1);
+    return xm2[lo] + (xm2[hi] - xm2[lo]) * (i - lo);
+  }
+  return {
+    n: lista.length, zona: zona,
+    midUsd: Math.round(pctl(0.5) * bm),
+    loUsd: Math.round(pctl(0.25) * bm),
+    hiUsd: Math.round(pctl(0.75) * bm)
+  };
+}
+function renderEstimAlquiler() {
+  var el = $("alquiler-estim");
+  if (!el) return;
+  var e = estimarAlquiler(window.__base);
+  if (!e) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "";
+  if (e.pocos) {
+    el.innerHTML = '<div class="ea-tit">💰 Cuánto se puede alquilar</div>' +
+      '<div class="ea-nota">Todavía no hay suficientes alquileres parecidos en la zona para estimar' +
+      (e.n ? " (solo " + e.n + ")" : "") + '.</div>';
+    return;
+  }
+  var money = function (usd) {
+    return USD_RATE ? "$ " + fmtMiles(String(Math.round(usd * USD_RATE)))
+                    : "U$S " + fmtMiles(String(usd));
+  };
+  var subUsd = USD_RATE ? ' <span class="ea-usd">· U$S ' + fmtMiles(String(e.midUsd)) + '</span>' : '';
+  el.innerHTML =
+    '<div class="ea-tit">💰 ¿Cuánto se puede alquilar? <span class="ea-est">estimado</span></div>' +
+    '<div class="ea-mid">' + money(e.midUsd) + ' <span class="ea-mes">/ mes</span>' + subUsd + '</div>' +
+    '<div class="ea-rango">Rango típico: ' + money(e.loUsd) + ' – ' + money(e.hiUsd) + '</div>' +
+    '<div class="ea-nota">Según <b>' + e.n + '</b> alquileres parecidos en ' + e.zona + '.' +
+    (e.zona === "la zona"
+      ? ' <b class="ea-warn">Pocos en el barrio exacto; tomalo como referencia gruesa.</b>' : '') +
+    '</div>';
+}
 function render(res, total, aflojados, fuera, yaNoEntra) {
   fuera = fuera || {}; yaNoEntra = yaNoEntra || {};
   var f = leerFiltros();
   var monBusq = (segVal("f-moneda") || "USD").toLowerCase();   // para avisar conversión de dólar
   SEL = []; CARDS = []; RENDER_RES = []; actualizarMulticopy();
   $("resultados").style.display = "";
+  renderEstimAlquiler();   // "¿cuánto se alquila?" al final (el div va después de #cards) — con o sin resultados
   // Si la búsqueda ya está guardada (cliente activo), no ofrezco "Guardar" de nuevo;
   // pero si cambiaste algo, muestro "Guardar cambios".
   $("btn-guardar-busq").style.display = window.__busquedaActiva ? "none" : "";
