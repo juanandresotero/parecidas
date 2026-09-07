@@ -910,11 +910,20 @@ function mostrarMiLink(c) {
     btn.style.display = "none";
   }
 }
+// Solo el nombre de la CALLE (sin número de puerta ni barrio), para "sobre calle: …".
+// Cuida las calles con número EN el nombre (Av. 18 de Julio, 21 de Setiembre): ahí el número
+// NO está al final, así que solo saca el número de puerta del final. Validado vs datos reales.
+function soloCalle(dir) {
+  var s = (dir || "").split(",")[0].trim();
+  if (!s) return "";
+  var m = s.replace(/\s+\d[\d.\/-]*\s*(bis)?\.?\s*$/i, "").trim();
+  return m || s;   // si quedó vacío (dir era solo un número), dejo lo original
+}
 function copiarMiLink() {
   var c = window.__miLinkProp;
   if (!c) return;
-  var dir = (c.direccion || "").trim();
-  var texto = (dir ? dir + "\n" : "") + linkAssoc(linkDe(c));
+  var calle = soloCalle(c.direccion);
+  var texto = (calle ? "sobre calle: " + calle + "\n" : "") + linkAssoc(linkDe(c));
   copiarTexto(texto, $("btn-mi-link"),
     $("btn-mi-link").dataset.vuelve || "📋 Copiar mi link + dirección");
 }
