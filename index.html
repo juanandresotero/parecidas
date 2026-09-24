@@ -396,6 +396,17 @@
       <div class="val-lista" id="val-lista"></div>
     </div>
   </div>
+  <div class="ajustes" id="limpiar" style="display:none">
+    <div class="ajustes-card">
+      <div class="ajustes-head"><b>🧹 Limpiar cliente</b><button id="btn-limpiar-cerrar" aria-label="Cerrar">✕</button></div>
+      <p class="hint" style="margin:0 0 8px">Tildá las categorías que querés sacar de la lista de este cliente. Se pueden restaurar.</p>
+      <div class="val-lista" id="limpiar-lista"></div>
+      <button class="btn btn-brand" id="btn-limpiar-borrar" style="width:100%;margin-top:12px">Borrar lo tildado</button>
+      <div id="limpiar-restaurar-wrap" style="display:none;margin-top:8px">
+        <button class="btn btn-guardar-busq" id="btn-limpiar-restaurar" style="width:100%"></button>
+      </div>
+    </div>
+  </div>
   <div class="cuerpo">
 
     <div class="camp-banner" id="camp-banner" style="display:none">
@@ -540,6 +551,7 @@
       <div class="res-head"><h2>Parecidas</h2><span class="n" id="cuenta"></span></div>
       <button class="btn btn-guardar-busq" id="btn-guardar-busq">🔖 Guardar esta búsqueda</button>
       <button class="btn btn-guardar-busq" id="btn-guardar-cambios" style="display:none">💾 Guardar cambios en este cliente</button>
+      <button class="btn btn-guardar-busq" id="btn-limpiar" style="display:none">🧹 Limpiar (sacar propiedades por categoría)</button>
       <button class="btn btn-guardar-busq" id="btn-mapa" style="display:none">🗺️ Ver las parecidas en el mapa</button>
       <div class="cards" id="cards"></div>
       <!-- Estimador de alquiler: al final de las parecidas (solo si pegaste un link) -->

@@ -378,7 +378,15 @@ function buscar() {
       });
     }
   }
-  render(lista, res.length, [], fuera, yaNoEntra);
+  // "Limpiar": las que Juan ocultó de este cliente NO se muestran (se pueden restaurar).
+  // Filtro acá al final → cubre matches vivos + preservadas + reconciliadas de una.
+  var totalVisible = res.length;
+  if (b && b.ocultas && b.ocultas.length) {
+    var oc = {}; b.ocultas.forEach(function (s) { oc[s] = 1; });
+    lista = lista.filter(function (c) { return !oc[c.slug]; });
+    totalVisible = res.filter(function (c) { return !oc[c.slug]; }).length;
+  }
+  render(lista, totalVisible, [], fuera, yaNoEntra);
   guardarEstadoActual();   // recordar lo que se está viendo (sobrevive a recargar)
 }
 // Al re-buscar: las que estaban en la vista anterior y ya no coinciden pasan a
@@ -602,6 +610,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
   // pero si cambiaste algo, muestro "Guardar cambios".
   $("btn-guardar-busq").style.display = window.__busquedaActiva ? "none" : "";
   $("btn-guardar-cambios").style.display = (window.__busquedaActiva && filtrosCambiaron()) ? "" : "none";
+  $("btn-limpiar").style.display = window.__busquedaActiva ? "" : "none";   // limpiar por categoría
   var cont = $("cards");
   if (!total) {
     $("cuenta").textContent = "0 encontradas";
@@ -2071,6 +2080,60 @@ function abrirValPicker(slug) {
   });
   abrirOverlay("val-picker");
 }
+// "Limpiar": sacar propiedades del cliente POR CATEGORÍA (⚪/⭐/💚/📤/🚫/🔴…). Cuenta lo que
+// se está viendo (RENDER_RES) por su valoración y deja tildar categorías para ocultarlas. NO
+// borra la valoración (b.estados intacto) → "Restaurar" las trae de vuelta tal cual estaban.
+function abrirLimpiar() {
+  var b = busquedaActiva(); if (!b) return;
+  var cont = $("limpiar-lista"); cont.innerHTML = "";
+  var counts = {};
+  RENDER_RES.forEach(function (c) { var v = valDe(b, c.slug); counts[v] = (counts[v] || 0) + 1; });
+  VAL_ORDEN.forEach(function (clave) {
+    var n = counts[clave]; if (!n) return;
+    var e = VAL_ESTADOS[clave];
+    var lab = document.createElement("label");
+    lab.className = "val-opt"; lab.style.cursor = "pointer"; lab.style.display = "flex";
+    lab.style.alignItems = "center";
+    lab.innerHTML = '<input type="checkbox" class="lm-chk" data-clave="' + clave +
+      '" style="margin-right:9px;width:18px;height:18px">' +
+      '<span class="val-ic">' + e.icono + '</span> ' + esc(e.label) +
+      ' <b style="margin-left:auto">' + n + '</b>';
+    cont.appendChild(lab);
+  });
+  if (!cont.children.length)
+    cont.innerHTML = '<p class="hint" style="margin:0">No hay propiedades para sacar todavía.</p>';
+  var oc = (b.ocultas || []).length;
+  $("limpiar-restaurar-wrap").style.display = oc ? "" : "none";
+  if (oc) $("btn-limpiar-restaurar").textContent = "♻️ Restaurar " + oc + " oculta" + (oc > 1 ? "s" : "");
+  abrirOverlay("limpiar");
+}
+function ejecutarLimpiar() {
+  var b = busquedaActiva(); if (!b) return;
+  var claves = {};
+  $("limpiar-lista").querySelectorAll(".lm-chk:checked").forEach(function (chk) {
+    claves[chk.getAttribute("data-clave")] = 1;
+  });
+  if (!Object.keys(claves).length) { cerrarOverlay("limpiar"); return; }
+  var arr = cargarBusquedas();
+  var bb = arr.filter(function (x) { return x.id === b.id; })[0]; if (!bb) return;
+  bb.ocultas = bb.ocultas || [];
+  var ocSet = {}; bb.ocultas.forEach(function (s) { ocSet[s] = 1; });
+  RENDER_RES.forEach(function (c) {
+    if (claves[valDe(bb, c.slug)] && !ocSet[c.slug]) { bb.ocultas.push(c.slug); ocSet[c.slug] = 1; }
+  });
+  guardarBusquedas(arr);
+  cerrarOverlay("limpiar");
+  buscar();
+}
+function restaurarOcultas() {
+  var b = busquedaActiva(); if (!b) return;
+  var arr = cargarBusquedas();
+  var bb = arr.filter(function (x) { return x.id === b.id; })[0]; if (!bb) return;
+  bb.ocultas = [];
+  guardarBusquedas(arr);
+  cerrarOverlay("limpiar");
+  buscar();
+}
 
 // -------------------------- Botón Instalar (Android/Chrome) --------------------------
 // Chrome ya no muestra un botón grande solo: capturamos su evento y mostramos el nuestro.
@@ -2320,6 +2383,11 @@ function initSegs() {
   });
   $("btn-val-cerrar").addEventListener("click", function () { cerrarOverlay("val-picker"); });
   $("val-picker").addEventListener("click", function (e) { if (e.target === $("val-picker")) cerrarOverlay("val-picker"); });
+  $("btn-limpiar").addEventListener("click", abrirLimpiar);
+  $("btn-limpiar-cerrar").addEventListener("click", function () { cerrarOverlay("limpiar"); });
+  $("limpiar").addEventListener("click", function (e) { if (e.target === $("limpiar")) cerrarOverlay("limpiar"); });
+  $("btn-limpiar-borrar").addEventListener("click", ejecutarLimpiar);
+  $("btn-limpiar-restaurar").addEventListener("click", restaurarOcultas);
   // Ajustes (associate editable)
   $("btn-ajustes").addEventListener("click", function () {
     marcarNovedad("ajustes-nv"); $("btn-ajustes").classList.remove("nuevo");   // ya la vio
