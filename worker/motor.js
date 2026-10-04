@@ -45,8 +45,10 @@ export default {
       const id = await hashId(ep);
       const rec = await env.SUBS.get("sub:" + id, "json");
       const avisos = (rec && rec.pending) || [];
-      if (rec && avisos.length) { rec.pending = []; await env.SUBS.put("sub:" + id, JSON.stringify(rec)); }
-      return json({ avisos });
+      // Número para el ícono del escritorio (total sin ver al despertar el robotito). Se usa una vez.
+      const badge = rec && typeof rec.badge === "number" ? rec.badge : null;
+      if (rec && avisos.length) { rec.pending = []; delete rec.badge; await env.SUBS.put("sub:" + id, JSON.stringify(rec)); }
+      return json({ avisos, badge });
     }
     // Prueba: manda un aviso al instante a este celu (para confirmar que llega).
     if (url.searchParams.get("testpush")) {
@@ -153,13 +155,17 @@ export default {
         }
       }
       // (2) Parecidas nuevas por cliente (mismo filtro que la app).
+      const avisosCampana = nuevos.length;
+      let sinVer = 0;   // total que el usuario todavía no abrió en la app (numerito del ícono)
       if (listings) {
         for (const b of (rec.busquedas || [])) {
           if (!b || !b.filtro) continue;
           const seen = new Set(b.seen || []);
+          const abierto = new Set(b.vistas || b.seen || []);   // lo que ya miró en la app
           let nuevas = 0;
           for (const c of listings) {
             if (!pasa(c, b.filtro, b.slugActual)) continue;
+            if (!abierto.has(c.slug)) sinVer++;
             if (!seen.has(c.slug)) { seen.add(c.slug); nuevas++; }
           }
           if (nuevas > 0) {
@@ -172,7 +178,10 @@ export default {
           }
         }
       }
-      if (nuevos.length) { rec.pending = (rec.pending || []).concat(nuevos); dirty = true; }
+      if (nuevos.length) {
+        rec.pending = (rec.pending || []).concat(nuevos);
+        rec.badge = sinVer + avisosCampana; dirty = true;
+      }
       if (dirty) await env.SUBS.put(k.name, JSON.stringify(rec));
       if (nuevos.length) {
         const st = await enviarPush(rec, env);
@@ -193,6 +202,7 @@ function mergeBusquedas(prev, incoming) {
     return {
       id: nb.id, nombre: nb.nombre || "un cliente",
       filtro: nb.filtro || null, slugActual: nb.slugActual || null, seen,
+      vistas: nb.vistas || [],   // lo que el usuario ya miró en la app (seen, en cambio, solo crece)
     };
   });
 }

@@ -1,5 +1,5 @@
 // Service worker: deja andar la app sin conexión y sirve los datos frescos.
-var CACHE = "parecidas-v82";
+var CACHE = "parecidas-v83";
 // Robotito de Cloudflare (fijo y público). El aviso viene "vacío"; acá le pedimos al
 // robotito qué decir (así no hace falta cifrar el mensaje = mucho más simple).
 var MOTOR = "https://parecidas-motor.cualcaxsiempre.workers.dev";
@@ -39,6 +39,12 @@ self.addEventListener("push", function (e) {
               tag: a.tag || ("parecidas-" + i), data: { url: a.url || url }
             });
           }
+          // Número en el ícono del escritorio (con la app cerrada solo lo puede poner el SW).
+          // Al abrir la app, renderBadge lo recalcula. Best-effort: no todos los celus lo soportan.
+          try {
+            if (typeof d.badge === "number" && self.navigator && self.navigator.setAppBadge)
+              await self.navigator.setAppBadge(d.badge);
+          } catch (err) {}
           return;
         }
       }

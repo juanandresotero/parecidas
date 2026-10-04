@@ -628,8 +628,12 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
   cont.innerHTML = "";
   // Con cliente activo (búsqueda guardada abierta): reordeno por estado
   // (sin valorar y lo bueno arriba, descartes al fondo). Sin cliente: como siempre.
+  // Las 🆕 nuevas desde la última visita van arriba de todo.
   var bAct = busquedaActiva();
+  var nuevasM = marcasNuevas(bAct);
   if (bAct) res = res.slice().sort(function (a, b) {
+    var na = nuevasM[a.slug] ? 0 : 1, nb = nuevasM[b.slug] ? 0 : 1;
+    if (na !== nb) return na - nb;
     return VAL_ESTADOS[valDe(bAct, a.slug)].orden - VAL_ESTADOS[valDe(bAct, b.slug)].orden;
   });
   RENDER_RES = res;               // guardo lo dibujado (para saber las ⭐ de una campaña)
@@ -639,6 +643,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
     card.className = "card";
     if (bAct) card.classList.add("val-" + valDe(bAct, c.slug));
     if (fuera[c.slug]) card.classList.add("fuera");
+    if (nuevasM[c.slug]) card.classList.add("nueva");
     // Columna izquierda: número (cuando está tildada) + tilde para seleccionar
     var col = document.createElement("div"); col.className = "card-col";
     var num = document.createElement("span"); num.className = "card-num"; num.style.display = "none";
@@ -691,6 +696,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
     link.innerHTML = foto +
       '<div class="info">' +
         '<div class="titulo-card">' + esc(resumenCard(c)) + '</div>' +
+        (nuevasM[c.slug] ? '<span class="nueva-tag">🆕 NUEVA</span>' : "") +
         diasSubida +
         (fuera[c.slug] ? '<span class="fuera-tag">⚠ fuera de criterios</span>' : "") +
         (yaNoEntra[c.slug] ? '<span class="fuera-tag">🚫 ya no entra en el filtro</span>' : "") +
@@ -1205,12 +1211,18 @@ function restoreForm(s) {
 function matchesDe(b) {
   return DATA.filter(function (c) { return pasa(c, b.filtro, b.slugActual); });
 }
-// Cuántas de esas NO estaban la última vez que Juan miró esta búsqueda.
-function nuevasDe(b) {
+// Cuáles de esas NO estaban la última vez que Juan miró esta búsqueda.
+function slugsNuevasDe(b) {
   var visto = {}; (b.vistas || []).forEach(function (s) { visto[s] = 1; });
-  var n = 0;
-  matchesDe(b).forEach(function (c) { if (!visto[c.slug]) n++; });
-  return n;
+  return matchesDe(b).filter(function (c) { return !visto[c.slug]; })
+    .map(function (c) { return c.slug; });
+}
+function nuevasDe(b) { return slugsNuevasDe(b).length; }
+// Las que se marcan "🆕 NUEVA" adentro del cliente: las que había sin ver cuando lo abrió
+// (se guardan al abrir, porque ahí mismo pasan a "vistas"). Dura hasta la próxima apertura.
+function marcasNuevas(b) {
+  var m = {}; ((b && b.nuevasMarcadas) || []).forEach(function (s) { m[s] = 1; });
+  return m;
 }
 function totalNuevas() {
   return cargarBusquedas().reduce(function (a, b) { return a + nuevasDe(b); }, 0);
@@ -1337,6 +1349,7 @@ function abrirBusqueda(id) {
     window.__busquedaActiva = b.id;                               // cliente activo (para Enviar)
     window.__formBaseline = snapshotFiltros();                    // foto base: recién abierto = sin cambios
     window.__ultimaVista = null;                                  // baseline nuevo (no descarta al abrir)
+    b.nuevasMarcadas = slugsNuevasDe(b);                          // las nuevas de esta visita: se marcan adentro
     b.vistas = matchesDe(b).map(function (c) { return c.slug; });  // marca como visto → apaga el numerito
     if (b.recordarAt) b.recordAck = b.recordarAt;                 // lo abrió → apaga el destello del reloj
     guardarBusquedas(arr);
