@@ -378,11 +378,13 @@ function buscar() {
       });
     }
   }
-  // "Limpiar": las que Juan ocultó de este cliente NO se muestran (se pueden restaurar).
+  // "Limpiar": las que Juan ocultó de este cliente NO se muestran (se pueden restaurar), pero
+  // solo mientras sea la MISMA búsqueda (ver ocultasVigentes).
   // Filtro acá al final → cubre matches vivos + preservadas + reconciliadas de una.
   var totalVisible = res.length;
-  if (b && b.ocultas && b.ocultas.length) {
-    var oc = {}; b.ocultas.forEach(function (s) { oc[s] = 1; });
+  var ocultas = ocultasVigentes(b);
+  if (ocultas.length) {
+    var oc = {}; ocultas.forEach(function (s) { oc[s] = 1; });
     lista = lista.filter(function (c) { return !oc[c.slug]; });
     totalVisible = res.filter(function (c) { return !oc[c.slug]; }).length;
   }
@@ -1296,6 +1298,9 @@ function guardarFiltrosEnCliente() {
   bb.slugActual = window.__slugActual || null;
   bb.vistas = DATA.filter(function (c) { return pasa(c, bb.filtro, bb.slugActual); })
     .map(function (c) { return c.slug; });
+  // Filtros nuevos = búsqueda nueva: lo que se limpió con los filtros viejos se tira acá
+  // (tiene que ir ANTES de actualizar __formBaseline, que es la huella de los clientes viejos).
+  if (!ocultasVigentes(bb).length) { bb.ocultas = []; delete bb.ocultasFiltro; }
   guardarBusquedas(arr);
   window.__formBaseline = snapshotFiltros();   // recién guardado → ya no hay "cambios"
 }
@@ -2096,6 +2101,14 @@ function abrirValPicker(slug) {
 // "Limpiar": sacar propiedades del cliente POR CATEGORÍA (⚪/⭐/💚/📤/🚫/🔴…). Cuenta lo que
 // se está viendo (RENDER_RES) por su valoración y deja tildar categorías para ocultarlas. NO
 // borra la valoración (b.estados intacto) → "Restaurar" las trae de vuelta tal cual estaban.
+// Lo oculto vale SOLO para la búsqueda con la que se limpió (b.ocultasFiltro = huella de los
+// filtros de ese momento): si cambiás los filtros es OTRA búsqueda → cuenta nueva, y lo
+// ocultado antes no tapa lo que ahora coincide. (Clientes viejos sin huella: la de al abrirlos.)
+function ocultasVigentes(b) {
+  if (!b || !b.ocultas || !b.ocultas.length) return [];
+  var huella = b.ocultasFiltro || window.__formBaseline;
+  return (huella == null || snapshotFiltros() === huella) ? b.ocultas : [];
+}
 function abrirLimpiar() {
   var b = busquedaActiva(); if (!b) return;
   var cont = $("limpiar-lista"); cont.innerHTML = "";
@@ -2115,7 +2128,7 @@ function abrirLimpiar() {
   });
   if (!cont.children.length)
     cont.innerHTML = '<p class="hint" style="margin:0">No hay propiedades para sacar todavía.</p>';
-  var oc = (b.ocultas || []).length;
+  var oc = ocultasVigentes(b).length;
   $("limpiar-restaurar-wrap").style.display = oc ? "" : "none";
   if (oc) $("btn-limpiar-restaurar").textContent = "♻️ Restaurar " + oc + " oculta" + (oc > 1 ? "s" : "");
   abrirOverlay("limpiar");
@@ -2129,11 +2142,12 @@ function ejecutarLimpiar() {
   if (!Object.keys(claves).length) { cerrarOverlay("limpiar"); return; }
   var arr = cargarBusquedas();
   var bb = arr.filter(function (x) { return x.id === b.id; })[0]; if (!bb) return;
-  bb.ocultas = bb.ocultas || [];
+  bb.ocultas = ocultasVigentes(bb).slice();   // las de otra búsqueda (otros filtros) no se arrastran
   var ocSet = {}; bb.ocultas.forEach(function (s) { ocSet[s] = 1; });
   RENDER_RES.forEach(function (c) {
     if (claves[valDe(bb, c.slug)] && !ocSet[c.slug]) { bb.ocultas.push(c.slug); ocSet[c.slug] = 1; }
   });
+  bb.ocultasFiltro = snapshotFiltros();   // de qué búsqueda son estas ocultas
   guardarBusquedas(arr);
   cerrarOverlay("limpiar");
   buscar();
@@ -2142,7 +2156,7 @@ function restaurarOcultas() {
   var b = busquedaActiva(); if (!b) return;
   var arr = cargarBusquedas();
   var bb = arr.filter(function (x) { return x.id === b.id; })[0]; if (!bb) return;
-  bb.ocultas = [];
+  bb.ocultas = []; delete bb.ocultasFiltro;
   guardarBusquedas(arr);
   cerrarOverlay("limpiar");
   buscar();
