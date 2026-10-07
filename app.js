@@ -1974,6 +1974,10 @@ function pintarTemporalNuevo() {
   var b = document.querySelector('#f-oper button[data-v="temporal"]');
   if (b) b.classList.toggle("nuevo", !novedadVista("temporal-btn"));
 }
+// El botón del mapa también arranca en amarillo (la novedad está ahí adentro) hasta que se lo toca una vez.
+function pintarMapaNuevo() {
+  $("btn-mapa").classList.toggle("nuevo", !novedadVista("mapa-btn"));
+}
 // ⚙️ en amarillo hasta que active los avisos (apunta a dónde activarlos). Si ya los
 // activó, no hace falta el amarillo.
 function pintarAjustesNuevo() {
@@ -2602,7 +2606,9 @@ function initSegs() {
   // → arranca limpio y solo verá las novedades de acá en adelante. El que YA usó la app sí
   // ve las novedades nuevas. (Juan 2026-08-14)
   // Todas las ventanitas de novedades, en orden VIEJA → NUEVA. Al sumar una nueva, va al final.
-  var NEWS = ["news", "news-agente", "news-avisos", "news-temporal"];
+  // "news-temporal-mapa" = la ventanita de temporarios + visor por mapa (clave nueva: la ve también
+  // quien ya había visto la de temporarios sola).
+  var NEWS = ["news", "news-agente", "news-avisos", "news-temporal-mapa"];
   if (!novedadVista("iniciado")) {
     if (esPrimeraVezEnLaApp()) NEWS.forEach(marcarNovedad);
     marcarNovedad("iniciado");
@@ -2610,6 +2616,7 @@ function initSegs() {
   pintarMarcaNueva();
   pintarAjustesNuevo();
   pintarTemporalNuevo();
+  pintarMapaNuevo();
   // De las novedades pendientes, mostrar SOLO LA ÚLTIMA (la más nueva). Las viejas pendientes
   // se dan por vistas (quedaron superadas): si alguien no entró en varios cambios, no se le
   // encadenan 4 ventanitas — ve solo la última. (Juan 2026-08-15)
@@ -2630,10 +2637,10 @@ function initSegs() {
   $("btn-news-avisos-ok").addEventListener("click", cerrarNewsAvisos);
   $("btn-news-avisos-x").addEventListener("click", cerrarNewsAvisos);
   $("news-avisos").addEventListener("click", function (e) { if (e.target === $("news-avisos")) cerrarNewsAvisos(); });
-  var cerrarNewsTemporal = function () { marcarNovedad("news-temporal"); cerrarOverlay("news-temporal"); };
+  var cerrarNewsTemporal = function () { marcarNovedad("news-temporal-mapa"); cerrarOverlay("news-temporal-mapa"); };
   $("btn-news-temporal-ok").addEventListener("click", cerrarNewsTemporal);
   $("btn-news-temporal-x").addEventListener("click", cerrarNewsTemporal);
-  $("news-temporal").addEventListener("click", function (e) { if (e.target === $("news-temporal")) cerrarNewsTemporal(); });
+  $("news-temporal-mapa").addEventListener("click", function (e) { if (e.target === $("news-temporal-mapa")) cerrarNewsTemporal(); });
   $("btn-agente").addEventListener("click", function () {
     marcarNovedad("agente-btn"); $("btn-agente").classList.remove("nuevo");   // ya lo usó → sale del amarillo
     var a = window.__agente; if (!a) return;
@@ -2644,7 +2651,10 @@ function initSegs() {
   $("btn-mi-link").addEventListener("click", copiarMiLink);
   $("btn-multicopy").addEventListener("click", copiarSeleccionadas);
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
-  $("btn-mapa").addEventListener("click", abrirMapa);
+  $("btn-mapa").addEventListener("click", function () {
+    marcarNovedad("mapa-btn"); $("btn-mapa").classList.remove("nuevo");   // ya lo usó → sale del amarillo
+    abrirMapa();
+  });
   $("btn-mapa-cerrar").addEventListener("click", cerrarMapa);
   $("btn-vp-x").addEventListener("click", cerrarVistaPrevia);
   $("vista-previa").addEventListener("click", function (e) { if (e.target === $("vista-previa")) cerrarVistaPrevia(); });

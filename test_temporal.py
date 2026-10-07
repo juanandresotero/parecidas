@@ -69,24 +69,30 @@ def caso_boton_amarillo_hasta_el_primer_toque(br):
     assert not page.evaluate(es_nuevo), "ya lo usó: no tiene que volver a amarillo al recargar"
 
 
+VENTANITA = "news-temporal-mapa"   # una sola ventanita: temporarios + visor por mapa
+
+
 def _usuario_que_ya_conocia_la_app(page):
-    """Alguien que ya usaba la app ANTES de esta novedad: vio las ventanitas viejas, no la de temporarios.
-    (La 1ª carga de pagina_nueva lo trató como usuario nuevo y marcó todo visto: se lo borramos.)"""
-    page.evaluate("""() => { ['news', 'news-agente', 'news-avisos', 'iniciado'].forEach(function (k) {
+    """Alguien que ya usaba la app y YA VIO la ventanita de temporarios (v86), pero no esta versión con el mapa.
+    (La 1ª carga de pagina_nueva lo trató como usuario nuevo y marcó todo visto: ajustamos lo que corresponde.)"""
+    page.evaluate("""() => { ['news', 'news-agente', 'news-avisos', 'news-temporal', 'temporal-btn', 'iniciado'].forEach(function (k) {
         localStorage.setItem('parecidas_nv_' + k, '1'); });
-        ['news-temporal', 'temporal-btn'].forEach(function (k) { localStorage.removeItem('parecidas_nv_' + k); });
+        ['news-temporal-mapa', 'mapa-btn'].forEach(function (k) { localStorage.removeItem('parecidas_nv_' + k); });
         localStorage.setItem('parecidas_busquedas', '[]'); }""")
     page.reload(wait_until="load")
     page.wait_for_function("DATA.length > 0", timeout=20000)
     page.wait_for_timeout(300)
 
 
-def caso_ventanita_para_quien_ya_usaba_la_app(br):
+def caso_ventanita_vuelve_a_salir_con_lo_del_mapa_a_quien_ya_vio_la_de_temporarios(br):
     page = pagina_nueva(br)
     _usuario_que_ya_conocia_la_app(page)
-    visible = "document.getElementById('news-temporal') && getComputedStyle(document.getElementById('news-temporal')).display !== 'none'"
-    assert page.evaluate(visible), "quien ya usaba la app tiene que ver la ventanita de temporarios"
-    assert "emporario" in page.evaluate("document.getElementById('news-temporal').textContent"), "la ventanita no habla de temporarios"
+    visible = f"document.getElementById('{VENTANITA}') && getComputedStyle(document.getElementById('{VENTANITA}')).display !== 'none'"
+    assert page.evaluate(visible), "quien ya vio la ventanita de temporarios tiene que ver esta, con lo del mapa"
+    txt = page.evaluate(f"document.getElementById('{VENTANITA}').textContent")
+    assert "emporario" in txt and "apa" in txt, f"la ventanita tiene que hablar de temporarios Y del mapa: {txt}"
+    assert len(txt) < 420, f"tiene que ser súper breve ({len(txt)} caracteres)"
+    assert page.evaluate("document.querySelectorAll('#%s li').length" % VENTANITA) == 3, "debe tener 3 renglones: 2 de temporarios y 1 del mapa"
     assert not page.evaluate("['news','news-agente','news-avisos'].some(function (k) { return getComputedStyle(document.getElementById(k)).display !== 'none'; })"), \
         "no se deben mostrar las ventanitas viejas a la vez"
     page.evaluate("document.getElementById('btn-news-temporal-ok').click()")
@@ -97,16 +103,29 @@ def caso_ventanita_para_quien_ya_usaba_la_app(br):
     assert not page.evaluate(visible), "una vez vista no tiene que volver a salir"
 
 
+def caso_el_boton_del_mapa_arranca_en_amarillo_hasta_el_primer_toque(br):
+    page = pagina_nueva(br)
+    es_nuevo = "document.getElementById('btn-mapa').classList.contains('nuevo')"
+    assert page.evaluate(es_nuevo), "el botón del mapa tiene que arrancar en amarillo"
+    page.evaluate("""() => { limpiarTodo(); setSeg('f-oper', 'sale'); setSegMulti('f-tipo', ['apto']);
+        SELBARRIOS = ['Pocitos']; renderChips(); buscar(); document.getElementById('btn-mapa').click(); }""")
+    assert not page.evaluate(es_nuevo), "al tocarlo una vez tiene que volver a lo normal"
+    page.reload(wait_until="load")
+    page.wait_for_function("DATA.length > 0", timeout=20000)
+    assert not page.evaluate(es_nuevo), "ya lo usó: no tiene que volver a amarillo al recargar"
+
+
 def caso_ventanita_no_sale_a_quien_abre_la_app_por_primera_vez(br):
     page = pagina_nueva(br)
-    visible = "['news','news-agente','news-avisos','news-temporal'].some(function (k) { var e = document.getElementById(k); return e && getComputedStyle(e).display !== 'none'; })"
+    visible = "['news','news-agente','news-avisos','news-temporal-mapa'].some(function (k) { var e = document.getElementById(k); return e && getComputedStyle(e).display !== 'none'; })"
     page.wait_for_timeout(300)
     assert not page.evaluate(visible), "la primera vez que alguien abre la app no se le muestran novedades"
 
 
 CASOS_PAGINA = [caso_el_boton_temporario_busca_los_temporarios, caso_alquiler_comun_no_cambia,
                 caso_la_tarjeta_dice_alquiler_temporario, caso_un_link_temporario_carga_temporario]
-CASOS_NAVEGADOR = [caso_boton_amarillo_hasta_el_primer_toque, caso_ventanita_para_quien_ya_usaba_la_app,
+CASOS_NAVEGADOR = [caso_boton_amarillo_hasta_el_primer_toque, caso_el_boton_del_mapa_arranca_en_amarillo_hasta_el_primer_toque,
+                   caso_ventanita_vuelve_a_salir_con_lo_del_mapa_a_quien_ya_vio_la_de_temporarios,
                    caso_ventanita_no_sale_a_quien_abre_la_app_por_primera_vez]
 
 
