@@ -2438,7 +2438,16 @@ function popupDe(c) {
   var ver = document.createElement("a");
   ver.className = "pin-ver"; ver.href = linkDe(c); ver.target = "_blank"; ver.rel = "noopener";
   ver.textContent = "Ver aviso completo";
-  [mas, prev, ver].forEach(function (el) { fila.appendChild(el); });
+  var botones = [mas];
+  if (busquedaActiva()) {   // "−" (descartar): solo con la búsqueda guardada, porque el 🔴 vive en el cliente
+    var menos = document.createElement("button");
+    menos.type = "button"; menos.className = "pin-menos"; menos.textContent = "−";
+    menos.title = "Descartar (🔴 No me gustó)"; menos.setAttribute("aria-label", "Descartar esta propiedad");
+    menos.onclick = function () { descartarDesdeMapa(c); };
+    botones.push(menos);
+  }
+  botones.push(prev, ver);
+  botones.forEach(function (el) { fila.appendChild(el); });
   box.appendChild(fila);
   refrescarMas(c.slug);
   return box;
@@ -2465,6 +2474,20 @@ function alternarElegidaMapa(c) {
   }
   refrescarMas(c.slug);
   if (modoEstrella()) MAPA_SUCIO = true;   // con cliente la ⭐ cambió: al cerrar el mapa se redibuja la lista
+}
+
+// El "−" del mapa (solo con la búsqueda guardada): descarta la propiedad con 🔴 "No me gustó". Sale del
+// mapa (los descartes nunca se ven ahí) y en la lista queda con el círculo rojo, abajo de todo.
+function descartarDesdeMapa(c) {
+  if (!busquedaActiva()) return;
+  var i = idxSel(c.slug);
+  if (i >= 0) { SEL.splice(i, 1); renumerar(); }   // una descartada no se manda
+  setVal(c.slug, "descarte_1");
+  var m = MAPA_MARCAS[c.slug];
+  if (m) { m.closePopup(); MAPA._grupo.removeLayer(m); delete MAPA_MARCAS[c.slug]; }
+  $("mapa-titulo").textContent = "Parecidas en el mapa (" + Object.keys(MAPA_MARCAS).length + ")";
+  MAPA_SUCIO = true;   // al cerrar el mapa se vuelve a dibujar la lista y la muestra con 🔴
+  guardarEstadoActual();
 }
 
 // -------------------------- Vista previa de un aviso (ventana encima del mapa) --------------------------

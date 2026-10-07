@@ -121,6 +121,63 @@ def caso_con_cliente_el_mas_marca_para_enviar(page):
     assert elegidas(page) == [slug] and "(1)" in cuenta_multibar(page), f"al cerrar, la ⭐ tiene que contar para enviar: {elegidas(page)}"
 
 
+# ----------------------------- el "−": descartar desde el mapa (solo con cliente abierto) -----------------------------
+def _cliente(page, campana=False):
+    page.evaluate("""(camp) => { guardarBusquedaActual('Cliente prueba', '099111222', '', false);
+        if (camp) { var a = cargarBusquedas(); a[0].campana = true; guardarBusquedas(a); } buscar(); }""", campana)
+
+
+def caso_con_cliente_el_menos_descarta_y_queda_con_circulo_rojo(page):
+    preparar(page)
+    _cliente(page)
+    slug = abrir_mapa(page)
+    antes = page.evaluate("Object.keys(MAPA_MARCAS).length")
+    abrir_cartelito(page, slug)
+    assert page.locator(".leaflet-popup .pin-menos").count() == 1, "con la búsqueda guardada falta el botón −"
+    page.locator(".leaflet-popup .pin-menos").click()
+    assert page.evaluate("valDe(busquedaActiva(), %s)" % json.dumps(slug)) == "descarte_1", "el − tiene que descartar (🔴 No me gustó)"
+    assert page.evaluate("Object.keys(MAPA_MARCAS).length") == antes - 1 and page.evaluate("%s in MAPA_MARCAS" % json.dumps(slug)) is False, "el pin descartado tiene que salir del mapa"
+    page.wait_for_function("document.querySelectorAll('.leaflet-popup').length === 0", timeout=3000)   # Leaflet lo desvanece ~200 ms
+    assert f"({antes - 1})" in page.evaluate("document.getElementById('mapa-titulo').textContent"), "el contador del mapa no bajó"
+    cerrar_mapa(page)
+    r = page.evaluate("""(s) => { var o = CARDS.filter(function (x) { return x.slug === s; })[0];
+        return o ? { rojo: o.card.querySelector('.val-btn').textContent, clase: o.card.classList.contains('val-descarte_1') } : null; }""", slug)
+    assert r and r["rojo"] == "🔴" and r["clase"], f"en la lista tiene que seguir, con el círculo rojo: {r}"
+
+
+def caso_sin_busqueda_guardada_no_hay_menos(page):
+    preparar(page)
+    slug = abrir_mapa(page)
+    abrir_cartelito(page, slug)
+    assert page.locator(".leaflet-popup .pin-menos").count() == 0, "sin búsqueda guardada no hay a quién descartar: no debe haber −"
+
+
+def caso_el_menos_saca_la_propiedad_de_lo_elegido_en_una_campana(page):
+    preparar(page)
+    _cliente(page, campana=True)
+    slug = abrir_mapa(page)
+    abrir_cartelito(page, slug)
+    page.locator(".leaflet-popup .pin-mas").click()
+    assert elegidas(page) == [slug]
+    page.locator(".leaflet-popup .pin-menos").click()
+    assert elegidas(page) == [], "una propiedad descartada no puede seguir elegida para enviar"
+    cerrar_mapa(page)
+    assert page.evaluate("document.getElementById('multibar').style.display") == "none", "no debería quedar nada para enviar"
+
+
+def caso_el_menos_saca_la_estrella_de_para_enviar(page):
+    preparar(page)
+    _cliente(page)
+    slug = abrir_mapa(page)
+    abrir_cartelito(page, slug)
+    page.locator(".leaflet-popup .pin-mas").click()
+    assert page.evaluate("valDe(busquedaActiva(), %s)" % json.dumps(slug)) == "a_enviar"
+    page.locator(".leaflet-popup .pin-menos").click()
+    assert page.evaluate("valDe(busquedaActiva(), %s)" % json.dumps(slug)) == "descarte_1"
+    cerrar_mapa(page)
+    assert elegidas(page) == [], f"lo descartado no puede quedar en 'Para enviar': {elegidas(page)}"
+
+
 # ----------------------------- vista previa -----------------------------
 def caso_vista_previa_muestra_5_fotos_y_caracteristicas_sin_salir_del_mapa(page):
     preparar(page)
@@ -214,6 +271,8 @@ CASOS = [
     caso_el_cartelito_tiene_mas_vista_previa_y_ver_aviso_completo,
     caso_el_mas_deja_la_propiedad_elegida_al_cerrar_el_mapa, caso_el_mas_tambien_la_saca,
     caso_con_cliente_el_mas_marca_para_enviar,
+    caso_con_cliente_el_menos_descarta_y_queda_con_circulo_rojo, caso_sin_busqueda_guardada_no_hay_menos,
+    caso_el_menos_saca_la_propiedad_de_lo_elegido_en_una_campana, caso_el_menos_saca_la_estrella_de_para_enviar,
     caso_vista_previa_muestra_5_fotos_y_caracteristicas_sin_salir_del_mapa,
     caso_vista_previa_sin_conexion_muestra_lo_que_hay,
     caso_la_seleccion_sobrevive_a_volver_a_buscar, caso_la_seleccion_sobrevive_a_recargar_la_app,
