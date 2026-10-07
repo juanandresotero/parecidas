@@ -20,7 +20,10 @@ servidor: el celu baja un archivo (`listings.json`) y filtra solo.
 
 Todos los filtros son **opcionales**: lo que dejes vacío (o en "Da igual") se ignora.
 
-- **Barrio**: linderos / de valor parecido (grupos en `barrios.js`).
+- **Barrio**: acepta **departamentos enteros** (Montevideo, Canelones…), **zonas** (Ciudad de la Costa =
+  solo sus balnearios) y barrios, y se pueden mezclar (se combinan con "o", sin repetir). Un barrio
+  suelto busca también sus linderos (grupos en `barrios.js`); 2 o más barrios = solo esos. Sin nada
+  elegido = todo el país.
 - **Precio**: hasta +15% del que pongas (comparado en USD).
 - **Dormitorios**: rango mín–máx.
 - **Tipo**: casa / apto / terreno.

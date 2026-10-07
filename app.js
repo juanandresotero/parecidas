@@ -92,6 +92,15 @@ var BARRIO_CANON = {};
     g.forEach(function (b) { BARRIO_CANON[norm(b)] = b; });
   });
 })();
+// Departamentos y zonas (ver barrios.js): norm(nombre) → nombre lindo / {depto, barrios} de la zona.
+var DEPTO_IDX = {}, ZONA_IDX = {};
+(function () {
+  (window.DEPARTAMENTOS || []).forEach(function (d) { DEPTO_IDX[norm(d)] = d; });
+  Object.keys(window.ZONAS || {}).forEach(function (z) {
+    var zz = window.ZONAS[z];
+    ZONA_IDX[norm(z)] = { depto: norm(zz.depto), barrios: zz.barrios.map(norm) };
+  });
+})();
 // APODOS de barrios: cómo los escriben OTROS portales (InfoCasas/ML) → nombre de RE/MAX.
 // Solo se usa cuando el nombre no matchea directo. Se puede ampliar cuando aparezca uno
 // que no engancha (clave en minúscula sin tildes; el valor tiene que ser un barrio real).
@@ -170,13 +179,17 @@ function regionDe(depto) {
   return (d === "montevideo" || d === "canelones") ? "metro" : d;
 }
 function leerFiltros() {
-  // 1 barrio → su grupo (similares). 2+ → solo esos exactos. 0 → da igual.
-  var grupo = SELBARRIOS.length === 1 ? grupoDe(SELBARRIOS[0])
-            : (SELBARRIOS.length > 1 ? barriosSel() : null);
+  // Lugares: departamento (todo), zona (solo sus balnearios) o barrio; se combinan con "o".
+  // 1 barrio SOLO → su grupo (similares). Varios barrios → solo esos exactos. 0 → da igual.
+  var lug = lugaresSel();
+  var grupo = (SELBARRIOS.length === 1 && lug.barrios.length === 1) ? grupoDe(SELBARRIOS[0])
+            : (lug.barrios.length ? lug.barrios : null);
   var f = {
     operacion: segVal("f-oper"),                 // siempre 'sale' o 'rent'
     tipos: tiposSeleccionados(),                  // casa/apto/otros(expandido) (vacío = cualquiera)
     grupo: grupo,
+    deptos: lug.deptos.length ? lug.deptos : null,   // departamentos enteros (normalizados)
+    zonas: lug.zonas.length ? lug.zonas : null,      // zonas: [{depto, barrios}] — solo esos barrios, en ese depto
     region: regionDe((window.__base && window.__base.depto) || ""),   // no mezclar ciudades (Mvd+Can = una)
     // 0 = "da igual" (NO filtra): el 1er toque del "+" cae en 0, y un TOPE de 0 (máx 0 dorms/
     // baños) dejaba 0 resultados en silencio (casi todo tiene 1+). Un MÍNIMO de 0 tampoco debe
@@ -257,10 +270,17 @@ function pasa(c, f, slugActual) {
   if (c.estado_pub && c.estado_pub !== "active") return false;      // reservada/negociación: no se ofrece
   if (f.operacion && c.operacion !== f.operacion) return false;
   if (f.tipos.length && f.tipos.indexOf(c._tipoCat || tipoCat(c.tipo)) < 0) return false;
-  if (f.grupo && f.grupo.indexOf(c._barrioN != null ? c._barrioN : norm(c.barrio)) < 0) return false;
+  // Lugar: departamento entero y/o barrios/zonas. Se combinan con "o" → una propiedad entra
+  // una sola vez (sin resultados dobles). Sin ninguno elegido no filtra (todo el país).
+  var dn = c._deptoN != null ? c._deptoN : norm(c.depto);
+  var bn = c._barrioN != null ? c._barrioN : norm(c.barrio);
+  var enDepto = !!(f.deptos && f.deptos.indexOf(dn) >= 0);
+  var enZona = !!(f.zonas && f.zonas.some(function (z) { return z.depto === dn && z.barrios.indexOf(bn) >= 0; }));
+  if ((f.grupo || f.deptos || f.zonas) && !enDepto && !enZona && !(f.grupo && f.grupo.indexOf(bn) >= 0)) return false;
   // No mezclar ciudades: si la búsqueda arrancó de una propiedad, solo su región (Mvd+Can = una).
-  // Dato desconocido (c.depto vacío) NO excluye (indulgente).
-  if (f.region && c.depto && regionDe(c.depto) !== f.region) return false;
+  // Dato desconocido (c.depto vacío) NO excluye (indulgente). Un departamento o zona elegidos a
+  // propósito NO se frenan: si no, "Maldonado" con un link de Montevideo daba 0 en silencio.
+  if (f.region && c.depto && regionDe(c.depto) !== f.region && !enDepto && !enZona) return false;
   // dorm/baños: 0 = "da igual" (no filtra). Con !=null, un TOPE de 0 dejaba 0 resultados.
   if (f.dmin && (c.dorm == null || c.dorm < f.dmin)) return false;
   if (f.dmax && (c.dorm == null || c.dorm > f.dmax)) return false;
@@ -298,6 +318,7 @@ function pasa(c, f, slugActual) {
 function refDeBusqueda() {
   var f = leerFiltros();
   var b = window.__base;
+  var lug = lugaresSel();
   var dorm = b ? b.dorm : ((f.dmin != null && f.dmax != null) ? Math.round((f.dmin + f.dmax) / 2)
            : (f.dmin != null ? f.dmin : f.dmax));
   var precioUsd = b ? b.precio_usd
@@ -306,7 +327,7 @@ function refDeBusqueda() {
   return {
     operacion: b ? b.operacion : f.operacion,
     tipos: b ? [tipoCat(b.tipo)] : f.tipos,
-    barrios: barriosSel(),                     // barrios elegidos (normalizados)
+    barrios: lug.deZonas.concat(lug.barrios),  // barrios/balnearios elegidos (normalizados); un depto no suma
     precio_usd: precioUsd,
     dorm: dorm,
     cochera: b ? b.cochera : (f.cochera === "si" ? true : (f.cochera === "no" ? false : null)),
@@ -423,7 +444,10 @@ function fmtPrecio(c) {
 }
 function porque(c, f) {
   var b = [];
-  if (f.grupo) b.push(barriosSel().indexOf(norm(c.barrio)) >= 0 ? "mismo barrio" : "mismo grupo");
+  var bn = norm(c.barrio);
+  var lug = lugaresSel();   // lo que entró por departamento entero no lleva etiqueta
+  if (f.grupo && f.grupo.indexOf(bn) >= 0) b.push(lug.barrios.indexOf(bn) >= 0 ? "mismo barrio" : "mismo grupo");
+  else if (lug.deZonas.indexOf(bn) >= 0) b.push("misma zona");
   var base = window.__base;
   if (base && base.m2_homog && c.m2_homog) {
     var dif = Math.round((c.m2_homog - base.m2_homog) / base.m2_homog * 100);
@@ -1084,18 +1108,35 @@ function attachMiles(id, conPrefijo) {
 }
 
 // -------------------------- Barrios (multi-select con sugerencias) --------------------------
-// 1 barrio = busca en su GRUPO (similares). 2+ barrios = SOLO esos exactos. Máx 10.
+// Cada chip es un DEPARTAMENTO (todo ese departamento), una ZONA (Ciudad de la Costa: solo sus
+// balnearios) o un BARRIO. Se pueden mezclar (se combinan con "o"). Un barrio SOLO busca su
+// GRUPO (similares); 2+ barrios = SOLO esos exactos. Máx 10.
 var BARRIOS_ALL = [];     // todos los barrios reales (para sugerir)
-var SELBARRIOS = [];      // barrios elegidos (nombres para mostrar)
+var DEPTOS_CON_DATOS = [];   // departamentos con propiedades hoy (los que se ofrecen al escribir)
+var SELBARRIOS = [];      // lugares elegidos (nombres para mostrar)
+var ICONO_LUGAR = { depto: "🗺️ ", zona: "🏖️ ", barrio: "" };
 
 function cap(x) { return x.replace(/\b\w/g, function (m) { return m.toUpperCase(); }); }
 function barriosSel() { return SELBARRIOS.map(norm); }
+function tipoLugar(nm) { var n = norm(nm); return DEPTO_IDX[n] ? "depto" : (ZONA_IDX[n] ? "zona" : "barrio"); }
+// Lo elegido, separado: deptos (normalizados), zonas ({depto, barrios}), barrios sueltos, y
+// `deZonas` = todos los barrios de las zonas elegidas (para ordenar/etiquetar).
+function lugaresSel() {
+  var out = { deptos: [], zonas: [], barrios: [], deZonas: [] };
+  SELBARRIOS.forEach(function (nm) {
+    var t = tipoLugar(nm), n = norm(nm);
+    if (t === "depto") out.deptos.push(n);
+    else if (t === "zona") { out.zonas.push(ZONA_IDX[n]); out.deZonas = out.deZonas.concat(ZONA_IDX[n].barrios); }
+    else out.barrios.push(n);
+  });
+  return out;
+}
 
 function renderChips() {
   var cont = $("barrio-chips"); cont.innerHTML = "";
   SELBARRIOS.forEach(function (nm) {
     var chip = document.createElement("span"); chip.className = "barrio-chip";
-    chip.appendChild(document.createTextNode(nm));
+    chip.appendChild(document.createTextNode(ICONO_LUGAR[tipoLugar(nm)] + nm));
     var x = document.createElement("button"); x.type = "button"; x.textContent = "✕";
     x.setAttribute("aria-label", "Sacar"); x.onclick = function () { delBarrio(nm); };
     chip.appendChild(x); cont.appendChild(chip);
@@ -1112,16 +1153,28 @@ function delBarrio(nm) {
   SELBARRIOS = SELBARRIOS.filter(function (x) { return norm(x) !== norm(nm); });
   renderChips(); pintarGrupo();
 }
+// Qué se ofrece al escribir: primero departamentos y zonas, después barrios. Un "barrio" que en
+// realidad es un departamento o una zona (RE/MAX a veces carga "Montevideo" como barrio) no se
+// repite: elegirlo sería quedarse con un puñado en vez de todo el departamento.
+function sugerirLugares(q) {
+  var ya = barriosSel(), out = [];
+  function va(nombre) { var n = norm(nombre); return n.indexOf(q) >= 0 && ya.indexOf(n) < 0; }
+  DEPTOS_CON_DATOS.forEach(function (d) { if (va(d)) out.push({ nombre: d, tipo: "depto" }); });
+  Object.keys(window.ZONAS || {}).forEach(function (z) { if (va(z)) out.push({ nombre: z, tipo: "zona" }); });
+  BARRIOS_ALL.forEach(function (b) { if (va(b) && tipoLugar(b) === "barrio") out.push({ nombre: b, tipo: "barrio" }); });
+  return out.slice(0, 8);
+}
+var ETIQUETA_LUGAR = { depto: " · todo el departamento", zona: " · zona completa", barrio: "" };
 function mostrarSug() {
   var q = norm($("f-barrio").value);
   if (!q) { cerrarSug(); return; }
-  var ya = barriosSel();
-  var m = BARRIOS_ALL.filter(function (b) { return norm(b).indexOf(q) >= 0 && ya.indexOf(norm(b)) < 0; }).slice(0, 8);
+  var m = sugerirLugares(q);
   if (!m.length) { cerrarSug(); return; }
   var list = document.createElement("div"); list.className = "barrio-sug-list";
-  m.forEach(function (b) {
-    var it = document.createElement("div"); it.className = "barrio-sug-item"; it.textContent = b;
-    it.onmousedown = function (e) { e.preventDefault(); addBarrio(b); };
+  m.forEach(function (s) {
+    var it = document.createElement("div"); it.className = "barrio-sug-item";
+    it.textContent = ICONO_LUGAR[s.tipo] + s.nombre + ETIQUETA_LUGAR[s.tipo];
+    it.onmousedown = function (e) { e.preventDefault(); addBarrio(s.nombre); };
     list.appendChild(it);
   });
   var cont = $("barrio-sug"); cont.innerHTML = ""; cont.appendChild(list);
@@ -1129,17 +1182,21 @@ function mostrarSug() {
 function cerrarSug() { $("barrio-sug").innerHTML = ""; }
 function primeraSug() {
   var q = norm($("f-barrio").value); if (!q) return null;
-  var ya = barriosSel();
-  return BARRIOS_ALL.filter(function (b) { return norm(b).indexOf(q) >= 0 && ya.indexOf(norm(b)) < 0; })[0] || null;
+  var s = sugerirLugares(q)[0];
+  return s ? s.nombre : null;
 }
 function pintarGrupo() {
   var el = $("f-grupo");
   if (!SELBARRIOS.length) { el.textContent = ""; return; }
-  if (SELBARRIOS.length === 1) {
+  var lug = lugaresSel();
+  if (SELBARRIOS.length === 1 && lug.barrios.length === 1) {   // 1 barrio suelto → su grupo
     var g = grupoDe(SELBARRIOS[0]);
     el.textContent = (g && g.length > 1)
       ? "Busca similares: " + g.map(cap).slice(0, 6).join(" · ") + (g.length > 6 ? "…" : "")
       : "Solo este barrio";
+  } else if (lug.deptos.length || lug.zonas.length) {   // hay departamento o zona: explicar qué se busca
+    var pre = { depto: "todo ", zona: "zona ", barrio: "barrio " };
+    el.textContent = "Busca en: " + SELBARRIOS.map(function (nm) { return pre[tipoLugar(nm)] + nm; }).join(" · ");
   } else {
     el.textContent = "Solo estos " + SELBARRIOS.length + " barrios (exacto)";
   }
@@ -2506,11 +2563,18 @@ function cargar() {
     // Las props traídas en vivo (fromDetalle/rellenarExterno) no pasan por acá → las
     // funciones caen solas al cálculo directo (fallback).
     BY_SLUG = {};
+    var deptosVistos = {};
+    DEPTOS_CON_DATOS = [];
     DATA.forEach(function (c) {
       BY_SLUG[c.slug] = c;
       c._barrioN = norm(c.barrio || "");
+      c._deptoN = norm(c.depto || "");
       c._tipoCat = tipoCat(c.tipo || "");
+      if (DEPTO_IDX[c._deptoN] && !deptosVistos[c._deptoN]) {
+        deptosVistos[c._deptoN] = 1; DEPTOS_CON_DATOS.push(DEPTO_IDX[c._deptoN]);
+      }
     });
+    DEPTOS_CON_DATOS.sort(function (a, b) { return norm(a) < norm(b) ? -1 : 1; });
     USD_RATE = d.usd_rate || null;
     backfillUbicaciones();   // guarda las coords en las búsquedas viejas (mientras la prop esté en el listado)
     avisarDatosViejos(d.generado_at);   // cartel si el robot diario dejó de actualizar

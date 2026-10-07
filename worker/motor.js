@@ -241,8 +241,13 @@ function pasa(c, f, slugActual) {
   if (c.estado_pub && c.estado_pub !== "active") return false;
   if (f.operacion && c.operacion !== f.operacion) return false;
   if (f.tipos && f.tipos.length && f.tipos.indexOf(tipoCat(c.tipo)) < 0) return false;
-  if (f.grupo && f.grupo.indexOf(norm(c.barrio)) < 0) return false;
-  if (f.region && c.depto && regionDe(c.depto) !== f.region) return false;   // no mezclar ciudades
+  // Lugar: departamento entero, zona ({depto, barrios}) y/o barrios, combinados con "o". Espejo de
+  // pasa() en app.js. Filtros guardados antes de esto no traen `deptos`/`zonas` → siguen igual.
+  var dn = norm(c.depto), bn = norm(c.barrio);
+  var enDepto = !!(f.deptos && f.deptos.indexOf(dn) >= 0);
+  var enZona = !!(f.zonas && f.zonas.some(function (z) { return z.depto === dn && z.barrios.indexOf(bn) >= 0; }));
+  if ((f.grupo || f.deptos || f.zonas) && !enDepto && !enZona && !(f.grupo && f.grupo.indexOf(bn) >= 0)) return false;
+  if (f.region && c.depto && regionDe(c.depto) !== f.region && !enDepto && !enZona) return false;   // no mezclar ciudades
   // dorm/baños: 0 = "da igual" (no filtra). Con !=null, un TOPE de 0 (o una búsqueda vieja
   // guardada con máx 0) dejaba 0 resultados. Espejo de pasa() en app.js.
   if (f.dmin && (c.dorm == null || c.dorm < f.dmin)) return false;
