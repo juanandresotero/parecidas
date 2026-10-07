@@ -322,7 +322,11 @@ function refDeBusqueda() {
   var precioUsd = b ? b.precio_usd
     : (f.precioMinUsd != null && f.precioMaxUsd != null ? Math.round((f.precioMinUsd + f.precioMaxUsd) / 2)
        : (f.precioMaxUsd != null ? f.precioMaxUsd : f.precioMinUsd));
+  // m² de referencia (solo para desempatar): los del link, o el centro del rango de m² de los filtros.
+  var m2 = b ? b.m2_homog
+    : (f.cubMin != null && f.cubMax != null ? (f.cubMin + f.cubMax) / 2 : (f.cubMax != null ? f.cubMax : f.cubMin));
   return {
+    m2: m2,
     operacion: b ? b.operacion : f.operacion,
     tipos: b ? [tipoCat(b.tipo)] : f.tipos,
     barrios: lug.deZonas.concat(lug.barrios),  // barrios/balnearios elegidos (normalizados); un depto no suma
@@ -353,11 +357,16 @@ function propPorSlug(slug) { return BY_SLUG[slug] || null; }
 function filtrar(f, ref, slugActual) {
   var res = DATA.filter(function (c) { return pasa(c, f, slugActual); });
   // Se calcula el puntaje UNA sola vez por propiedad (antes el sort lo recomputaba
-  // O(n·log n) veces). Los desempates quedan idénticos: 1º más nueva, 2º más barata.
-  var dec = res.map(function (c) { return { c: c, p: puntaje(c, ref) }; });
+  // O(n·log n) veces). Orden: de la que más se parece a la que menos (puntaje). Si empatan:
+  // 1º la de m² más cercanos al link/filtros, 2º más nueva, 3º más barata.
+  var dec = res.map(function (c) {
+    var dm2 = (ref.m2 && c.m2_homog) ? Math.abs(c.m2_homog - ref.m2) : 1e9;   // sin dato de m² → al final del empate
+    return { c: c, p: puntaje(c, ref), m: dm2 };
+  });
   dec.sort(function (a, b) {
     var d = a.p - b.p;
     if (Math.abs(d) > 1e-9) return d;
+    if (a.m !== b.m) return a.m - b.m;                               // más cerca en m² arriba
     var va = a.c.visto_desde || "", vb = b.c.visto_desde || "";
     if (va !== vb) return va < vb ? 1 : -1;                          // fecha mayor (más nueva) arriba
     return (a.c.precio_usd || 1e12) - (b.c.precio_usd || 1e12);     // último desempate: más barata
@@ -491,8 +500,8 @@ function resumenCard(c) {
   return [oper, tipoTxt, med, c.barrio || "", fmtK(c.precio, c.moneda)].filter(Boolean).join(" · ");
 }
 
-var SEL = [];      // propiedades tildadas, EN ORDEN de tildado (para numerar 1,2,3)
-var CARDS = [];    // {slug, numEl, card} de lo dibujado, para renumerar en pantalla
+var SEL = [];      // propiedades elegidas para enviar, EN ORDEN (para numerar 1,2,3)
+var CARDS = [];    // {slug, numEl, card, chk} de lo dibujado, para renumerar en pantalla
 var RENDER_RES = []; // últimas parecidas dibujadas (para saber cuáles están ⭐ en campañas)
 function idxSel(slug) { for (var i = 0; i < SEL.length; i++) if (SEL[i].slug === slug) return i; return -1; }
 function renumerar() {
@@ -500,8 +509,34 @@ function renumerar() {
     var i = idxSel(o.slug);
     if (i >= 0) { o.numEl.textContent = i + 1; o.numEl.style.display = ""; o.card.classList.add("sel"); }
     else { o.numEl.style.display = "none"; o.card.classList.remove("sel"); }
+    if (o.chk) o.chk.checked = i >= 0;   // la casilla sigue a la selección (también si se eligió desde el mapa)
   });
   actualizarMulticopy();
+  guardarEstadoActual();   // lo elegido sobrevive a recargar la app
+}
+// Con un cliente NORMAL abierto, la ⭐ "Para enviar" ES la selección (no hay casilla). Sin cliente,
+// o en una campaña, se elige con la casilla ☑️ (SEL).
+function modoEstrella() { var b = busquedaActiva(); return !!(b && !b.campana); }
+function estaElegida(c) {
+  return modoEstrella() ? valDe(busquedaActiva(), c.slug) === "a_enviar" : idxSel(c.slug) >= 0;
+}
+var ANTES_DE_ELEGIR = {};   // valoración que tenía antes de ponerle ⭐ (para devolvérsela al sacarla)
+function alternarElegida(c) {
+  if (modoEstrella()) {
+    var b = busquedaActiva();
+    if (valDe(b, c.slug) === "a_enviar") {
+      var antes = ANTES_DE_ELEGIR[c.slug];
+      setVal(c.slug, antes && antes !== "a_enviar" ? antes : "sin_valorar");
+    } else {
+      ANTES_DE_ELEGIR[c.slug] = valDe(b, c.slug);
+      setVal(c.slug, "a_enviar");
+    }
+    guardarEstadoActual();
+  } else {
+    var i = idxSel(c.slug);
+    if (i >= 0) SEL.splice(i, 1); else SEL.push(c);
+    renumerar();
+  }
 }
 function actualizarMulticopy() {
   var n = listaEnviar().length;
@@ -553,6 +588,7 @@ function enviarSeleccionadas() {
       });
       bb.tandas = (bb.tandas || 0) + 1;
       bb.ultimoContacto = new Date().toISOString();      // enviar = contacto de hoy
+      SEL = [];                                          // ya se mandaron: no quedan elegidas (queda 📤)
       guardarBusquedas(arr); renderBadge(); buscar();   // refresca la lista (marca 📤)
     }
   }
@@ -629,6 +665,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
   fuera = fuera || {}; yaNoEntra = yaNoEntra || {};
   var f = leerFiltros();
   var monBusq = (segVal("f-moneda") || "USD").toLowerCase();   // para avisar conversión de dólar
+  var selPrevia = SEL.map(function (c) { return c.slug; });   // lo elegido antes de volver a dibujar
   SEL = []; CARDS = []; RENDER_RES = []; actualizarMulticopy();
   $("resultados").style.display = "";
   renderEstimAlquiler();   // "¿cuánto se alquila?" al final (el div va después de #cards) — con o sin resultados
@@ -695,7 +732,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
       col.appendChild(chk);
     }
     card.appendChild(col);
-    CARDS.push({ slug: c.slug, numEl: num, card: card });
+    CARDS.push({ slug: c.slug, numEl: num, card: card, chk: chk });
     var _fu = fotoDe(c);
     var foto = _fu ? '<img class="foto" src="' + esc(_fu) + '" alt="" loading="lazy">'
                    : '<div class="foto ph">🏠</div>';
@@ -739,6 +776,12 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
     }
     cont.appendChild(card);
   });
+  // Lo que ya estaba elegido (☑️) sigue elegido si la propiedad sigue en la lista (antes se perdía al
+  // volver a dibujar). Con un cliente normal la selección es la ⭐ y ya se armó arriba.
+  if (!modoEstrella()) {
+    var porSlug = {}; res.forEach(function (c) { porSlug[c.slug] = c; });
+    selPrevia.forEach(function (s) { if (porSlug[s] && idxSel(s) < 0) SEL.push(porSlug[s]); });
+  }
   renumerar();
 }
 
@@ -1323,6 +1366,7 @@ function guardarBusquedaActual(nombre, tel, direccion, campana) {
     var sel = {};
     SEL.forEach(function (c) { sel[c.slug] = 1; b.estados[c.slug] = "pendiente"; });
     CARDS.forEach(function (o) { if (!sel[o.slug]) b.estados[o.slug] = "descarte_1"; });
+    SEL = [];   // ya quedaron guardadas como ⏳ pendientes: no siguen "elegidas"
   }
   var arr = cargarBusquedas(); arr.unshift(b); guardarBusquedas(arr);
   window.__busquedaActiva = b.id;   // el cliente recién guardado queda activo
@@ -1413,6 +1457,7 @@ function abrirBusqueda(id) {
     window.__busquedaActiva = b.id;                               // cliente activo (para Enviar)
     window.__formBaseline = snapshotFiltros();                    // foto base: recién abierto = sin cambios
     window.__ultimaVista = null;                                  // baseline nuevo (no descarta al abrir)
+    SEL = [];                                                     // otro cliente = otra selección
     b.nuevasMarcadas = slugsNuevasDe(b);                          // las nuevas de esta visita: se marcan adentro
     b.vistas = matchesDe(b).map(function (c) { return c.slug; });  // marca como visto → apaga el numerito
     if (b.recordarAt) b.recordAck = b.recordarAt;                 // lo abrió → apaga el destello del reloj
@@ -1942,7 +1987,9 @@ var ESTADO_KEY = "parecidas_estado";
 function guardarEstadoActual() {
   try {
     localStorage.setItem(ESTADO_KEY, JSON.stringify({
-      form: snapshotForm(), busquedaActiva: window.__busquedaActiva || null
+      form: snapshotForm(), busquedaActiva: window.__busquedaActiva || null,
+      sel: SEL.map(function (c) { return c.slug; }),                  // lo elegido para enviar
+      mapa: { abierto: mapaAbierto(), vf: MAPA_VF }                   // el mapa y sus filtros
     }));
   } catch (e) {}
 }
@@ -1954,6 +2001,19 @@ function restaurarEstado() {
   window.__busquedaActiva = est.busquedaActiva || null;
   window.__formBaseline = snapshotFiltros();   // foto base tras recargar: sin cambios falsos
   buscar();
+  // Volver a la app (ej. después de "Ver aviso completo") no borra lo que se había elegido: la
+  // selección ☑️, el mapa abierto y los filtros del mapa. (`est` se leyó antes: buscar() ya pisó lo guardado.)
+  if ((est.sel || []).length && !modoEstrella()) {
+    var porSlug = {}; RENDER_RES.forEach(function (c) { porSlug[c.slug] = c; });
+    est.sel.forEach(function (s) { if (porSlug[s] && idxSel(s) < 0) SEL.push(porSlug[s]); });
+    renumerar();
+  }
+  if (est.mapa) {
+    Object.keys(MAPA_VF).forEach(function (k) { if (est.mapa.vf && k in est.mapa.vf) MAPA_VF[k] = !!est.mapa.vf[k]; });
+    // Se reabre solo si hay propiedades con ubicación y conexión (sin red no hay mosaicos): nada de carteles al arrancar.
+    if (est.mapa.abierto && navigator.onLine !== false && $("btn-mapa").style.display !== "none") abrirMapa();
+  }
+  guardarEstadoActual();
 }
 // Todos los filtros en "da igual" (sin tocar el link ni los resultados). Lo usan "Parecidas" y
 // "Traer": traer un link PISA todo el formulario, no queda nada de la búsqueda anterior.
@@ -2260,14 +2320,16 @@ function cargarLeaflet(cb) {
   document.head.appendChild(js);
 }
 var MAPA_RES = [];   // las parecidas que van al mapa (con coords)
+var MAPA_MARCAS = {};   // slug → marcador dibujado (para marcarlo cuando se elige con el "+")
+var MAPA_SUCIO = false;   // se cambió una ⭐ desde el mapa: al cerrarlo hay que volver a dibujar la lista
 // Filtro del mapa por ESTADO de valoración. Default: solo "sin valorar". Los estados que
 // NO están acá (los descartes 🔴) NUNCA se muestran.
 var MAPA_VF = { sin_valorar: true, a_enviar: false, enviada: false, favorita: false, pendiente: false };
 // Marcador "gota invertida" con el ícono de la valoración adentro (⭐/💚/📤/⏳).
-function iconoMapa(emoji) {
+function iconoMapa(emoji, elegida) {
   return L.divIcon({
     className: "pin-wrap",
-    html: '<div class="pin-gota"><span>' + (emoji || "") + '</span></div>',
+    html: '<div class="pin-gota' + (elegida ? ' pin-sel' : '') + '"><span>' + (emoji || "") + '</span></div>',
     iconSize: [30, 40], iconAnchor: [15, 38], popupAnchor: [0, -36]
   });
 }
@@ -2294,6 +2356,7 @@ function abrirMapa() {
     ch.setAttribute("aria-pressed", MAPA_VF[ch.getAttribute("data-v")] ? "true" : "false");
   });
   $("mapa-overlay").style.display = "flex";
+  guardarEstadoActual();   // recuerda que el mapa está abierto (si se sale a "Ver aviso completo", al volver sigue)
   cargarLeaflet(function () {
     if (!MAPA) {
       MAPA = L.map("mapa");
@@ -2314,19 +2377,16 @@ function pintarMapa() {
     if (!b) return true;                       // sin cliente: todas
     return !!MAPA_VF[valDe(b, c.slug)];        // solo los estados prendidos; descartes NUNCA
   });
-  MAPA._grupo.clearLayers();
+  MAPA._grupo.clearLayers(); MAPA_MARCAS = {};
   var pts = [], usados = {};
   lista.forEach(function (c) {
     var lat = c.lat, lng = c.lng, k = lat.toFixed(5) + "," + lng.toFixed(5);
     if (usados[k]) { var n = usados[k]++; lat += (n % 3 - 1) * 0.00012; lng += (Math.floor(n / 3) - 1) * 0.00012; }
     else usados[k] = 1;
-    var emoji = b ? (VAL_ESTADOS[valDe(b, c.slug)] || {}).icono : "";
-    if (emoji === "⚪") emoji = "";            // "sin valorar": gota vacía (el ⚪ no se vería)
-    var precio = fmtK(c.precio, c.moneda);
-    var m = L.marker([lat, lng], { icon: iconoMapa(emoji) }).bindPopup(
-      '<b>' + esc(resumenCard(c)) + '</b><br>' +
-      (precio ? esc(precio) + '<br>' : '') +
-      '<a href="' + esc(linkDe(c)) + '" target="_blank" rel="noopener">Ver aviso</a>');
+    var m = L.marker([lat, lng], { icon: iconoMapa(emojiPin(c), estaElegida(c)) });
+    m.bindPopup(popupDe(c), { minWidth: 250, maxWidth: 320 });
+    m.on("popupopen", function () { refrescarMas(c.slug); });   // al reabrir, el "+" refleja lo elegido
+    MAPA_MARCAS[c.slug] = m;
     MAPA._grupo.addLayer(m); pts.push([lat, lng]);
   });
   // La propiedad de referencia (el link pegado / la del cliente): marcador CASA 🏠, siempre
@@ -2345,7 +2405,143 @@ function pintarMapa() {
   $("mapa-titulo").textContent = "Parecidas en el mapa (" + lista.length + ")";
   if (pts.length) MAPA.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });
 }
-function cerrarMapa() { $("mapa-overlay").style.display = "none"; }
+function mapaAbierto() { var o = $("mapa-overlay"); return !!o && o.style.display !== "none"; }
+function cerrarMapa() {
+  $("mapa-overlay").style.display = "none";
+  cerrarVistaPrevia();
+  if (MAPA_SUCIO) { MAPA_SUCIO = false; buscar(); }   // una ⭐ cambió en el mapa: la lista la muestra (y guarda el estado)
+  else guardarEstadoActual();
+}
+
+// Ícono que va dentro del pin: el de la valoración del cliente (⭐/💚/📤/⏳); "sin valorar" = gota vacía.
+function emojiPin(c) {
+  var b = busquedaActiva();
+  var e = b ? (VAL_ESTADOS[valDe(b, c.slug)] || {}).icono : "";
+  return e === "⚪" ? "" : (e || "");
+}
+// Cartelito del pin: resumen + "＋" (elegir para enviar) + "Vista previa" + "Ver aviso completo".
+function popupDe(c) {
+  var precio = fmtK(c.precio, c.moneda);
+  var box = document.createElement("div"); box.className = "pin-popup";
+  box.innerHTML = '<b>' + esc(resumenCard(c)) + '</b>' + (precio ? '<br>' + esc(precio) : "");
+  var fila = document.createElement("div"); fila.className = "pin-acciones";
+  var mas = document.createElement("button");
+  mas.type = "button"; mas.className = "pin-mas"; mas.setAttribute("data-mas", c.slug);
+  mas.onclick = function () { alternarElegidaMapa(c); };
+  var prev = document.createElement("button");
+  prev.type = "button"; prev.className = "pin-prev"; prev.textContent = "👁 Vista previa";
+  prev.onclick = function () { abrirVistaPrevia(c); };
+  var ver = document.createElement("a");
+  ver.className = "pin-ver"; ver.href = linkDe(c); ver.target = "_blank"; ver.rel = "noopener";
+  ver.textContent = "Ver aviso completo";
+  [mas, prev, ver].forEach(function (el) { fila.appendChild(el); });
+  box.appendChild(fila);
+  refrescarMas(c.slug);
+  return box;
+}
+// Pone el "＋" / "✓" de todos los botones de esa propiedad (cartelito y vista previa) según lo elegido.
+function refrescarMas(slug) {
+  var on = estaElegida({ slug: slug });
+  document.querySelectorAll("[data-mas]").forEach(function (b) {
+    if (b.getAttribute("data-mas") !== slug) return;
+    var largo = b.hasAttribute("data-mas-largo");
+    b.textContent = on ? (largo ? "✓ Elegida para enviar" : "✓") : (largo ? "＋ Elegir para enviar" : "＋");
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-label", on ? "Quitar de lo que voy a enviar" : "Elegir para enviar");
+  });
+}
+// El "＋" del mapa: elige/saca la propiedad (misma selección que la casilla de la lista).
+function alternarElegidaMapa(c) {
+  alternarElegida(c);
+  var m = MAPA_MARCAS[c.slug];
+  if (m && m.getElement()) {   // se actualiza el pin en el lugar (sin cerrar el cartelito)
+    var g = m.getElement().querySelector(".pin-gota");
+    g.classList.toggle("pin-sel", estaElegida(c));
+    g.querySelector("span").textContent = emojiPin(c);
+  }
+  refrescarMas(c.slug);
+  if (modoEstrella()) MAPA_SUCIO = true;   // con cliente la ⭐ cambió: al cerrar el mapa se redibuja la lista
+}
+
+// -------------------------- Vista previa de un aviso (ventana encima del mapa) --------------------------
+// Para ver fotos y datos de la propiedad SIN salir del mapa. Muestra enseguida lo que ya se sabe
+// (la 1ª foto y los datos del archivo) y, cuando llega la ficha de RE/MAX, las primeras 5 fotos y más datos.
+var VP_CACHE = {};      // slug → ficha de RE/MAX ya traída
+var VP_ACTUAL = null;   // propiedad que se está viendo
+function textoPlano(html) {
+  return String(html || "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+}
+function filasVistaPrevia(c, det) {
+  var f = [], num = function (n) { return new Intl.NumberFormat("es-UY", { maximumFractionDigits: 1 }).format(n); };
+  var plata = function (n, mon) { return (String(mon).toUpperCase() === "USD" ? "U$S " : "$ ") + num(n); };
+  if (det) {
+    if (det.bathrooms != null || det.toilets != null)
+      f.push(["🚿 Baños", String(det.bathrooms || 0) + (det.toilets ? " + " + det.toilets + " toilette" : "")]);
+    var sup = [];
+    if (det.dimensionTotalBuilt > 0) sup.push("construidos " + num(det.dimensionTotalBuilt) + " m²");
+    if (det.dimensionCovered > 0 && det.dimensionCovered !== det.dimensionTotalBuilt) sup.push("cubiertos " + num(det.dimensionCovered) + " m²");
+    if (det.dimensionLand > 0 && det.dimensionLand < 5000000) sup.push("terreno " + num(det.dimensionLand) + " m²");
+    if (sup.length) f.push(["📐 Superficie", sup.join("\n")]);   // uno por renglón (el CSS respeta el salto)
+    if (det.parkingSpaces != null) f.push(["🚗 Cochera", det.parkingSpaces > 0 ? String(det.parkingSpaces) : "No"]);
+    if (det.yearBuilt >= 1800 && det.yearBuilt <= new Date().getFullYear() + 6) f.push(["🏗️ Año de construcción", String(det.yearBuilt)]);
+    if (det.floors > 0) f.push(["🏢 Pisos del edificio", String(det.floors)]);
+    if (det.expensesPrice > 0) f.push(["💲 Gastos comunes", plata(det.expensesPrice, (det.expensesCurrency || {}).value)]);
+    if (det.furnished === true) f.push(["🛋️ Amueblado", "Sí"]);
+    if (det.displayAddress) f.push(["📍 Dirección", det.displayAddress]);
+    var ft = (det.features || []).map(function (x) { return x && x.value; }).filter(Boolean).slice(0, 8);
+    if (ft.length) f.push(["✨ Incluye", ft.join(", ")]);
+  } else {   // sin la ficha: lo que trae el archivo del día
+    if (c.banos != null) f.push(["🚿 Baños", String(c.banos)]);
+    if (c.m2_homog) f.push(["📐 Superficie", "≈ " + num(c.m2_homog) + " m²"]);
+    if (c.cochera != null) f.push(["🚗 Cochera", c.cochera ? "Sí" : "No"]);
+    if (c.gastos > 0) f.push(["💲 Gastos comunes", plata(c.gastos, c.gastos_moneda || "UYU")]);
+    if (c.direccion) f.push(["📍 Dirección", c.direccion]);
+  }
+  if (c.estado) f.push(["🔑 Estado", c.estado === "a_estrenar" ? "A estrenar" : "Usada"]);
+  if (c.renta === true) f.push(["💵 Renta", "Con renta"]);
+  return f;
+}
+function pintarVistaPrevia(c, det, nota) {
+  var urls = [];
+  if (det && (det.photos || []).length) {
+    urls = det.photos.slice().sort(function (a, b) { return (a.position || 0) - (b.position || 0); })
+      .slice(0, 5).map(function (p) { return FOTO_CDN + (p.value || ((p.rawValue || "") + ".jpg")); });
+  } else if (fotoDe(c)) urls = [fotoDe(c)];
+  var fotos = $("vp-fotos"); fotos.innerHTML = "";
+  urls.forEach(function (u) {
+    var im = document.createElement("img"); im.src = u; im.alt = ""; im.loading = "lazy"; fotos.appendChild(im);
+  });
+  $("vp-cuenta").textContent = urls.length > 1 ? urls.length + " fotos · deslizá →" : (urls.length ? "1 foto" : "Sin fotos");
+  var datos = $("vp-datos"); datos.innerHTML = "";
+  filasVistaPrevia(c, det).forEach(function (r) {
+    var d = document.createElement("div"); d.className = "vp-fila";
+    d.innerHTML = '<span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b>';
+    datos.appendChild(d);
+  });
+  var txt = det ? textoPlano(det.description) : "";
+  $("vp-desc").textContent = txt.length > 260 ? txt.slice(0, 260).replace(/\s+\S*$/, "") + "…" : txt;
+  $("vp-nota").textContent = nota || "";
+}
+function abrirVistaPrevia(c) {
+  VP_ACTUAL = c;
+  $("vp-titulo").textContent = resumenCard(c);
+  $("vp-ver").href = linkDe(c);
+  $("btn-vp-mas").setAttribute("data-mas", c.slug);
+  refrescarMas(c.slug);
+  pintarVistaPrevia(c, VP_CACHE[c.slug] || null, VP_CACHE[c.slug] ? "" : "Trayendo fotos y datos…");
+  $("vista-previa").style.display = "flex";
+  $("vista-previa").scrollTop = 0;
+  if (VP_CACHE[c.slug]) return;
+  fetch(DET_EP + encodeURIComponent(c.slug)).then(function (r) { return r.json(); }).then(function (d) {
+    var det = d && d.data ? (d.data.data || d.data) : d;
+    if (!det || !(det.photos || det.title)) throw new Error("vacío");
+    VP_CACHE[c.slug] = det;
+    if (VP_ACTUAL === c) pintarVistaPrevia(c, det, "");
+  }).catch(function () {
+    if (VP_ACTUAL === c) pintarVistaPrevia(c, null, "No pude traer las demás fotos (sin conexión o RE/MAX no respondió).");
+  });
+}
+function cerrarVistaPrevia() { VP_ACTUAL = null; var v = $("vista-previa"); if (v) v.style.display = "none"; }
 
 function initSegs() {
   ["f-oper", "f-coch", "f-estado", "f-moneda"].forEach(function (id) {   // una sola opción
@@ -2450,12 +2646,16 @@ function initSegs() {
   $("btn-multienviar").addEventListener("click", enviarSeleccionadas);
   $("btn-mapa").addEventListener("click", abrirMapa);
   $("btn-mapa-cerrar").addEventListener("click", cerrarMapa);
+  $("btn-vp-x").addEventListener("click", cerrarVistaPrevia);
+  $("vista-previa").addEventListener("click", function (e) { if (e.target === $("vista-previa")) cerrarVistaPrevia(); });
+  $("btn-vp-mas").addEventListener("click", function () { if (VP_ACTUAL) alternarElegidaMapa(VP_ACTUAL); });
   $("mapa-valfiltro").querySelectorAll(".mv-chip").forEach(function (ch) {
     ch.addEventListener("click", function () {
       var k = this.getAttribute("data-v");
       MAPA_VF[k] = !MAPA_VF[k];
       this.setAttribute("aria-pressed", MAPA_VF[k] ? "true" : "false");
       pintarMapa();
+      guardarEstadoActual();   // el filtro del mapa se recuerda
     });
   });
   // Notas del cliente

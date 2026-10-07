@@ -275,6 +275,43 @@
   /* La propiedad del link pegado (referencia): gota más grande y dorada, con casa. */
   .pin-gota.pin-base{width:38px;height:38px;background:#fff7e0;border-color:#e6a700;border-width:3px}
   .pin-gota.pin-base span{font-size:19px}
+  /* Pin ELEGIDO para enviar (con el "＋"): borde verde + tilde. */
+  .pin-gota.pin-sel{border-color:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.4),0 2px 5px rgba(0,0,0,.3)}
+  .pin-gota.pin-sel::after{content:"✓";position:absolute;top:-9px;right:-9px;transform:rotate(45deg);
+    width:17px;height:17px;border-radius:50%;background:#16a34a;color:#fff;font-size:11px;font-weight:800;
+    display:flex;align-items:center;justify-content:center}
+  .pin-gota{position:relative}
+  /* Cartelito del pin: resumen + botones. */
+  .pin-popup{min-width:230px;font-size:13.5px;line-height:1.35}
+  .pin-acciones{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;align-items:stretch}
+  .pin-mas,.pin-prev,.pin-ver{border:0;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;
+    min-height:38px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;
+    text-decoration:none;font-family:inherit;-webkit-tap-highlight-color:transparent}
+  .pin-mas{background:var(--brand);color:#fff;font-size:20px;min-width:42px;padding:0 10px}
+  .pin-mas.on{background:#16a34a}
+  .pin-prev{background:var(--surface-2);color:var(--brand);border:1px solid var(--line);flex:1}
+  .pin-ver{background:var(--surface-2);color:var(--ink);border:1px solid var(--line);flex:1 1 100%}
+  /* Vista previa (por encima del mapa, que está en z-index 1000). */
+  #vista-previa{z-index:1100;align-items:flex-start;overflow-y:auto;padding:12px 10px}
+  .vp-card{max-width:420px;padding:14px}
+  .vp-card .ajustes-head b{font-size:14.5px;line-height:1.3;padding-right:8px}
+  .vp-fotos{display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:12px;
+    -webkit-overflow-scrolling:touch}
+  .vp-fotos img{flex:0 0 100%;width:100%;height:220px;object-fit:cover;scroll-snap-align:center;
+    border-radius:12px;background:var(--surface-2)}
+  .vp-cuenta{font-size:12px;color:var(--muted);margin:5px 0 8px;text-align:center}
+  .vp-datos{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+  .vp-fila{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);
+    font-size:13.5px}
+  .vp-fila span{color:var(--muted);flex-shrink:0}
+  .vp-fila b{text-align:right;font-weight:600;white-space:pre-line}
+  .vp-desc{font-size:13px;color:var(--ink);line-height:1.45;margin:10px 0 0}
+  .vp-nota{font-size:12px;color:var(--muted);margin:6px 0 0;min-height:14px}
+  /* Botones fijos abajo: siempre a la vista aunque la ventana se desplace. */
+  .vp-acciones{display:flex;gap:8px;position:sticky;bottom:0;margin:12px -14px -14px;padding:10px 14px 14px;
+    background:var(--surface);border-top:1px solid var(--line);border-radius:0 0 16px 16px}
+  .vp-acciones .pin-mas{flex:1;font-size:14px}
+  .vp-acciones .pin-ver{flex:1;background:var(--brand);color:#fff;border:0}
 </style>
 </head>
 <body>
@@ -598,6 +635,22 @@
     <button class="mv-chip" data-v="pendiente" aria-pressed="false">⏳ Pendientes</button>
   </div>
   <div id="mapa" style="flex:1;min-height:0"></div>
+</div>
+
+<!-- Vista previa de un aviso: ventana encima del mapa (fotos + datos) para NO salir del mapa -->
+<div class="ajustes" id="vista-previa" style="display:none">
+  <div class="ajustes-card vp-card">
+    <div class="ajustes-head"><b id="vp-titulo"></b><button id="btn-vp-x" aria-label="Cerrar">✕</button></div>
+    <div class="vp-fotos" id="vp-fotos"></div>
+    <div class="vp-cuenta" id="vp-cuenta"></div>
+    <div class="vp-datos" id="vp-datos"></div>
+    <p class="vp-desc" id="vp-desc"></p>
+    <p class="vp-nota" id="vp-nota"></p>
+    <div class="vp-acciones">
+      <button type="button" class="pin-mas" id="btn-vp-mas" data-mas="" data-mas-largo="1">＋ Elegir para enviar</button>
+      <a class="pin-ver" id="vp-ver" href="#" target="_blank" rel="noopener">Ver aviso completo</a>
+    </div>
+  </div>
 </div>
 
 <script src="barrios.js"></script>
