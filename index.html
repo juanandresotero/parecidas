@@ -372,6 +372,17 @@
     </div>
   </div>
 
+  <div class="ajustes" id="news-temporal" style="display:none">
+    <div class="ajustes-card">
+      <div class="ajustes-head"><b>👋 Novedad</b><button id="btn-news-temporal-x" aria-label="Cerrar">✕</button></div>
+      <ul class="news-list">
+        <li>Ahora podés buscar <b>alquileres temporarios</b>: en <b>Operación</b> tocá <b>Temporario</b> (en <b>amarillo</b>).</li>
+        <li>El precio es el que puso el agente en la publicación (por mes, quincena o temporada).</li>
+      </ul>
+      <button class="btn btn-brand" id="btn-news-temporal-ok" style="width:100%;margin-top:14px">Entendido</button>
+    </div>
+  </div>
+
   <div class="ajustes" id="cliente-editor" style="display:none">
     <div class="ajustes-card">
       <div class="ajustes-head"><b id="ce-nombre">Cliente</b><button id="btn-ce-cerrar" aria-label="Cerrar">✕</button></div>
@@ -440,6 +451,7 @@
           <div class="seg" id="f-oper">
             <button data-v="sale" aria-pressed="true">Venta</button>
             <button data-v="rent" aria-pressed="false">Alquiler</button>
+            <button data-v="temporal" aria-pressed="false">Temporario</button>
           </div>
         </div>
         <div class="f">

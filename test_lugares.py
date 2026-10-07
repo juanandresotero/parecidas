@@ -27,11 +27,13 @@ CARPETA = os.path.dirname(os.path.abspath(__file__))
 LISTINGS = json.load(open(os.path.join(CARPETA, "listings.json"), encoding="utf-8"))["listings"]
 
 # Balnearios que componen Ciudad de la Costa (normalizados). Fuente: Wikipedia + portales
-# inmobiliarios. Quedan AFUERA a propósito: Paso de Carrasco, Carmel y Colinas de Carrasco.
+# inmobiliarios (Carmel figura en el censo como parte de Ciudad de la Costa). Quedan AFUERA a
+# propósito: Paso de Carrasco (municipio propio) y Colinas de Carrasco (barrio privado en Ruta 101).
 ZONA_COSTA = {
     "ciudad de la costa", "solymar", "lagomar", "el pinar", "shangrila", "lomas de solymar",
     "san jose de carrasco", "medanos de solymar", "colinas de solymar", "barra de carrasco",
     "parque miramar", "parque carrasco", "el bosque", "parque de solymar", "montes de solymar",
+    "carmel",
 }
 
 
@@ -89,7 +91,7 @@ def caso_zona_ciudad_de_la_costa_sola(page):
     assert obtenido == esperado, f"Ciudad de la Costa sola: esperado {len(esperado)}, da {len(obtenido)}"
     barrios = {norm(x["barrio"]) for x in venta() if x["slug"] in obtenido}
     assert "solymar" in barrios and "lagomar" in barrios, "tiene que incluir sus balnearios (Solymar, Lagomar...)"
-    assert not barrios & {"paso de carrasco", "carmel", "colinas de carrasco", "pando"}, "no debe traer linderos"
+    assert not barrios & {"paso de carrasco", "colinas de carrasco", "pando"}, "no debe traer linderos"
 
 
 def caso_sin_resultados_dobles(page):
@@ -137,6 +139,34 @@ def caso_departamento_explicito_gana_a_la_region_del_link(page):
     obtenido = lo_que_encuentra_la_app(page, ["Maldonado"], base={"depto": "Montevideo", "barrio": "Pocitos"})
     esperado = slugs(x for x in venta() if x["depto"] == "Maldonado")
     assert obtenido == esperado, f"Maldonado explícito: esperado {len(esperado)}, da {len(obtenido)}"
+
+
+def caso_link_y_sin_barrio_busca_todo_el_pais(page):
+    """Pegás un link (de Maldonado), borrás el barrio → no queda NINGÚN filtro de zona: todo el país."""
+    obtenido = lo_que_encuentra_la_app(page, [], base={"depto": "Maldonado", "barrio": "Punta del Este"})
+    assert obtenido == slugs(venta()), (
+        f"sin lugar elegido tiene que traer todo el país aunque haya un link: esperado {len(venta())}, da {len(obtenido)}")
+
+
+def caso_la_region_del_link_sigue_cuidando_los_barrios(page):
+    """Con un barrio elegido, la región del link sigue evitando mezclar ciudades: un link de Salto
+    con 'Pocitos' no debe traer el Pocitos de Montevideo."""
+    con_link = lo_que_encuentra_la_app(page, ["Pocitos"], base={"depto": "Salto", "barrio": "Centro"})
+    sin_link = lo_que_encuentra_la_app(page, ["Pocitos"])
+    assert sin_link and not con_link, f"la región del link debe seguir frenando barrios de otra ciudad ({len(con_link)})"
+
+
+def caso_ubicacion_de_colinas_paso_y_carmel(page):
+    """Colinas de Carrasco = Ruta 101 (con La Tahona/Zona América); Paso de Carrasco = lindero de la Costa;
+    Carmel = parte de Ciudad de la Costa."""
+    g = page.evaluate("""() => ({ tahona: grupoDe('La Tahona'), colinas: grupoDe('Colinas de Carrasco'),
+        solymar: grupoDe('Solymar'), paso: grupoDe('Paso de Carrasco'), zonaCarmel: ZONA_IDX['ciudad de la costa'].barrios }) """)
+    assert "colinas de carrasco" in g["tahona"] and g["colinas"] == g["tahona"], "Colinas de Carrasco va con La Tahona/Zona América"
+    assert "colinas de carrasco" not in g["solymar"], "Colinas de Carrasco ya no es lindero de Solymar"
+    assert "paso de carrasco" in g["solymar"] and g["paso"] == g["solymar"], "Paso de Carrasco sigue de lindero de la Costa"
+    assert "carmel" in g["zonaCarmel"], "Carmel es parte de Ciudad de la Costa"
+    canelones = {x["depto"] for x in LISTINGS if norm(x["barrio"]) in ("colinas de carrasco", "paso de carrasco", "carmel")}
+    assert canelones == {"Canelones"}, f"los tres son de Canelones: {canelones}"
 
 
 def caso_autocompletado_ofrece_departamento_y_zona(page):
@@ -196,7 +226,8 @@ CASOS_APP = [
     caso_zona_ciudad_de_la_costa_sola, caso_sin_resultados_dobles, caso_zona_mas_otro_barrio,
     caso_un_barrio_sigue_buscando_su_grupo, caso_dos_barrios_siguen_exactos,
     caso_sin_lugar_busca_todo_el_pais, caso_departamento_explicito_gana_a_la_region_del_link,
-    caso_autocompletado_ofrece_departamento_y_zona, caso_se_guarda_y_se_restaura,
+    caso_link_y_sin_barrio_busca_todo_el_pais, caso_la_region_del_link_sigue_cuidando_los_barrios,
+    caso_ubicacion_de_colinas_paso_y_carmel, caso_autocompletado_ofrece_departamento_y_zona, caso_se_guarda_y_se_restaura,
     caso_cliente_viejo_sin_deptos, caso_la_captura_del_colega,
 ]
 
@@ -225,6 +256,7 @@ const r = {
   zonaOtroBarrio: pasa(mk('Pando', 'Canelones'), { zonas: [{ depto: 'canelones', barrios: ['solymar', 'lagomar'] }] }),
   zonaOtroDepto: pasa(mk('Solymar', 'Montevideo'), { zonas: [{ depto: 'canelones', barrios: ['solymar', 'lagomar'] }] }),
   zonaGanaARegion: pasa(mk('Solymar', 'Canelones'), { zonas: [{ depto: 'canelones', barrios: ['solymar'] }], region: 'salto' }),
+  regionSinLugar: pasa(mk('Punta del Este', 'Maldonado'), { region: 'metro' }),
 };
 console.log(JSON.stringify(r));
 """
@@ -244,6 +276,7 @@ def caso_worker():
     assert r["zonaDentro"] is True and r["zonaOtroBarrio"] is False, "worker: la zona trae solo sus barrios"
     assert r["zonaOtroDepto"] is False, "worker: la zona exige su departamento (Solymar de Montevideo no entra)"
     assert r["zonaGanaARegion"] is True, "worker: la zona elegida gana a la región del link"
+    assert r["regionSinLugar"] is True, "worker: sin ningún lugar elegido no hay restricción de región (todo el país)"
 
 
 def main():

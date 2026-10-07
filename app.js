@@ -277,10 +277,11 @@ function pasa(c, f, slugActual) {
   var enDepto = !!(f.deptos && f.deptos.indexOf(dn) >= 0);
   var enZona = !!(f.zonas && f.zonas.some(function (z) { return z.depto === dn && z.barrios.indexOf(bn) >= 0; }));
   if ((f.grupo || f.deptos || f.zonas) && !enDepto && !enZona && !(f.grupo && f.grupo.indexOf(bn) >= 0)) return false;
-  // No mezclar ciudades: si la búsqueda arrancó de una propiedad, solo su región (Mvd+Can = una).
-  // Dato desconocido (c.depto vacío) NO excluye (indulgente). Un departamento o zona elegidos a
-  // propósito NO se frenan: si no, "Maldonado" con un link de Montevideo daba 0 en silencio.
-  if (f.region && c.depto && regionDe(c.depto) !== f.region && !enDepto && !enZona) return false;
+  // No mezclar ciudades con el mismo nombre de BARRIO: si la búsqueda arrancó de una propiedad y hay
+  // barrios elegidos, esos barrios solo en su región (Mvd+Can = una). SIN barrios elegidos no hay
+  // ninguna restricción de zona (todo el país). Dato desconocido (c.depto vacío) NO excluye
+  // (indulgente). Un departamento o zona elegidos a propósito NO se frenan.
+  if (f.grupo && f.region && c.depto && regionDe(c.depto) !== f.region && !enDepto && !enZona) return false;
   // dorm/baños: 0 = "da igual" (no filtra). Con !=null, un TOPE de 0 dejaba 0 resultados.
   if (f.dmin && (c.dorm == null || c.dorm < f.dmin)) return false;
   if (f.dmax && (c.dorm == null || c.dorm > f.dmax)) return false;
@@ -470,10 +471,12 @@ function fmtK(precio, moneda) {
   var num = k >= 10 ? String(Math.floor(k)) : String(Math.round(k * 10) / 10);
   return sym + " " + num + " k";
 }
+// Las 3 operaciones que existen (lo que manda RE/MAX en `operacion`) y cómo se llaman.
+var OPER_ETIQ = { sale: "Venta", rent: "Alquiler", temporal: "Alquiler temporario" };
 // Resumen corto del título: Operación · tipo · (dorm o m²) · precio.
 // Terreno usa m² totales (padrón); casa/apto usan dormitorios.
 function resumen(c) {
-  var oper = c.operacion === "rent" ? "Alquiler" : "Venta";
+  var oper = OPER_ETIQ[c.operacion] || "Venta";
   var t = tipoCat(c.tipo);
   var tipoTxt = t === "apto" ? "apto" : (t === "casa" ? "casa" : (t === "terreno" ? "terreno" : "propiedad"));
   var med;
@@ -483,7 +486,7 @@ function resumen(c) {
 }
 // Título de la tarjeta: operación · tipo · dorm (o m² si terreno) · barrio · precio.
 function resumenCard(c) {
-  var oper = c.operacion === "rent" ? "Alquiler" : "Venta";
+  var oper = OPER_ETIQ[c.operacion] || "Venta";
   var t = tipoCat(c.tipo);
   var tipoTxt = t === "apto" ? "apto" : (t === "casa" ? "casa" : (t === "terreno" ? "terreno" : "propiedad"));
   var med = t === "terreno" ? (c.m2_padron ? c.m2_padron + " m²" : "")
@@ -833,7 +836,7 @@ function setRango(id, val) {   // llena mín/máx con ±25% del valor del link
   } else { $(id + "-min").value = ""; $(id + "-max").value = ""; }
 }
 function rellenar(c) {
-  setSeg("f-oper", c.operacion === "rent" ? "rent" : "sale");
+  setSeg("f-oper", OPER_ETIQ[c.operacion] ? c.operacion : "sale");
   setSeg("f-moneda", (c.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(c.tipo);
   setTipoFino(tc);
@@ -1922,6 +1925,11 @@ function esPrimeraVezEnLaApp() {
 function pintarMarcaNueva() {
   $("marca").classList.toggle("nuevo", !novedadVista("marca"));
 }
+// El botón "Temporario" arranca en amarillo hasta que se lo toca una vez.
+function pintarTemporalNuevo() {
+  var b = document.querySelector('#f-oper button[data-v="temporal"]');
+  if (b) b.classList.toggle("nuevo", !novedadVista("temporal-btn"));
+}
 // ⚙️ en amarillo hasta que active los avisos (apunta a dónde activarlos). Si ya los
 // activó, no hace falta el amarillo.
 function pintarAjustesNuevo() {
@@ -2345,8 +2353,11 @@ function initSegs() {
   // Al cambiar operación, moneda por defecto: alquiler → pesos, venta → dólares.
   $("f-oper").addEventListener("click", function (e) {
     if (e.target.tagName !== "BUTTON") return;
-    setSeg("f-moneda", segVal("f-oper") === "rent" ? "UYU" : "USD");
+    setSeg("f-moneda", segVal("f-oper") === "rent" ? "UYU" : "USD");   // temporario: casi todos en dólares
     toggleGastos();
+    if (e.target.getAttribute("data-v") === "temporal") {   // ya lo usó → sale del amarillo
+      marcarNovedad("temporal-btn"); e.target.classList.remove("nuevo");
+    }
   });
   // Tipo: varios a la vez (toggle independiente por botón)
   ["f-tipo", "f-tipo-otros", "f-renta"].forEach(function (id) {   // multi-select
@@ -2391,13 +2402,14 @@ function initSegs() {
   // → arranca limpio y solo verá las novedades de acá en adelante. El que YA usó la app sí
   // ve las novedades nuevas. (Juan 2026-08-14)
   // Todas las ventanitas de novedades, en orden VIEJA → NUEVA. Al sumar una nueva, va al final.
-  var NEWS = ["news", "news-agente", "news-avisos"];
+  var NEWS = ["news", "news-agente", "news-avisos", "news-temporal"];
   if (!novedadVista("iniciado")) {
     if (esPrimeraVezEnLaApp()) NEWS.forEach(marcarNovedad);
     marcarNovedad("iniciado");
   }
   pintarMarcaNueva();
   pintarAjustesNuevo();
+  pintarTemporalNuevo();
   // De las novedades pendientes, mostrar SOLO LA ÚLTIMA (la más nueva). Las viejas pendientes
   // se dan por vistas (quedaron superadas): si alguien no entró en varios cambios, no se le
   // encadenan 4 ventanitas — ve solo la última. (Juan 2026-08-15)
@@ -2418,6 +2430,10 @@ function initSegs() {
   $("btn-news-avisos-ok").addEventListener("click", cerrarNewsAvisos);
   $("btn-news-avisos-x").addEventListener("click", cerrarNewsAvisos);
   $("news-avisos").addEventListener("click", function (e) { if (e.target === $("news-avisos")) cerrarNewsAvisos(); });
+  var cerrarNewsTemporal = function () { marcarNovedad("news-temporal"); cerrarOverlay("news-temporal"); };
+  $("btn-news-temporal-ok").addEventListener("click", cerrarNewsTemporal);
+  $("btn-news-temporal-x").addEventListener("click", cerrarNewsTemporal);
+  $("news-temporal").addEventListener("click", function (e) { if (e.target === $("news-temporal")) cerrarNewsTemporal(); });
   $("btn-agente").addEventListener("click", function () {
     marcarNovedad("agente-btn"); $("btn-agente").classList.remove("nuevo");   // ya lo usó → sale del amarillo
     var a = window.__agente; if (!a) return;
