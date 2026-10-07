@@ -148,12 +148,12 @@ def caso_link_y_sin_barrio_busca_todo_el_pais(page):
         f"sin lugar elegido tiene que traer todo el país aunque haya un link: esperado {len(venta())}, da {len(obtenido)}")
 
 
-def caso_la_region_del_link_sigue_cuidando_los_barrios(page):
-    """Con un barrio elegido, la región del link sigue evitando mezclar ciudades: un link de Salto
-    con 'Pocitos' no debe traer el Pocitos de Montevideo."""
+def caso_el_link_no_restringe_los_barrios_elegidos(page):
+    """El formulario manda: un link de Salto con 'Pocitos' elegido a mano trae lo MISMO que sin link
+    (no hay región escondida del link). Ver también test_link.py."""
     con_link = lo_que_encuentra_la_app(page, ["Pocitos"], base={"depto": "Salto", "barrio": "Centro"})
     sin_link = lo_que_encuentra_la_app(page, ["Pocitos"])
-    assert sin_link and not con_link, f"la región del link debe seguir frenando barrios de otra ciudad ({len(con_link)})"
+    assert sin_link and con_link == sin_link, f"el link cambió el resultado: {len(con_link)} vs {len(sin_link)} sin link"
 
 
 def caso_ubicacion_de_colinas_paso_y_carmel(page):
@@ -226,7 +226,7 @@ CASOS_APP = [
     caso_zona_ciudad_de_la_costa_sola, caso_sin_resultados_dobles, caso_zona_mas_otro_barrio,
     caso_un_barrio_sigue_buscando_su_grupo, caso_dos_barrios_siguen_exactos,
     caso_sin_lugar_busca_todo_el_pais, caso_departamento_explicito_gana_a_la_region_del_link,
-    caso_link_y_sin_barrio_busca_todo_el_pais, caso_la_region_del_link_sigue_cuidando_los_barrios,
+    caso_link_y_sin_barrio_busca_todo_el_pais, caso_el_link_no_restringe_los_barrios_elegidos,
     caso_ubicacion_de_colinas_paso_y_carmel, caso_autocompletado_ofrece_departamento_y_zona, caso_se_guarda_y_se_restaura,
     caso_cliente_viejo_sin_deptos, caso_la_captura_del_colega,
 ]
@@ -249,7 +249,7 @@ const r = {
   union: pasa(mk('Pando', 'Canelones'), { deptos: ['montevideo'], grupo: ['pando'] }),
   unionOtro: pasa(mk('Salinas', 'Canelones'), { deptos: ['montevideo'], grupo: ['pando'] }),
   gana: pasa(mk('Punta del Este', 'Maldonado'), { deptos: ['maldonado'], region: 'metro' }),
-  regionSigue: pasa(mk('Centro', 'Salto'), { grupo: ['centro'], region: 'metro' }),
+  regionIgnorada: pasa(mk('Centro', 'Salto'), { grupo: ['centro'], region: 'metro' }),
   viejo: pasa(mk('Pocitos', 'Montevideo'), { grupo: ['pocitos'] }),
   viejoFuera: pasa(mk('Centro', 'Montevideo'), { grupo: ['pocitos'] }),
   zonaDentro: pasa(mk('Solymar', 'Canelones'), { zonas: [{ depto: 'canelones', barrios: ['solymar', 'lagomar'] }] }),
@@ -271,7 +271,7 @@ def caso_worker():
     assert r["otroDepto"] is False, "worker: no debe traer de otro departamento"
     assert r["union"] is True and r["unionOtro"] is False, "worker: departamento + barrio se combinan con 'o'"
     assert r["gana"] is True, "worker: el departamento elegido gana a la región del link"
-    assert r["regionSigue"] is False, "worker: la región sigue frenando barrios de otra ciudad"
+    assert r["regionIgnorada"] is True, "worker: una 'región' vieja guardada en el filtro ya no frena nada (el formulario manda)"
     assert r["viejo"] is True and r["viejoFuera"] is False, "worker: filtros viejos (solo barrio) deben seguir igual"
     assert r["zonaDentro"] is True and r["zonaOtroBarrio"] is False, "worker: la zona trae solo sus barrios"
     assert r["zonaOtroDepto"] is False, "worker: la zona exige su departamento (Solymar de Montevideo no entra)"

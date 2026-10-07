@@ -230,12 +230,6 @@ function tipoCat(t) {
   if (t.indexOf("cochera") >= 0 || t.indexOf("garaje") >= 0) return "cochera";
   return "otro";
 }
-// Región (Montevideo+Canelones = una) para no mezclar ciudades. Igual que la app.
-function regionDe(depto) {
-  var d = norm(depto || "");
-  if (!d) return null;
-  return (d === "montevideo" || d === "canelones") ? "metro" : d;
-}
 function pasa(c, f, slugActual) {
   if (slugActual && c.slug === slugActual) return false;
   if (c.estado_pub && c.estado_pub !== "active") return false;
@@ -247,8 +241,8 @@ function pasa(c, f, slugActual) {
   var enDepto = !!(f.deptos && f.deptos.indexOf(dn) >= 0);
   var enZona = !!(f.zonas && f.zonas.some(function (z) { return z.depto === dn && z.barrios.indexOf(bn) >= 0; }));
   if ((f.grupo || f.deptos || f.zonas) && !enDepto && !enZona && !(f.grupo && f.grupo.indexOf(bn) >= 0)) return false;
-  // No mezclar ciudades con el mismo nombre de barrio: solo si hay barrios elegidos (sin lugar = todo el país).
-  if (f.grupo && f.region && c.depto && regionDe(c.depto) !== f.region && !enDepto && !enZona) return false;
+  // El lugar es SOLO lo que dicen los filtros: ya no hay "región" escondida del link (espejo de app.js).
+  // Búsquedas viejas guardadas con `region` la traen, pero se ignora.
   // dorm/baños: 0 = "da igual" (no filtra). Con !=null, un TOPE de 0 (o una búsqueda vieja
   // guardada con máx 0) dejaba 0 resultados. Espejo de pasa() en app.js.
   if (f.dmin && (c.dorm == null || c.dorm < f.dmin)) return false;

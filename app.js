@@ -185,12 +185,11 @@ function leerFiltros() {
   var grupo = (SELBARRIOS.length === 1 && lug.barrios.length === 1) ? grupoDe(SELBARRIOS[0])
             : (lug.barrios.length ? lug.barrios : null);
   var f = {
-    operacion: segVal("f-oper"),                 // siempre 'sale' o 'rent'
+    operacion: segVal("f-oper"),                 // siempre 'sale', 'rent' o 'temporal'
     tipos: tiposSeleccionados(),                  // casa/apto/otros(expandido) (vacío = cualquiera)
     grupo: grupo,
     deptos: lug.deptos.length ? lug.deptos : null,   // departamentos enteros (normalizados)
     zonas: lug.zonas.length ? lug.zonas : null,      // zonas: [{depto, barrios}] — solo esos barrios, en ese depto
-    region: regionDe((window.__base && window.__base.depto) || ""),   // no mezclar ciudades (Mvd+Can = una)
     // 0 = "da igual" (NO filtra): el 1er toque del "+" cae en 0, y un TOPE de 0 (máx 0 dorms/
     // baños) dejaba 0 resultados en silencio (casi todo tiene 1+). Un MÍNIMO de 0 tampoco debe
     // excluir a los que no tienen el dato. Recién desde 1 filtra de verdad.
@@ -277,11 +276,9 @@ function pasa(c, f, slugActual) {
   var enDepto = !!(f.deptos && f.deptos.indexOf(dn) >= 0);
   var enZona = !!(f.zonas && f.zonas.some(function (z) { return z.depto === dn && z.barrios.indexOf(bn) >= 0; }));
   if ((f.grupo || f.deptos || f.zonas) && !enDepto && !enZona && !(f.grupo && f.grupo.indexOf(bn) >= 0)) return false;
-  // No mezclar ciudades con el mismo nombre de BARRIO: si la búsqueda arrancó de una propiedad y hay
-  // barrios elegidos, esos barrios solo en su región (Mvd+Can = una). SIN barrios elegidos no hay
-  // ninguna restricción de zona (todo el país). Dato desconocido (c.depto vacío) NO excluye
-  // (indulgente). Un departamento o zona elegidos a propósito NO se frenan.
-  if (f.grupo && f.region && c.depto && regionDe(c.depto) !== f.region && !enDepto && !enZona) return false;
+  // El lugar es SOLO lo que dicen los filtros. Antes, si la búsqueda arrancó de un link, una "región"
+  // escondida del link frenaba barrios elegidos a mano (un link de Montevideo + un barrio de
+  // Maldonado daba 0). Hoy los nombres de barrio casi no se repiten entre departamentos.
   // dorm/baños: 0 = "da igual" (no filtra). Con !=null, un TOPE de 0 dejaba 0 resultados.
   if (f.dmin && (c.dorm == null || c.dorm < f.dmin)) return false;
   if (f.dmax && (c.dorm == null || c.dorm > f.dmax)) return false;
@@ -836,6 +833,7 @@ function setRango(id, val) {   // llena mín/máx con ±25% del valor del link
   } else { $(id + "-min").value = ""; $(id + "-max").value = ""; }
 }
 function rellenar(c) {
+  vaciarFiltros();   // Traer pisa TODO el formulario (gastos, baños, etc. de antes no quedan)
   setSeg("f-oper", OPER_ETIQ[c.operacion] ? c.operacion : "sale");
   setSeg("f-moneda", (c.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(c.tipo);
@@ -865,6 +863,7 @@ function rellenar(c) {
 // El barrio NO se autocompleta: los nombres de esos portales no coinciden con los
 // de RE/MAX, así que Juan lo agrega a mano si quiere filtrar por zona.
 function rellenarExterno(d) {
+  vaciarFiltros();   // Traer pisa TODO el formulario (el portal no trae baños ni gastos: quedan vacíos)
   setSeg("f-oper", d.operacion === "rent" ? "rent" : "sale");
   setSeg("f-moneda", (d.moneda || "").toUpperCase() === "UYU" ? "UYU" : "USD");
   var tc = tipoCat(d.tipo || "");
@@ -1956,10 +1955,9 @@ function restaurarEstado() {
   window.__formBaseline = snapshotFiltros();   // foto base tras recargar: sin cambios falsos
   buscar();
 }
-// Tocar "Parecidas" = borrar lo que se está viendo (form + resultados + memoria).
-function limpiarTodo() {
-  try { localStorage.removeItem(ESTADO_KEY); } catch (e) {}
-  $("link").value = "";
+// Todos los filtros en "da igual" (sin tocar el link ni los resultados). Lo usan "Parecidas" y
+// "Traer": traer un link PISA todo el formulario, no queda nada de la búsqueda anterior.
+function vaciarFiltros() {
   setSeg("f-oper", "sale"); setSeg("f-moneda", "USD");
   setSegMulti("f-tipo", []); setSegMulti("f-tipo-otros", []); toggleOtros();
   ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max",
@@ -1969,6 +1967,12 @@ function limpiarTodo() {
   setStep("f-dmin", null); setStep("f-dmax", null);
   setStep("f-bmin", null); setStep("f-bmax", null);
   setSeg("f-coch", ""); setSeg("f-estado", ""); setSegMulti("f-renta", []); toggleGastos();
+}
+// Tocar "Parecidas" = borrar lo que se está viendo (form + resultados + memoria).
+function limpiarTodo() {
+  try { localStorage.removeItem(ESTADO_KEY); } catch (e) {}
+  $("link").value = "";
+  vaciarFiltros();
   window.__base = null; window.__slugActual = null; window.__busquedaActiva = null;
   window.__formBaseline = null;   // sin cliente abierto → no hay "cambios" que preguntar
   window.__ultimaVista = null;
