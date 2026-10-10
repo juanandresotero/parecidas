@@ -264,9 +264,11 @@ function precioAUsd(monto) {
 }
 
 // -------------------------- El filtro en sí --------------------------
-function pasa(c, f, slugActual) {
+// `conNoActivas` = true → no descarta las reservadas / en negociación (solo para saber cuáles
+// "coincidirían" y poder avisarlo; ver noDisponibles()).
+function pasa(c, f, slugActual, conNoActivas) {
   if (slugActual && c.slug === slugActual) return false;            // no me devuelvo a mí mismo
-  if (c.estado_pub && c.estado_pub !== "active") return false;      // reservada/negociación: no se ofrece
+  if (!conNoActivas && c.estado_pub && c.estado_pub !== "active") return false;   // reservada/negociación: no se ofrece
   if (f.operacion && c.operacion !== f.operacion) return false;
   if (f.tipos.length && f.tipos.indexOf(c._tipoCat || tipoCat(c.tipo)) < 0) return false;
   // Lugar: departamento entero y/o barrios/zonas. Se combinan con "o" → una propiedad entra
@@ -354,6 +356,26 @@ function puntaje(c, ref) {
 }
 
 function propPorSlug(slug) { return BY_SLUG[slug] || null; }
+// Reservadas / en negociación: NUNCA entran como resultado nuevo. Si ya estaban en la lista de
+// antes (la de la pantalla o la guardada en el cliente) se quedan, con cartel, en vez de irse.
+// Las demás que coinciden con la búsqueda no se muestran: solo se cuentan ("Ignoradas: ...").
+function noDisponibles(f, slugActual, b) {
+  var antes = {};
+  (window.__vistaPrevia || []).forEach(function (s) { antes[s] = 1; });
+  if (b && b.ultimaLista) b.ultimaLista.forEach(function (s) { antes[s] = 1; });
+  var quedan = [], ign = { reserved: 0, negotiation: 0 };
+  DATA.forEach(function (c) {
+    if (!c.estado_pub || c.estado_pub === "active" || !pasa(c, f, slugActual, true)) return;
+    if (antes[c.slug]) quedan.push(c); else ign[c.estado_pub] = (ign[c.estado_pub] || 0) + 1;
+  });
+  return { quedan: quedan, ign: ign };
+}
+function textoIgnoradas(ign) {
+  var t = [];
+  if (ign.reserved) t.push(ign.reserved + (ign.reserved === 1 ? " reservada" : " reservadas"));
+  if (ign.negotiation) t.push(ign.negotiation + " en negociación");
+  return t.length ? "Ignoradas: " + t.join(" y ") : "";
+}
 function filtrar(f, ref, slugActual) {
   var res = DATA.filter(function (c) { return pasa(c, f, slugActual); });
   // Se calcula el puntaje UNA sola vez por propiedad (antes el sort lo recomputaba
@@ -384,9 +406,11 @@ function buscar() {
   var slugActual = window.__slugActual || null;
   // Respeta TODOS los filtros al 100%: NO afloja nada. Las mejores 10.
   var res = filtrar(f, ref, slugActual);
+  var b = busquedaActiva();
+  var nd = noDisponibles(f, slugActual, b);
+  res = res.concat(nd.quedan);              // las que ya estaban y se reservaron: siguen, con cartel
   var lista = res.slice(0, TOPE_RESULTADOS);
   var fuera = {}, yaNoEntra = {};
-  var b = busquedaActiva();
   if (b) {
     // Re-buscar: lo que estaba antes y ya no coincide → 🚫 "ya no entra en el filtro".
     reconciliarDescartes(res, b).forEach(function (slug) {
@@ -401,7 +425,7 @@ function buscar() {
         if (!aFavor[b.estados[slug]] || ya[slug]) return;
         var prop = propPorSlug(slug);
         if (!prop) return;
-        if (!pasa(prop, f, slugActual)) fuera[slug] = 1;   // ya no cumple → fuera de criterios
+        if (!pasa(prop, f, slugActual, true)) fuera[slug] = 1;   // ya no cumple → fuera de criterios
         lista.push(prop);
       });
     }
@@ -417,7 +441,26 @@ function buscar() {
     totalVisible = res.filter(function (c) { return !oc[c.slug]; }).length;
   }
   render(lista, totalVisible, [], fuera, yaNoEntra);
+  pintarIgnoradas(textoIgnoradas(nd.ign));
+  recordarLista(lista, b);
   guardarEstadoActual();   // recordar lo que se está viendo (sobrevive a recargar)
+}
+// Cartel "Ignoradas: 3 reservadas y 1 en negociación" (vacío = escondido).
+function pintarIgnoradas(txt) {
+  var el = $("ignoradas");
+  el.textContent = txt; el.style.display = txt ? "" : "none";
+}
+// Lo que se está mostrando ahora = "la lista de antes" de la próxima búsqueda (en pantalla y, si hay
+// cliente guardado, también en el cliente → sobrevive a cerrar la app).
+function recordarLista(lista, b) {
+  var slugs = lista.map(function (c) { return c.slug; });
+  window.__vistaPrevia = slugs;
+  if (!b) return;
+  var arr = cargarBusquedas();
+  var bb = arr.filter(function (x) { return x.id === b.id; })[0];
+  if (!bb) return;
+  bb.ultimaLista = slugs;
+  guardarBusquedas(arr);
 }
 // Al re-buscar: las que estaban en la vista anterior y ya no coinciden pasan a
 // "descartada por filtro" (🚫). Las favoritas NO se tocan (se preservan).
@@ -763,6 +806,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
         diasSubida +
         (fuera[c.slug] ? '<span class="fuera-tag">⚠ fuera de criterios</span>' : "") +
         (yaNoEntra[c.slug] ? '<span class="fuera-tag">🚫 ya no entra en el filtro</span>' : "") +
+        (etiquetaEstadoPub(c.estado_pub) ? '<span class="fuera-tag">🔒 ' + etiquetaEstadoPub(c.estado_pub) + '</span>' : "") +
         '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + convChip + '</div>' +
         (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +
       '</div>';

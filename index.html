@@ -174,6 +174,7 @@
   .card.val-descartada_filtro{border-left:4px solid #7a8aa0;opacity:.78}
   .card.val-descarte_1,.card.val-descarte_2,.card.val-descarte_3{border-left:4px solid var(--red);opacity:.72}
   .card.fuera{border-style:dashed}
+  .ignoradas{font-size:12px;color:#8a5a00;background:#fff3d6;border-radius:8px;padding:5px 10px;margin:4px 0 8px}
   .fuera-tag{font-size:10.5px;color:#8a5a00;background:#fff3d6;border-radius:999px;
     padding:1px 8px;font-weight:800;align-self:flex-start}
   .busq-btn{position:relative;width:auto;height:34px;padding:0 11px;border-radius:14px;
@@ -603,6 +604,7 @@
 
     <div id="resultados" style="display:none">
       <div class="res-head"><h2>Parecidas</h2><span class="n" id="cuenta"></span></div>
+      <div id="ignoradas" class="ignoradas" style="display:none"></div>
       <button class="btn btn-guardar-busq" id="btn-guardar-busq">🔖 Guardar esta búsqueda</button>
       <button class="btn btn-guardar-busq" id="btn-guardar-cambios" style="display:none">💾 Guardar cambios en este cliente</button>
       <button class="btn btn-guardar-busq" id="btn-limpiar" style="display:none">🧹 Limpiar (sacar propiedades por categoría)</button>
