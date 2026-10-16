@@ -230,6 +230,12 @@ function tipoCat(t) {
   if (t.indexOf("cochera") >= 0 || t.indexOf("garaje") >= 0) return "cochera";
   return "otro";
 }
+// "m² totales / padrón": el terreno del padrón; un apartamento no tiene → vale su superficie total.
+// Misma regla que metrosTotales() de app.js (0 = desconocido: no se excluye).
+function metrosTotales(c) {
+  if (c.m2_padron) return c.m2_padron;
+  return tipoCat(c.tipo) === "apto" ? (c.m2_total || c.m2_homog || 0) : 0;
+}
 function pasa(c, f, slugActual) {
   if (slugActual && c.slug === slugActual) return false;
   if (c.estado_pub && c.estado_pub !== "active") return false;
@@ -254,8 +260,9 @@ function pasa(c, f, slugActual) {
   if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
   if (f.cubMax != null && (c.m2_homog == null || c.m2_homog > f.cubMax)) return false;
   // Dato DESCONOCIDO (padrón 0, cochera null, estado "") NO excluye — indulgente, igual que la app.
-  if (f.padronMin != null && c.m2_padron && c.m2_padron < f.padronMin) return false;
-  if (f.padronMax != null && c.m2_padron && c.m2_padron > f.padronMax) return false;
+  var mt = metrosTotales(c);
+  if (f.padronMin != null && mt && mt < f.padronMin) return false;
+  if (f.padronMax != null && mt && mt > f.padronMax) return false;
   if (f.cochera === "si" && c.cochera === false) return false;
   if (f.cochera === "no" && c.cochera === true) return false;
   if (f.estado && c.estado && c.estado !== f.estado) return false;

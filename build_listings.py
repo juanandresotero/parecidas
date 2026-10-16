@@ -415,6 +415,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "banos": banos_tot,   # baños + toilet (total)
         "multiunidad": es_multiunidad(texto),   # varias viviendas en un mismo padrón
         "m2_homog": _homog(cubiertos, totales, terreno, es_apto, semi, descub),
+        "m2_total": round(totales, 1) if isinstance(totales, (int, float)) and 0 < totales < 100000 else None,   # superficie total (para el filtro de m² de un apto)
         "m2_padron": _padron,   # el terreno del padrón (hectáreas → m² si RE/MAX lo infló)
         "barrio": _barrio(it.get("geoLabel")),
         "depto": _depto(it.get("geoLabel")),

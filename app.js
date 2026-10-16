@@ -264,6 +264,13 @@ function precioAUsd(monto) {
 }
 
 // -------------------------- El filtro en sí --------------------------
+// Metros del filtro "m² totales / padrón": el terreno del padrón. Un APARTAMENTO no tiene terreno
+// propio → vale su superficie total (m2_total; si el robot todavía no la trae, la homogeneizada).
+// Casas/terrenos sin dato de padrón devuelven 0 = desconocido (no se los excluye).
+function metrosTotales(c) {
+  if (c.m2_padron) return c.m2_padron;
+  return tipoCat(c.tipo) === "apto" ? (c.m2_total || c.m2_homog || 0) : 0;
+}
 // `conNoActivas` = true → no descarta las reservadas / en negociación (solo para saber cuáles
 // "coincidirían" y poder avisarlo; ver noDisponibles()).
 function pasa(c, f, slugActual, conNoActivas) {
@@ -291,8 +298,9 @@ function pasa(c, f, slugActual, conNoActivas) {
   if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
   if (f.cubMax != null && (c.m2_homog == null || c.m2_homog > f.cubMax)) return false;
   // Padrón desconocido (0 = el robot no lo pudo leer) NO excluye; solo compara si hay valor real.
-  if (f.padronMin != null && c.m2_padron && c.m2_padron < f.padronMin) return false;
-  if (f.padronMax != null && c.m2_padron && c.m2_padron > f.padronMax) return false;
+  var mt = metrosTotales(c);
+  if (f.padronMin != null && mt && mt < f.padronMin) return false;
+  if (f.padronMax != null && mt && mt > f.padronMax) return false;
   // Cochera / Estado: dato DESCONOCIDO (null / "") NO excluye — solo si el valor conocido
   // contradice el filtro. Antes tiraba 78 props activas sin ese dato cargado, y como estado y
   // cochera se autocompletan al pegar un link, pegaba en casi toda búsqueda (indulgente, como gastos).
