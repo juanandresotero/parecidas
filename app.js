@@ -293,8 +293,9 @@ function pasa(c, f, slugActual, conNoActivas) {
   if (f.dmax && (c.dorm == null || c.dorm > f.dmax)) return false;
   if (f.bmin && (c.banos == null || c.banos < f.bmin)) return false;
   if (f.bmax && (c.banos == null || c.banos > f.bmax)) return false;
-  if (f.precioMinUsd != null && (c.precio_usd == null || c.precio_usd < f.precioMinUsd)) return false;
-  if (f.precioMaxUsd != null && (c.precio_usd == null || c.precio_usd > f.precioMaxUsd)) return false;
+  // Precio que falta ("Consultar") NO excluye: se muestra marcando "falta precio" (ver faltantes()).
+  if (f.precioMinUsd != null && c.precio_usd != null && c.precio_usd < f.precioMinUsd) return false;
+  if (f.precioMaxUsd != null && c.precio_usd != null && c.precio_usd > f.precioMaxUsd) return false;
   if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
   if (f.cubMax != null && (c.m2_homog == null || c.m2_homog > f.cubMax)) return false;
   // Padrón desconocido (0 = el robot no lo pudo leer) NO excluye; solo compara si hay valor real.
@@ -498,6 +499,17 @@ function fmtPrecio(c) {
   if (!c.precio) return "Consultar";
   var s = new Intl.NumberFormat("es-UY").format(Math.round(c.precio));
   return esc(c.moneda || "USD") + " " + s;
+}
+// Datos que el filtro pide y la propiedad no trae. No la descartan: se muestra con cartel
+// "Falta dato: ..." (pedido de Juan 2026-10-16).
+function faltantes(c, f) {
+  var r = [];
+  if ((f.precioMinUsd != null || f.precioMaxUsd != null) && c.precio_usd == null) r.push("precio");
+  if ((f.padronMin != null || f.padronMax != null) && !metrosTotales(c)) r.push("padrón");
+  if ((f.cochera === "si" || f.cochera === "no") && c.cochera == null) r.push("cochera");
+  if (f.estado && !c.estado) r.push("estado");
+  if ((f.gastosMinUsd != null || f.gastosMaxUsd != null) && c.gastos_usd == null) r.push("gastos comunes");
+  return r;
 }
 function porque(c, f) {
   var b = [];
@@ -813,6 +825,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
         diasSubida +
         (fuera[c.slug] ? '<span class="fuera-tag">⚠ fuera de criterios</span>' : "") +
         (yaNoEntra[c.slug] ? '<span class="fuera-tag">🚫 ya no entra en el filtro</span>' : "") +
+        (faltantes(c, f).length ? '<span class="fuera-tag">❓ Falta' + (faltantes(c, f).length > 1 ? "n datos: " : " dato: ") + esc(faltantes(c, f).join(", ")) + '</span>' : "") +
         (etiquetaEstadoPub(c.estado_pub) ? '<span class="fuera-tag">🔒 ' + etiquetaEstadoPub(c.estado_pub) + '</span>' : "") +
         '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + convChip + '</div>' +
         (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +

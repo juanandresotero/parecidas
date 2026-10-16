@@ -255,8 +255,8 @@ function pasa(c, f, slugActual) {
   if (f.dmax && (c.dorm == null || c.dorm > f.dmax)) return false;
   if (f.bmin && (c.banos == null || c.banos < f.bmin)) return false;
   if (f.bmax && (c.banos == null || c.banos > f.bmax)) return false;
-  if (f.precioMinUsd != null && (c.precio_usd == null || c.precio_usd < f.precioMinUsd)) return false;
-  if (f.precioMaxUsd != null && (c.precio_usd == null || c.precio_usd > f.precioMaxUsd)) return false;
+  if (f.precioMinUsd != null && c.precio_usd != null && c.precio_usd < f.precioMinUsd) return false;
+  if (f.precioMaxUsd != null && c.precio_usd != null && c.precio_usd > f.precioMaxUsd) return false;
   if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
   if (f.cubMax != null && (c.m2_homog == null || c.m2_homog > f.cubMax)) return false;
   // Dato DESCONOCIDO (padrón 0, cochera null, estado "") NO excluye — indulgente, igual que la app.
