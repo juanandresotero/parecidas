@@ -1,7 +1,7 @@
-"""Prueba de "🧹 Limpiar" (propiedades ocultas del cliente) en un navegador real, con los datos reales.
+"""Prueba de "🧹 Limpiar" (despejar la pantalla del cliente) en un navegador real, con los datos reales.
 
-Regla que se cuida: lo que se oculta con Limpiar vale SOLO para esa búsqueda. Si cambiás los
-filtros es otra búsqueda → cuenta nueva (lo ocultado antes NO tapa lo que ahora coincide).
+Regla que se cuida (pedido de Juan 2026-10-16): Limpiar solo despeja la pantalla; NO oculta nada.
+Al tocar Buscar vuelve todo lo que coincide con los filtros, incluso lo que se había limpiado.
 
 Uso (necesita Playwright, que está en el .venv del proyecto Meta):
     python test_ocultas.py
@@ -68,82 +68,67 @@ def deberian_mostrarse(page):
     return min(n, TOPE)
 
 
-def boton_restaurar_visible(page):
-    page.evaluate("$('btn-limpiar').click()")
-    return page.evaluate("$('limpiar-restaurar-wrap').style.display !== 'none'")
-
-
-def caso_cambio_de_filtros_trae_todo(br):
-    """El bug: limpiar, cambiar filtros, Buscar → tiene que mostrar TODO lo que coincide."""
-    page = pagina_nueva(br)
-    cliente_con_busqueda_angosta(page)
-    limpiar_todo_lo_que_se_ve(page)
-    assert mostradas(page) == 0, "Limpiar tendría que dejar la lista vacía"
-    cambiar_filtros_y_buscar(page, ANCHA)
-    assert mostradas(page) == deberian_mostrarse(page), (
-        f"faltan propiedades que coinciden: muestra {mostradas(page)}, debería {deberian_mostrarse(page)}")
-    assert not boton_restaurar_visible(page), "no hay nada oculto vigente: no debe ofrecer 'Restaurar'"
-
-
-def caso_misma_busqueda_sigue_oculta(br):
-    """Lo que NO hay que romper: con los MISMOS filtros, lo limpiado sigue oculto y se puede restaurar."""
+def caso_limpiar_despeja_y_buscar_trae_todo_de_nuevo(br):
+    """Pedido de Juan 2026-10-16: Limpiar saca todo de la pantalla pero NO oculta nada:
+    al tocar Buscar con los mismos filtros tiene que volver lo mismo que se limpió."""
     page = pagina_nueva(br)
     cliente_con_busqueda_angosta(page)
     antes = mostradas(page)
+    assert antes > 0
     limpiar_todo_lo_que_se_ve(page)
+    assert mostradas(page) == 0, "Limpiar tendría que dejar la lista vacía"
     page.evaluate("$('btn-buscar').click()")
-    assert mostradas(page) == 0, "mismos filtros: lo limpiado debe seguir oculto"
-    assert boton_restaurar_visible(page), "mismos filtros: debe ofrecer 'Restaurar'"
-    page.evaluate("$('btn-limpiar-restaurar').click()")
-    assert mostradas(page) == antes, "Restaurar tiene que traer de vuelta todo"
+    assert mostradas(page) == antes, f"Buscar tiene que traer lo mismo de antes: {mostradas(page)} vs {antes}"
 
 
-def caso_limpiar_sobre_filtros_sin_guardar(br):
-    """Cambiás filtros (sin guardar), buscás y limpiás ahí: ese limpiar tiene que valer."""
-    page = pagina_nueva(br)
-    cliente_con_busqueda_angosta(page)
-    cambiar_filtros_y_buscar(page, ANCHA)
-    limpiar_todo_lo_que_se_ve(page)
-    assert mostradas(page) == 0, "limpiar sobre filtros sin guardar tiene que ocultar"
-    page.evaluate("$('btn-buscar').click()")
-    assert mostradas(page) == 0, "y al volver a buscar con esos mismos filtros sigue oculto"
-    page.evaluate("guardarFiltrosEnCliente()")
-    assert page.evaluate("(busquedaActiva().ocultas || []).length") > 0, (
-        "guardar esos filtros NO debe borrar lo que se limpió con ellos")
-
-
-def caso_guardar_filtros_nuevos_arranca_de_cero(br):
-    """Guardar filtros distintos en el cliente = cuenta nueva: no queda basura vieja guardada."""
+def caso_limpiar_y_cambiar_filtros_trae_todo(br):
     page = pagina_nueva(br)
     cliente_con_busqueda_angosta(page)
     limpiar_todo_lo_que_se_ve(page)
     cambiar_filtros_y_buscar(page, ANCHA)
-    page.evaluate("guardarFiltrosEnCliente()")
-    assert page.evaluate("(busquedaActiva().ocultas || []).length") == 0, "debe arrancar sin ocultas"
-    page.evaluate("$('btn-buscar').click()")
-    assert mostradas(page) == deberian_mostrarse(page)
+    assert mostradas(page) == deberian_mostrarse(page), (
+        f"faltan propiedades que coinciden: muestra {mostradas(page)}, debería {deberian_mostrarse(page)}")
 
 
-def caso_cliente_viejo_sin_huella(br):
-    """Clientes guardados ANTES del arreglo (ocultas sin 'huella'): siguen ocultas con sus filtros
-    y se liberan solas al cambiar los filtros."""
+def caso_limpiar_solo_lo_tildado(br):
+    """Limpiar por categoría: solo sale la categoría tildada; el resto queda; y Buscar las trae de nuevo."""
     page = pagina_nueva(br)
     cliente_con_busqueda_angosta(page)
+    antes = mostradas(page)
+    assert antes >= 2
+    slug = page.evaluate("RENDER_RES[0].slug")
+    page.evaluate("(s) => { setVal(s, 'favorita'); buscar(); }", slug)
+    page.evaluate("""() => { $('btn-limpiar').click();
+        document.querySelectorAll('#limpiar-lista .lm-chk').forEach(c => c.checked = (c.getAttribute('data-clave') !== 'favorita'));
+        $('btn-limpiar-borrar').click(); }""")
+    assert page.evaluate("RENDER_RES.map(c => c.slug)") == [slug], "tendría que quedar solo la favorita"
+    page.evaluate("$('btn-buscar').click()")
+    assert mostradas(page) == antes, "al buscar de nuevo vuelven las que se limpiaron"
+
+
+def caso_cliente_viejo_con_ocultas_guardadas(br):
+    """Clientes guardados con el sistema viejo (b.ocultas): ya no esconden nada."""
+    page = pagina_nueva(br)
+    cliente_con_busqueda_angosta(page)
+    antes = mostradas(page)
     page.evaluate("""() => {
         var arr = cargarBusquedas();
         arr[0].ocultas = RENDER_RES.map(c => c.slug);
-        delete arr[0].ocultasFiltro;
+        arr[0].ocultasFiltro = snapshotFiltros();
         guardarBusquedas(arr);
         abrirBusqueda(arr[0].id);
     }""")
-    assert mostradas(page) == 0, "cliente viejo: con sus filtros, lo oculto sigue oculto"
-    cambiar_filtros_y_buscar(page, ANCHA)
-    assert mostradas(page) == deberian_mostrarse(page), "cliente viejo: al cambiar filtros se libera"
+    assert mostradas(page) == antes, "las 'ocultas' viejas no deben esconder nada"
 
 
-CASOS = [caso_cambio_de_filtros_trae_todo, caso_misma_busqueda_sigue_oculta,
-         caso_limpiar_sobre_filtros_sin_guardar, caso_guardar_filtros_nuevos_arranca_de_cero,
-         caso_cliente_viejo_sin_huella]
+def caso_ya_no_hay_boton_restaurar(br):
+    page = pagina_nueva(br)
+    cliente_con_busqueda_angosta(page)
+    assert page.evaluate("document.getElementById('btn-limpiar-restaurar') === null"), "ya no hay nada que restaurar"
+
+
+CASOS = [caso_limpiar_despeja_y_buscar_trae_todo_de_nuevo, caso_limpiar_y_cambiar_filtros_trae_todo,
+         caso_limpiar_solo_lo_tildado, caso_cliente_viejo_con_ocultas_guardadas, caso_ya_no_hay_boton_restaurar]
 
 
 def main():

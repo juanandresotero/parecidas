@@ -430,15 +430,14 @@ function buscar() {
       });
     }
   }
-  // "Limpiar": las que Juan ocultó de este cliente NO se muestran (se pueden restaurar), pero
-  // solo mientras sea la MISMA búsqueda (ver ocultasVigentes).
-  // Filtro acá al final → cubre matches vivos + preservadas + reconciliadas de una.
+  // "Limpiar" despeja la pantalla UNA vez (ver ejecutarLimpiar); no oculta nada: la próxima búsqueda
+  // muestra todo lo que coincide, incluso lo que se había limpiado.
   var totalVisible = res.length;
-  var ocultas = ocultasVigentes(b);
-  if (ocultas.length) {
-    var oc = {}; ocultas.forEach(function (s) { oc[s] = 1; });
-    lista = lista.filter(function (c) { return !oc[c.slug]; });
-    totalVisible = res.filter(function (c) { return !oc[c.slug]; }).length;
+  var limpiar = window.__limpiarClaves; window.__limpiarClaves = null;
+  if (limpiar && b) {
+    var sale = function (c) { return limpiar[valDe(b, c.slug)]; };
+    lista = lista.filter(function (c) { return !sale(c); });
+    totalVisible = res.filter(function (c) { return !sale(c); }).length;
   }
   render(lista, totalVisible, [], fuera, yaNoEntra);
   pintarIgnoradas(textoIgnoradas(nd.ign));
@@ -1447,7 +1446,7 @@ function guardarFiltrosEnCliente() {
     .map(function (c) { return c.slug; });
   // Filtros nuevos = búsqueda nueva: lo que se limpió con los filtros viejos se tira acá
   // (tiene que ir ANTES de actualizar __formBaseline, que es la huella de los clientes viejos).
-  if (!ocultasVigentes(bb).length) { bb.ocultas = []; delete bb.ocultasFiltro; }
+  delete bb.ocultas; delete bb.ocultasFiltro;   // sistema viejo de "ocultas": ya no existe
   guardarBusquedas(arr);
   window.__formBaseline = snapshotFiltros();   // recién guardado → ya no hay "cambios"
 }
@@ -2275,17 +2274,9 @@ function abrirValPicker(slug) {
   });
   abrirOverlay("val-picker");
 }
-// "Limpiar": sacar propiedades del cliente POR CATEGORÍA (⚪/⭐/💚/📤/🚫/🔴…). Cuenta lo que
-// se está viendo (RENDER_RES) por su valoración y deja tildar categorías para ocultarlas. NO
-// borra la valoración (b.estados intacto) → "Restaurar" las trae de vuelta tal cual estaban.
-// Lo oculto vale SOLO para la búsqueda con la que se limpió (b.ocultasFiltro = huella de los
-// filtros de ese momento): si cambiás los filtros es OTRA búsqueda → cuenta nueva, y lo
-// ocultado antes no tapa lo que ahora coincide. (Clientes viejos sin huella: la de al abrirlos.)
-function ocultasVigentes(b) {
-  if (!b || !b.ocultas || !b.ocultas.length) return [];
-  var huella = b.ocultasFiltro || window.__formBaseline;
-  return (huella == null || snapshotFiltros() === huella) ? b.ocultas : [];
-}
+// "Limpiar": despeja la pantalla POR CATEGORÍA (⚪/⭐/💚/📤/🚫/🔴…). Cuenta lo que se está viendo
+// (RENDER_RES) por su valoración y deja tildar categorías para sacarlas de la lista. NO oculta
+// ni borra nada (b.estados intacto): al tocar Buscar vuelve todo lo que coincide con los filtros.
 function abrirLimpiar() {
   var b = busquedaActiva(); if (!b) return;
   var cont = $("limpiar-lista"); cont.innerHTML = "";
@@ -2305,9 +2296,6 @@ function abrirLimpiar() {
   });
   if (!cont.children.length)
     cont.innerHTML = '<p class="hint" style="margin:0">No hay propiedades para sacar todavía.</p>';
-  var oc = ocultasVigentes(b).length;
-  $("limpiar-restaurar-wrap").style.display = oc ? "" : "none";
-  if (oc) $("btn-limpiar-restaurar").textContent = "♻️ Restaurar " + oc + " oculta" + (oc > 1 ? "s" : "");
   abrirOverlay("limpiar");
 }
 function ejecutarLimpiar() {
@@ -2317,24 +2305,7 @@ function ejecutarLimpiar() {
     claves[chk.getAttribute("data-clave")] = 1;
   });
   if (!Object.keys(claves).length) { cerrarOverlay("limpiar"); return; }
-  var arr = cargarBusquedas();
-  var bb = arr.filter(function (x) { return x.id === b.id; })[0]; if (!bb) return;
-  bb.ocultas = ocultasVigentes(bb).slice();   // las de otra búsqueda (otros filtros) no se arrastran
-  var ocSet = {}; bb.ocultas.forEach(function (s) { ocSet[s] = 1; });
-  RENDER_RES.forEach(function (c) {
-    if (claves[valDe(bb, c.slug)] && !ocSet[c.slug]) { bb.ocultas.push(c.slug); ocSet[c.slug] = 1; }
-  });
-  bb.ocultasFiltro = snapshotFiltros();   // de qué búsqueda son estas ocultas
-  guardarBusquedas(arr);
-  cerrarOverlay("limpiar");
-  buscar();
-}
-function restaurarOcultas() {
-  var b = busquedaActiva(); if (!b) return;
-  var arr = cargarBusquedas();
-  var bb = arr.filter(function (x) { return x.id === b.id; })[0]; if (!bb) return;
-  bb.ocultas = []; delete bb.ocultasFiltro;
-  guardarBusquedas(arr);
+  window.__limpiarClaves = claves;   // lo consume el próximo buscar()
   cerrarOverlay("limpiar");
   buscar();
 }
@@ -2768,7 +2739,6 @@ function initSegs() {
   $("btn-limpiar-cerrar").addEventListener("click", function () { cerrarOverlay("limpiar"); });
   $("limpiar").addEventListener("click", function (e) { if (e.target === $("limpiar")) cerrarOverlay("limpiar"); });
   $("btn-limpiar-borrar").addEventListener("click", ejecutarLimpiar);
-  $("btn-limpiar-restaurar").addEventListener("click", restaurarOcultas);
   // Ajustes (associate editable)
   $("btn-ajustes").addEventListener("click", function () {
     marcarNovedad("ajustes-nv"); $("btn-ajustes").classList.remove("nuevo");   // ya la vio
