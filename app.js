@@ -2735,7 +2735,10 @@ function initSegs() {
   // Todas las ventanitas de novedades, en orden VIEJA → NUEVA. Al sumar una nueva, va al final.
   // "news-escritorio" = la ventanita única: temporarios + visor por mapa + vista de escritorio (clave nueva:
   // la ve también quien ya había visto la versión anterior).
-  var NEWS = ["news", "news-agente", "news-avisos", "news-escritorio"];
+  // "news-escritorio" (temporarios + mapa + compu + vincular) queda APAGADA hasta que Juan apruebe el texto del
+  // aviso (2026-11-11: "luego vamos al aviso"). Para prenderla: sumarla al final de esta lista y volver a poner
+  // caso_ventanita_vuelve_a_salir... en CASOS_NAVEGADOR de test_temporal.py.
+  var NEWS = ["news", "news-agente", "news-avisos"];
   if (!novedadVista("iniciado")) {
     if (esPrimeraVezEnLaApp()) NEWS.forEach(marcarNovedad);
     marcarNovedad("iniciado");

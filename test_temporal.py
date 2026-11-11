@@ -126,7 +126,7 @@ def caso_ventanita_no_sale_a_quien_abre_la_app_por_primera_vez(br):
 CASOS_PAGINA = [caso_el_boton_temporario_busca_los_temporarios, caso_alquiler_comun_no_cambia,
                 caso_la_tarjeta_dice_alquiler_temporario, caso_un_link_temporario_carga_temporario]
 CASOS_NAVEGADOR = [caso_boton_amarillo_hasta_el_primer_toque, caso_el_boton_del_mapa_arranca_en_amarillo_hasta_el_primer_toque,
-                   caso_ventanita_vuelve_a_salir_con_lo_del_mapa_a_quien_ya_vio_la_de_temporarios,
+                   # caso_ventanita_vuelve_a_salir_con_lo_del_mapa_a_quien_ya_vio_la_de_temporarios,  ← ventanita apagada hasta aprobar el aviso
                    caso_ventanita_no_sale_a_quien_abre_la_app_por_primera_vez]
 
 
