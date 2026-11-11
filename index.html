@@ -40,7 +40,7 @@
   .barra small{display:block;font-weight:500;opacity:.85;font-size:11px}
   .ajustes-btn{margin-left:auto;border:none;background:rgba(255,255,255,.2);color:#fff;
     width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:17px;line-height:1}
-  .ajustes{position:fixed;inset:0;z-index:50;background:rgba(16,35,63,.45);
+  .ajustes{overflow-y:auto;position:fixed;inset:0;z-index:50;background:rgba(16,35,63,.45);
     display:flex;align-items:flex-start;justify-content:center;padding:60px 16px}
   .ajustes-card{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);
     width:100%;max-width:380px;padding:16px}
@@ -370,13 +370,29 @@
       <label class="ajustes-lbl" style="margin-top:16px">🔔 Avisos con la app cerrada<br><span>Que te avise (aunque no tengas la app abierta) cuando una propiedad que publicitás se reserva/baja, o cuando aparecen parecidas nuevas para un cliente guardado.</span></label>
       <button class="btn btn-brand" id="btn-activar-avisos" style="width:100%">Activar avisos</button>
       <button class="btn btn-guardar-busq" id="btn-probar-aviso" style="width:100%;margin-top:8px;display:none">Probar aviso</button>
+      <p class="ajustes-msg" id="avisos-estado" style="color:var(--muted)"></p>
+      <label class="ajustes-lbl" style="margin-top:16px">🔗 Los mismos datos en la compu y en el celu<br><span>Vinculá tus aparatos con un código: tus clientes y tu código de associate quedan iguales en todos. Viajan <b>cifrados</b>: nadie los puede leer sin tu código (ni yo).</span></label>
+      <div id="sync-sin">
+        <button class="btn btn-brand" id="btn-sync-crear" style="width:100%">Crear mi código (en este aparato)</button>
+        <p class="hint" style="margin:10px 0 6px">¿Ya creaste el código en otro aparato? Escribilo acá:</p>
+        <input class="in" id="in-sync-codigo" placeholder="K7QF3-M9TXW-2P8HD-A4RNB" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button class="btn btn-guardar-busq" id="btn-sync-vincular" style="width:100%;margin-top:8px">Vincular con este código</button>
+      </div>
+      <div id="sync-con" style="display:none">
+        <p class="ajustes-msg" id="sync-estado" style="margin:0 0 8px"></p>
+        <div id="sync-codigo-vista" style="display:none;font-family:ui-monospace,Consolas,monospace;font-size:17px;font-weight:700;letter-spacing:1px;text-align:center;background:var(--surface-2);border:1px dashed var(--line);border-radius:10px;padding:10px;margin-bottom:8px;user-select:all"></div>
+        <button class="btn btn-guardar-busq" id="btn-sync-ver" style="width:100%">🔑 Ver mi código</button>
+        <button class="btn btn-guardar-busq" id="btn-sync-copiar-link" style="width:100%;margin-top:8px">📋 Copiar link para vincular otro aparato</button>
+        <button class="btn btn-guardar-busq" id="btn-sync-ahora" style="width:100%;margin-top:8px">🔄 Sincronizar ahora</button>
+        <button class="btn" id="btn-sync-fuera" style="width:100%;margin-top:8px;background:var(--surface);color:var(--muted);border:1px solid var(--line)">Desvincular este aparato</button>
+      </div>
+      <p class="ajustes-msg" id="sync-msg"></p>
       <label class="ajustes-lbl" style="margin-top:16px">🖥️ Cómo se ve la app<br><span><b>Automático</b> elige solo (escritorio en una compu con ventana ancha, celular en lo demás). Si se equivoca, elegí a mano.</span></label>
       <div class="seg" id="f-vista">
         <button type="button" id="vista-auto" aria-pressed="true">Automático</button>
         <button type="button" id="vista-celu" aria-pressed="false">📱 Celular</button>
         <button type="button" id="vista-pc" aria-pressed="false">🖥️ Escritorio</button>
       </div>
-      <p class="ajustes-msg" id="avisos-estado" style="color:var(--muted)"></p>
     </div>
   </div>
 
@@ -694,6 +710,7 @@
 </div>
 
 <script src="barrios.js"></script>
+<script src="sync.js"></script>
 <script src="app.js"></script>
 <script>
   if("serviceWorker" in navigator){

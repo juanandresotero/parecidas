@@ -1328,7 +1328,9 @@ function cargarBusquedas() {
   try { return JSON.parse(localStorage.getItem(BUSQ_KEY) || "[]"); } catch (e) { return []; }
 }
 function guardarBusquedas(arr) {
+  var hubo = window.SYNC ? window.SYNC.preGuardar(arr) : false;   // marca "modificado" y anota los borrados (ver sync.js)
   try { localStorage.setItem(BUSQ_KEY, JSON.stringify(arr)); } catch (e) {}
+  if (hubo) window.SYNC.cambio();                                  // si el aparato está vinculado, lo sube en unos segundos
 }
 // Migración 1 sola vez: las búsquedas guardadas ANTES del filtro renta-multi tenían
 // `b.filtro.renta` ("con"/"sin") en vez de `b.filtro.rentaSel` []. Sin esto, pasa()
@@ -2846,6 +2848,7 @@ function initSegs() {
     var v = ($("in-associate").value || "").trim();
     ASSOCIATE = v;                                  // vacío = links sin contacto
     try { localStorage.setItem("parecidas_associate", v); } catch (e) {}
+    if (window.SYNC) window.SYNC.cambioAssociate();   // el código de associate también viaja a los aparatos vinculados
     $("ajustes-msg").textContent = v ? "✓ Guardado" : "✓ Guardado — los links salen sin contacto";
   };
   $("btn-associate-guardar").addEventListener("click", guardarAjustes);

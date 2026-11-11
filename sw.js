@@ -1,9 +1,9 @@
 // Service worker: deja andar la app sin conexión y sirve los datos frescos.
-var CACHE = "parecidas-v96";
+var CACHE = "parecidas-v97";
 // Robotito de Cloudflare (fijo y público). El aviso viene "vacío"; acá le pedimos al
 // robotito qué decir (así no hace falta cifrar el mensaje = mucho más simple).
 var MOTOR = "https://parecidas-motor.cualcaxsiempre.workers.dev";
-var SHELL = ["./", "index.html", "app.js", "barrios.js",
+var SHELL = ["./", "index.html", "app.js", "sync.js", "barrios.js",
              "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", function (e) {

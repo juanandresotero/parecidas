@@ -19,3 +19,10 @@ VAPID_PUBLIC = "BAxadZ2Doxe6UjrVtNi5E29AlBvGacELm2Lxuv-CVwdVKem4ZnRAyn0ULCA2-Gvh
 [[kv_namespaces]]
 binding = "SUBS"
 id = "0d2588dda67e4dfdb3fa6b20a7d819fa"
+
+# Bóveda de la vinculación por código (D1, gratis): guarda los datos de cada usuario YA CIFRADOS.
+# Se creó con:  npx wrangler d1 create parecidas-sync   y la tabla con worker/sync.sql
+[[d1_databases]]
+binding = "SYNC"
+database_name = "parecidas-sync"
+database_id = "4669032e-0a12-4e4a-8cc6-b344bc33e83a"

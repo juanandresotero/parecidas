@@ -18,6 +18,8 @@ export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
     const url = new URL(request.url);
+    // --- Vincular aparatos (mismos datos en la compu y el celu) ---
+    if (url.searchParams.get("sync")) return await manejarSync(request, env, url.searchParams.get("sync"));
     // --- Avisos con la app cerrada (push) ---
     // Guardar/actualizar la suscripción del celu + qué propiedades vigilar.
     if (url.searchParams.get("sub")) {
@@ -351,6 +353,33 @@ async function enviarPush(rec, env) {
   } catch (e) { return 0; }
 }
 
+// ---- Sync: inicio ----
+// Vincular aparatos: la app manda SU información ya CIFRADA (este robotito no la puede leer) y se guarda bajo
+// un id largo que sale del código del usuario. GET = bajar; POST {blob, base} = subir, con control de versión
+// (si otro aparato subió antes, devuelve 409 y la app vuelve a mezclar).
+const MAX_SYNC = 3000000;
+async function manejarSync(request, env, id) {
+  if (!env || !env.SYNC) return json({ error: "sync no configurado" }, 501);
+  if (!/^[0-9a-f]{32}$/.test(id)) return json({ error: "id inválido" }, 400);
+  if (request.method === "GET") {
+    const row = await env.SYNC.prepare("SELECT blob, v FROM vaults WHERE id = ?").bind(id).first();
+    return json({ ok: true, v: row ? row.v : 0, blob: row ? row.blob : null }, 200);
+  }
+  if (request.method !== "POST") return json({ error: "método" }, 405);
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: "json" }, 400); }
+  if (!body || typeof body.blob !== "string" || !body.blob || body.blob.length > MAX_SYNC) return json({ error: "blob" }, 400);
+  const base = Number(body.base) || 0, ahora = Date.now();
+  const r = base === 0
+    ? await env.SYNC.prepare("INSERT OR IGNORE INTO vaults (id, blob, v, updated) VALUES (?, ?, 1, ?)").bind(id, body.blob, ahora).run()
+    : await env.SYNC.prepare("UPDATE vaults SET blob = ?, v = v + 1, updated = ? WHERE id = ? AND v = ?").bind(body.blob, ahora, id, base).run();
+  if (!r.meta.changes) {
+    const row = await env.SYNC.prepare("SELECT blob, v FROM vaults WHERE id = ?").bind(id).first();
+    return json({ error: "version", v: row ? row.v : 0 }, 409);
+  }
+  return json({ ok: true, v: base + 1 }, 200);
+}
+// ---- Sync: fin ----
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
