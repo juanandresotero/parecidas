@@ -236,6 +236,7 @@
     var visto = false;
     try { visto = localStorage.getItem("parecidas_nv_sync-nv") === "1"; } catch (e) {}
     $("btn-sync-crear").classList.toggle("nuevo", !visto && !st.vinculado);   // dorado: la novedad está acá
+    $("aj-sync-tit").classList.toggle("nuevo", !visto && !st.vinculado);     // y su título también
     $("sync-con").style.display = st.vinculado ? "" : "none";
     if (st.vinculado) {
       $("sync-estado").textContent = st.error ? "⚠️ " + st.error

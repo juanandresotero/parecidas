@@ -77,6 +77,14 @@ def caso_ajustes_en_dorado_hasta_abrirlo(br):
     page.evaluate("$('btn-ajustes').click()")
     assert not page.evaluate(dorado), "al abrir Ajustes sale del dorado"
     assert page.evaluate("$('btn-sync-crear').classList.contains('nuevo')"), "adentro, 'Crear mi código' en dorado"
+    assert page.evaluate("$('aj-sync-tit').classList.contains('nuevo')"), "adentro, el TÍTULO 'Los mismos datos en la compu y en el celu' también en dorado"
+    page.context.route("https://parecidas-motor.cualcaxsiempre.workers.dev/**", lambda r: r.abort())   # NO tocar el servidor real
+    page.evaluate("$('btn-sync-crear').click()")
+    page.wait_for_function("SYNC.estado().vinculado", timeout=10000)
+    assert not page.evaluate("$('aj-sync-tit').classList.contains('nuevo')"), "ya lo usó (creó su código): el título vuelve a lo normal"
+    page.reload(wait_until="load"); page.wait_for_function("DATA.length > 0", timeout=20000)
+    page.evaluate("$('btn-ajustes').click()")
+    assert not page.evaluate("$('aj-sync-tit').classList.contains('nuevo')"), "y no vuelve al dorado al recargar"
     page.context.close()
 
 
