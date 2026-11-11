@@ -375,6 +375,24 @@ def caso_ajustes_equilibrado_en_la_compu(br):
     cel.context.close()
 
 
+def caso_vista_previa_en_la_compu_tiene_toda_la_descripcion(br):
+    """Juan 2026-11-11: en la compu la vista previa muestra la descripción COMPLETA (no solo los primeros renglones)."""
+    page = buscar_en_compu(br)
+    s = primera_con_mapa(page)
+    page.evaluate(tarjeta(page, s, ".card-vp") + ".click()")
+    page.wait_for_function("document.getElementById('vp-desc').textContent.length > 300", timeout=10000)
+    txt = page.evaluate("$('vp-desc').textContent")
+    assert len(txt) > 900 and not txt.endswith("…"), f"en la compu va la descripción entera ({len(txt)} letras)"
+    page.context.close()
+    cel = pagina_mapa(br, 420, 900)               # ventana angosta = vista de celular
+    cel.evaluate(BUSCAR)
+    cel.evaluate("abrirVistaPrevia(RENDER_RES[0])")
+    cel.wait_for_function("document.getElementById('vp-desc').textContent.length > 100", timeout=10000)
+    corto = cel.evaluate("$('vp-desc').textContent")
+    assert len(corto) <= 262 and corto.endswith("…"), f"en el celu sigue el resumen corto ({len(corto)} letras)"
+    cel.context.close()
+
+
 CASOS = [caso_compu_se_detecta_sola, caso_celular_nunca_cambia, caso_tablet_tactil_ancha_sigue_como_celular,
          caso_compu_con_ventana_angosta_sigue_como_celular, caso_el_boton_cambia_y_se_acuerda,
          caso_en_el_celu_el_boton_de_arriba_no_estorba_pero_hay_ajustes, caso_forzar_celular_en_compu_y_auto_vuelve,
@@ -386,7 +404,7 @@ CASOS = [caso_compu_se_detecta_sola, caso_celular_nunca_cambia, caso_tablet_tact
          caso_tocar_otra_parte_no_abre_el_aviso, caso_tocar_la_foto_abre_la_galeria,
          caso_vista_previa_de_la_tarjeta_reemplaza_el_mapa, caso_vista_previa_del_pin_tambien_en_la_columna,
          caso_en_el_celu_la_tarjeta_sigue_igual, caso_cartel_de_campanas_fuera_de_los_filtros,
-         caso_ajustes_equilibrado_en_la_compu]
+         caso_ajustes_equilibrado_en_la_compu, caso_vista_previa_en_la_compu_tiene_toda_la_descripcion]
 
 
 def main():

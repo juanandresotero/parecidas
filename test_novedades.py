@@ -12,7 +12,7 @@ from playwright.sync_api import sync_playwright
 
 from test_ocultas import servir, pagina_nueva
 
-VENT = "news-vincular"
+VENT = "news-celu-compu"   # 2ª versión (título + explicación). La 1ª ("news-vincular") no quedaba clara.
 VISIBLE = f"(function () {{ var e = document.getElementById('{VENT}'); return !!e && getComputedStyle(e).display !== 'none'; }})()"
 
 
@@ -24,7 +24,7 @@ def recargar(page):
 
 def usuario_que_ya_usaba_la_app(page):
     """Ya había visto todas las ventanitas viejas, pero no la nueva."""
-    page.evaluate("""() => { ['news', 'news-agente', 'news-avisos', 'news-temporal', 'news-temporal-mapa', 'iniciado'].forEach(function (k) {
+    page.evaluate("""() => { ['news', 'news-agente', 'news-avisos', 'news-temporal', 'news-temporal-mapa', 'news-vincular', 'iniciado'].forEach(function (k) {
         localStorage.setItem('parecidas_nv_' + k, '1'); });
         ['%s', 'vincular-nv', 'sync-nv', 'vista-btn'].forEach(function (k) { localStorage.removeItem('parecidas_nv_' + k); }); }""" % VENT)
     recargar(page)
@@ -39,8 +39,12 @@ def caso_la_ve_quien_ya_usaba_la_app(br):
     assert "ompu" in txt and "elu" in txt, f"habla de compu y celu: {txt}"
     assert "ecarg" in txt, f"avisa que en el otro aparato hay que recargar para ver los cambios: {txt}"
     assert "scritorio" in txt, f"explica la vista de escritorio: {txt}"
-    assert len(txt) < 430, f"tiene que ser súper breve ({len(txt)} caracteres)"
-    assert page.evaluate(f"document.querySelectorAll('#{VENT} li').length") == 2, "dos renglones: vincular y escritorio"
+    assert len(txt) < 560, f"tiene que ser breve ({len(txt)} caracteres)"
+    titulos = page.evaluate(f"Array.prototype.map.call(document.querySelectorAll('#{VENT} .news-item .news-tit'), function (t) {{ return t.textContent; }})")
+    assert len(titulos) == 2, f"dos novedades, cada una con su TÍTULO descriptivo: {titulos}"
+    assert "elu" in titulos[0] and "ompu" in titulos[0], f"el título 1 dice de qué se trata (celu y compu): {titulos[0]}"
+    assert "ompu" in titulos[1] or "PC" in titulos[1], f"el título 2 dice que es para la compu: {titulos[1]}"
+    assert page.evaluate(f"document.querySelectorAll('#{VENT} .news-item p').length") == 2, "y abajo de cada título, su explicación"
     page.evaluate("document.getElementById('btn-news-vincular-ok').click()")
     assert not page.evaluate(VISIBLE), "'Entendido' la cierra"
     recargar(page)
@@ -51,6 +55,7 @@ def caso_la_ve_quien_ya_usaba_la_app(br):
 def caso_la_vieja_no_existe_mas(br):
     page = pagina_nueva(br)
     assert page.evaluate("document.getElementById('news-escritorio') === null"), "la ventanita vieja (temporarios + mapa) se borró"
+    assert page.evaluate("document.getElementById('news-vincular') === null"), "la 1ª versión (sin títulos) se reemplazó"
     page.context.close()
 
 

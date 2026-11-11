@@ -319,6 +319,9 @@
   .bi-camp.ok{color:var(--muted)}
   .bi-camp.alerta{display:inline-block;background:var(--red);color:#fff;
     border-radius:8px;padding:3px 9px;align-self:flex-start}
+  .news-item{margin:0 0 14px}
+  .news-tit{font-weight:800;font-size:15px;line-height:1.3;color:var(--ink);margin-bottom:4px}
+  .news-item p{margin:0;font-size:13.5px;line-height:1.45;color:var(--muted)}
   .news-list{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px;
     font-size:14px;line-height:1.45;color:var(--ink)}
   .nuevo{background:#efab00 !important;color:#3a2a00 !important;border-color:#efab00 !important;
@@ -370,6 +373,7 @@
   .vp-fila span{color:var(--muted);flex-shrink:0}
   .vp-fila b{text-align:right;font-weight:600;white-space:pre-line}
   .vp-desc{font-size:13px;color:var(--ink);line-height:1.45;margin:10px 0 0}
+  body.pc-ancho .vp-desc{white-space:pre-line;font-size:13.5px}   /* en la compu: descripción completa, con sus párrafos */
   .vp-nota{font-size:12px;color:var(--muted);margin:6px 0 0;min-height:14px}
   /* Botones fijos abajo: siempre a la vista aunque la ventana se desplace. */
   .vp-acciones{display:flex;gap:8px;position:sticky;bottom:0;margin:12px -14px -14px;padding:10px 14px 14px;
@@ -501,14 +505,18 @@
     </div>
   </div>
 
-  <div class="ajustes" id="news-vincular" style="display:none">
+  <div class="ajustes" id="news-celu-compu" style="display:none">
     <div class="ajustes-card">
       <div class="ajustes-head"><b>👋 Novedades</b><button id="btn-news-vincular-x" aria-label="Cerrar">✕</button></div>
-      <ul class="news-list">
-        <li>🔗 <b>Celu y compu con los mismos clientes:</b> en ⚙️ <b>Ajustes</b> (en <b>dorado</b>) tocá <b>Crear mi código</b> en uno y <b>Vincular</b> en el otro. Los cambios pasan solos en segundos; si el otro ya estaba abierto, recargá la página.</li>
-        <li>🖥️ <b>En la compu:</b> vista de escritorio con filtros, lista y mapa juntos. Con el botón de arriba (en <b>dorado</b>) cambiás de vista.</li>
-      </ul>
-      <button class="btn btn-brand" id="btn-news-vincular-ok" style="width:100%;margin-top:14px">Entendido</button>
+      <div class="news-item">
+        <div class="news-tit">🔗 Tus clientes, iguales en el celu y en la compu</div>
+        <p>En ⚙️ <b>Ajustes</b> (en <b>dorado</b>) tocá <b>Crear mi código</b> en un aparato y <b>Vincular</b> en el otro. Desde ahí, lo que cambies en uno pasa solo al otro en segundos (si el otro ya estaba abierto, recargá la página).</p>
+      </div>
+      <div class="news-item">
+        <div class="news-tit">🖥️ Parecidas, ahora pensada para la compu</div>
+        <p>Filtros, propiedades y mapa juntos en una sola pantalla. Con el botón de arriba (en <b>dorado</b>) cambiás entre vista escritorio y celular.</p>
+      </div>
+      <button class="btn btn-brand" id="btn-news-vincular-ok" style="width:100%;margin-top:6px">Entendido</button>
     </div>
   </div>
 

@@ -2624,6 +2624,12 @@ function descartarDesdeMapa(c) {
 // (la 1ª foto y los datos del archivo) y, cuando llega la ficha de RE/MAX, las primeras 5 fotos y más datos.
 var VP_CACHE = {};      // slug → ficha de RE/MAX ya traída
 var VP_ACTUAL = null;   // propiedad que se está viendo
+// Igual que textoPlano pero conservando los párrafos (para mostrar la descripción completa en la compu).
+function textoConParrafos(html) {
+  return String(html || "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|h\d)>/gi, "\n")
+    .replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
 function textoPlano(html) {
   return String(html || "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -2690,7 +2696,8 @@ function pintarVistaPrevia(c, det, nota) {
     datos.appendChild(d);
   });
   var txt = det ? textoPlano(det.description) : "";
-  $("vp-desc").textContent = txt.length > 260 ? txt.slice(0, 260).replace(/\s+\S*$/, "") + "…" : txt;
+  if (document.body.classList.contains("pc-ancho")) $("vp-desc").textContent = det ? textoConParrafos(det.description) : "";   // compu: entera
+  else $("vp-desc").textContent = txt.length > 260 ? txt.slice(0, 260).replace(/\s+\S*$/, "") + "…" : txt;
   $("vp-nota").textContent = nota || "";
 }
 function abrirVistaPrevia(c) {
@@ -2795,9 +2802,9 @@ function initSegs() {
   // → arranca limpio y solo verá las novedades de acá en adelante. El que YA usó la app sí
   // ve las novedades nuevas. (Juan 2026-08-14)
   // Todas las ventanitas de novedades, en orden VIEJA → NUEVA. Al sumar una nueva, va al final.
-  // "news-vincular" = vincular celu y compu + vista de escritorio (2026-11-11). La anterior (temporarios + mapa)
-  // se BORRÓ a pedido de Juan: quien no la vio, se la pierde.
-  var NEWS = ["news", "news-agente", "news-avisos", "news-vincular"];
+  // "news-celu-compu" = vincular celu y compu + vista de escritorio, con TÍTULO + explicación (2026-11-11; la 1ª
+  // versión "news-vincular" no quedaba clara → clave nueva para que la vean todos). La de temporarios + mapa se BORRÓ.
+  var NEWS = ["news", "news-agente", "news-avisos", "news-celu-compu"];
   if (!novedadVista("iniciado")) {
     if (esPrimeraVezEnLaApp()) NEWS.forEach(marcarNovedad);
     marcarNovedad("iniciado");
@@ -2832,10 +2839,10 @@ function initSegs() {
   $("btn-news-avisos-ok").addEventListener("click", cerrarNewsAvisos);
   $("btn-news-avisos-x").addEventListener("click", cerrarNewsAvisos);
   $("news-avisos").addEventListener("click", function (e) { if (e.target === $("news-avisos")) cerrarNewsAvisos(); });
-  var cerrarNewsVincular = function () { marcarNovedad("news-vincular"); cerrarOverlay("news-vincular"); };
+  var cerrarNewsVincular = function () { marcarNovedad("news-celu-compu"); cerrarOverlay("news-celu-compu"); };
   $("btn-news-vincular-ok").addEventListener("click", cerrarNewsVincular);
   $("btn-news-vincular-x").addEventListener("click", cerrarNewsVincular);
-  $("news-vincular").addEventListener("click", function (e) { if (e.target === $("news-vincular")) cerrarNewsVincular(); });
+  $("news-celu-compu").addEventListener("click", function (e) { if (e.target === $("news-celu-compu")) cerrarNewsVincular(); });
   $("btn-agente").addEventListener("click", function () {
     marcarNovedad("agente-btn"); $("btn-agente").classList.remove("nuevo");   // ya lo usó → sale del amarillo
     var a = window.__agente; if (!a) return;
