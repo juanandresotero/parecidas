@@ -248,10 +248,32 @@ def caso_link_de_vinculacion(br, bov):
     a.context.close(); b.context.close()
 
 
+def caso_un_cambio_se_sube_solo_en_segundos(br, bov):
+    """Juan 2026-11-11: "si agrego una búsqueda en el celu, ¿aparece en la PC? ¿cuánto demora?". Lo que cambia
+    se sube SOLO a los pocos segundos (sin tocar 'Sincronizar ahora')."""
+    a, b, _ = vinculados(br, bov)
+    a.wait_for_timeout(3000)             # deja pasar la sincronización de "recién abierta" (no es la que medimos)
+    antes = sum(1 for m, u, d in bov.pedidos if m == "POST")
+    a.evaluate("() => { var arr = cargarBusquedas(); arr[0].nombre = 'Subido solo'; guardarBusquedas(arr); }")
+    a.wait_for_timeout(6000)
+    despues = sum(1 for m, u, d in bov.pedidos if m == "POST")
+    assert despues > antes, "un cambio tiene que subirse solo en menos de 6 segundos"
+    assert sincronizar(b)["ok"] and "Subido solo" in nombres(b)
+    a.context.close(); b.context.close()
+
+
+def caso_la_compu_abierta_trae_los_cambios_sola(br, bov):
+    """Si la app queda abierta (por ejemplo en la compu), revisa cada tanto si hay cambios de otro aparato."""
+    a, b, _ = vinculados(br, bov)
+    assert b.evaluate("typeof SYNC.CADA_MS === 'number' && SYNC.CADA_MS <= 60000"), "tiene que revisar al menos cada 1 minuto"
+    a.context.close(); b.context.close()
+
+
 CASOS = [caso_crear_y_vincular_otro_aparato, caso_un_cambio_llega_al_otro, caso_borrar_llega_al_otro,
          caso_gana_el_cambio_mas_reciente, caso_cambios_distintos_se_suman_aunque_choquen, caso_viaja_cifrado,
          caso_codigo_invalido_o_ajeno, caso_associate_viaja, caso_sin_conexion_no_pierde_nada,
-         caso_marca_de_modificacion, caso_pantalla_de_ajustes, caso_link_de_vinculacion]
+         caso_marca_de_modificacion, caso_pantalla_de_ajustes, caso_link_de_vinculacion,
+         caso_un_cambio_se_sube_solo_en_segundos, caso_la_compu_abierta_trae_los_cambios_sola]
 
 
 def main():

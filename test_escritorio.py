@@ -8,11 +8,13 @@ Uso: python test_escritorio.py
 """
 from __future__ import annotations
 
+import json
 import sys
 
 from playwright.sync_api import sync_playwright
 
 from test_ocultas import servir, PUERTO
+from test_mapa import ficha_simulada
 
 BUSCAR = """() => { limpiarTodo(); setSeg('f-oper', 'sale'); setSegMulti('f-tipo', ['apto']);
     SELBARRIOS = ['Pocitos', 'Punta Carretas']; renderChips(); $('f-precio-max').value = '300000'; buscar(); }"""
@@ -130,6 +132,7 @@ def pagina_mapa(br, ancho=1400, alto=900):
     ctx = br.new_context(service_workers="block", viewport={"width": ancho, "height": alto})
     ctx.route("**/tile.openstreetmap.org/**", lambda r: r.fulfill(status=200, body=PNG_1X1, content_type="image/png"))
     ctx.route("**/d1acdg20u0pmxj.cloudfront.net/**", lambda r: r.fulfill(status=200, body=PNG_1X1, content_type="image/png"))
+    ctx.route("**/findBySlug/**", lambda r: r.fulfill(status=200, body=json.dumps(ficha_simulada()), content_type="application/json"))
     page = ctx.new_page()
     page.goto(f"http://127.0.0.1:{PUERTO}/", wait_until="load")
     page.wait_for_function("DATA.length > 0", timeout=20000)
@@ -230,13 +233,133 @@ def caso_pasar_a_celular_devuelve_el_mapa_al_boton(br):
     page.context.close()
 
 
+
+# ---------------- Tanda 2 (Juan 2026-11-11): filtros más anchos, pin resaltado, clics de la tarjeta ----------------
+def buscar_en_compu(br):
+    page = pagina_mapa(br, 1440, 900)
+    page.evaluate(BUSCAR)
+    page.wait_for_function("Object.keys(MAPA_MARCAS).length > 0", timeout=30000)
+    return page
+
+
+def tarjeta(page, slug, sel):
+    return "(function () { var o = CARDS.filter(function (x) { return x.slug === %s; })[0]; return o.card.querySelector(%s); })()" % (json.dumps(slug), json.dumps(sel))
+
+
+def primera_con_mapa(page, n=0):
+    return page.evaluate("RENDER_RES.filter(function (c) { return c.lat != null; })[%d].slug" % n)
+
+
+def caso_filtros_mas_anchos(br):
+    page = buscar_en_compu(br)
+    f, l, m = caja(page, ".col-filtros"), caja(page, "#resultados"), caja(page, "#mapa-overlay")
+    assert f["w"] >= 400, f"los filtros tienen que ser más anchos (protagonismo): {f['w']}"
+    assert l["w"] >= 340 and m["w"] >= 340, f"lista y mapa siguen siendo usables: lista {l['w']} mapa {m['w']}"
+    assert sin_scroll_horizontal(page)
+    page.context.close()
+
+
+def caso_ver_en_mapa_resalta_el_pin(br):
+    page = buscar_en_compu(br)
+    s1, s2 = primera_con_mapa(page, 0), primera_con_mapa(page, 1)
+    gota = "MAPA_MARCAS[%s].getElement().querySelector('.pin-gota').classList.contains('pin-foco')"
+    page.evaluate(tarjeta(page, s1, ".card-pin") + ".click()")
+    page.wait_for_timeout(300)
+    assert page.evaluate(gota % json.dumps(s1)), "el pin de la propiedad elegida tiene que quedar resaltado"
+    page.evaluate(tarjeta(page, s2, ".card-pin") + ".click()")
+    page.wait_for_timeout(300)
+    assert page.evaluate(gota % json.dumps(s2)) and not page.evaluate(gota % json.dumps(s1)), "se resalta solo el último"
+    page.context.close()
+
+
+def caso_tocar_el_titulo_abre_el_aviso(br):
+    page = buscar_en_compu(br)
+    page.context.route("**/www.remax.com.uy/**", lambda r: r.fulfill(status=200, body="<html>aviso</html>", content_type="text/html"))
+    s = primera_con_mapa(page)
+    with page.context.expect_page(timeout=5000) as nueva:
+        page.evaluate(tarjeta(page, s, ".titulo-card") + ".click()")
+    assert s in nueva.value.url, f"el título abre el aviso original: {nueva.value.url}"
+    page.context.close()
+
+
+def caso_tocar_otra_parte_no_abre_el_aviso(br):
+    page = buscar_en_compu(br)
+    paginas = []
+    page.context.on("page", lambda p: paginas.append(p))
+    s = primera_con_mapa(page)
+    page.evaluate(tarjeta(page, s, ".chips") + ".click()")
+    page.wait_for_timeout(800)
+    assert not paginas, "tocar fuera del título (en escritorio) no abre el aviso"
+    page.context.close()
+
+
+def caso_tocar_la_foto_abre_la_galeria(br):
+    page = buscar_en_compu(br)
+    paginas = []
+    page.context.on("page", lambda p: paginas.append(p))
+    s = primera_con_mapa(page)
+    page.evaluate(tarjeta(page, s, "img.foto, .foto") + ".click()")
+    page.wait_for_function("document.getElementById('galeria').style.display === 'flex'", timeout=5000)
+    page.wait_for_function("document.getElementById('gal-cuenta').textContent.indexOf('/ 9') >= 0", timeout=10000)
+    assert page.evaluate("$('gal-cuenta').textContent").strip().startswith("1 / 9"), "arranca en la primera de las 9 fotos"
+    page.evaluate("$('btn-gal-sig').click()")
+    assert page.evaluate("$('gal-cuenta').textContent").strip().startswith("2 / 9")
+    page.keyboard.press("ArrowRight")
+    assert page.evaluate("$('gal-cuenta').textContent").strip().startswith("3 / 9"), "las flechas del teclado pasan de foto"
+    page.keyboard.press("ArrowLeft")
+    assert page.evaluate("$('gal-cuenta').textContent").strip().startswith("2 / 9")
+    assert page.evaluate("$('gal-img').referrerPolicy") == "no-referrer" or page.evaluate("document.querySelector('meta[name=referrer]') && document.querySelector('meta[name=referrer]').content") == "no-referrer"
+    page.keyboard.press("Escape")
+    assert page.evaluate("$('galeria').style.display") == "none", "Escape cierra la galería"
+    assert not paginas, "la foto no abre el aviso"
+    page.context.close()
+
+
+def caso_vista_previa_de_la_tarjeta_reemplaza_el_mapa(br):
+    page = buscar_en_compu(br)
+    s = primera_con_mapa(page)
+    page.evaluate(tarjeta(page, s, ".card-vp") + ".click()")
+    page.wait_for_function("document.getElementById('vista-previa').style.display !== 'none'", timeout=5000)
+    assert page.evaluate("document.getElementById('vista-previa').parentNode.id") == "col-mapa", "la ficha va en el lugar del mapa"
+    vp, col = caja(page, "#vista-previa"), caja(page, "#col-mapa")
+    assert abs(vp["x"] - col["x"]) < 3 and abs(vp["w"] - col["w"]) < 3 and vp["h"] > 300, f"la ficha ocupa la columna del mapa: {vp} {col}"
+    page.wait_for_function("document.querySelectorAll('#vp-fotos img').length >= 5", timeout=10000)
+    assert "mapa" in page.evaluate("$('btn-vp-x').textContent").lower(), "el botón dice que vuelve al mapa"
+    page.evaluate("$('btn-vp-x').click()")
+    assert page.evaluate("$('vista-previa').style.display") == "none" and caja(page, "#mapa-overlay")["w"] > 340, "vuelve el mapa"
+    page.context.close()
+
+
+def caso_vista_previa_del_pin_tambien_en_la_columna(br):
+    page = buscar_en_compu(br)
+    s = primera_con_mapa(page)
+    page.evaluate("(s) => MAPA_MARCAS[s].openPopup()", s)
+    page.wait_for_selector(".leaflet-popup .pin-prev", timeout=5000)
+    page.locator(".leaflet-popup .pin-prev").click()
+    page.wait_for_function("document.getElementById('vista-previa').style.display !== 'none'", timeout=5000)
+    assert page.evaluate("document.getElementById('vista-previa').parentNode.id") == "col-mapa"
+    page.context.close()
+
+
+def caso_en_el_celu_la_tarjeta_sigue_igual(br):
+    page = pagina(br, 420, 900, tactil=True)
+    page.evaluate(BUSCAR)
+    assert page.evaluate("document.querySelector('.card-vp') === null || document.querySelector('.card-vp').offsetParent === null"), "en el celu no aparece el botón de vista previa nuevo"
+    assert page.evaluate("document.getElementById('vista-previa').parentNode.tagName") == "BODY"
+    page.context.close()
+
+
 CASOS = [caso_compu_se_detecta_sola, caso_celular_nunca_cambia, caso_tablet_tactil_ancha_sigue_como_celular,
          caso_compu_con_ventana_angosta_sigue_como_celular, caso_el_boton_cambia_y_se_acuerda,
          caso_en_el_celu_el_boton_de_arriba_no_estorba_pero_hay_ajustes, caso_forzar_celular_en_compu_y_auto_vuelve,
          caso_mapa_y_ventanas_en_escritorio, caso_en_compu_grande_el_mapa_esta_siempre_a_la_vista,
          caso_cada_busqueda_repinta_el_mapa, caso_el_mas_del_mapa_no_cierra_el_cartelito,
          caso_el_pin_de_la_tarjeta_lleva_al_mapa, caso_ventana_mediana_usa_el_mapa_de_siempre,
-         caso_celular_no_tiene_mapa_fijo, caso_pasar_a_celular_devuelve_el_mapa_al_boton]
+         caso_celular_no_tiene_mapa_fijo, caso_pasar_a_celular_devuelve_el_mapa_al_boton,
+         caso_filtros_mas_anchos, caso_ver_en_mapa_resalta_el_pin, caso_tocar_el_titulo_abre_el_aviso,
+         caso_tocar_otra_parte_no_abre_el_aviso, caso_tocar_la_foto_abre_la_galeria,
+         caso_vista_previa_de_la_tarjeta_reemplaza_el_mapa, caso_vista_previa_del_pin_tambien_en_la_columna,
+         caso_en_el_celu_la_tarjeta_sigue_igual]
 
 
 def main():

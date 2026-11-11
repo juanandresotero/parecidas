@@ -2,6 +2,9 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<!-- Las fotos de RE/MAX (CloudFront) rechazan (403) lo que se pide desde github.io: se piden SIN "Referer".
+     El mapa (OpenStreetMap) sí lo necesita: se lo pone explícito en app.js (tileLayer referrerPolicy). -->
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2456e6">
 <link rel="manifest" href="manifest.webmanifest">
@@ -57,7 +60,7 @@
   /* VISTA DE ESCRITORIO: solo si el JS pone body.vista-pc Y la ventana mide 900 px o más. Un celular
      nunca la usa (si algo falla, queda la vista de celular de siempre). */
   .col-mapa{display:none}
-  .card-pin{display:none}
+  .card-pin,.card-vp{display:none}
   /* El JS pone body.pc-ancho (escritorio y ventana ≥ 900 px) y body.pc-mapa (escritorio y ventana ≥ 1200 px). */
   body.pc-ancho .wrap{max-width:1280px}
   body.pc-ancho .cuerpo{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:20px;align-items:start}
@@ -69,15 +72,38 @@
   body.pc-ancho .vp-fotos img{height:340px}
   /* Pantalla grande (≥ 1200 px): filtros | lista | MAPA siempre a la vista */
   body.pc-mapa .wrap{max-width:1760px}
-  body.pc-mapa .cuerpo{grid-template-columns:minmax(300px,340px) minmax(340px,1fr) minmax(0,1.25fr)}
+  body.pc-mapa .cuerpo{grid-template-columns:minmax(400px,460px) minmax(340px,1fr) minmax(340px,1.15fr)}
   body.pc-mapa .cards{grid-template-columns:1fr}
   body.pc-mapa .col-mapa{display:block;min-width:0;position:sticky;top:78px;height:calc(100vh - 92px)}
   body.pc-mapa #mapa-overlay{position:relative !important;inset:auto !important;z-index:1 !important;display:flex !important;
     height:100%;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
   body.pc-mapa #btn-mapa-cerrar,body.pc-mapa #btn-mapa{display:none !important}
-  body.pc-mapa .card-pin{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
+  body.pc-mapa .card-pin,body.pc-ancho .card-vp{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
     width:34px;height:34px;border:1px solid var(--line);background:var(--surface);border-radius:50%;cursor:pointer;
     font-size:16px;align-self:center}
+  body.pc-ancho .card-link{cursor:default}
+  body.pc-ancho .card-link .foto{cursor:zoom-in}
+  body.pc-ancho .titulo-card{cursor:pointer}
+  body.pc-ancho .titulo-card:hover{color:var(--brand);text-decoration:underline}
+  /* La ficha (vista previa) ocupa el lugar del mapa */
+  body.pc-mapa #vista-previa{position:absolute !important;inset:0 !important;z-index:10 !important;padding:0 !important;
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow-y:auto}
+  body.pc-mapa #vista-previa .vp-card{max-width:none;width:100%;min-height:100%;border-radius:0;box-shadow:none}
+  body.pc-mapa #btn-vp-x{width:auto;border-radius:16px;padding:0 12px;font-weight:700;font-size:13px;white-space:nowrap}
+  /* Pin de la propiedad que se está mirando ("📍 Ver en el mapa") */
+  .pin-gota.pin-foco{background:#efab00;border-color:#b45309;transform:rotate(-45deg) scale(1.35);
+    box-shadow:0 0 0 4px rgba(239,171,0,.45),0 3px 8px rgba(0,0,0,.35);animation:pinFoco 1.2s ease-out 2}
+  @keyframes pinFoco{0%{box-shadow:0 0 0 0 rgba(239,171,0,.8)}100%{box-shadow:0 0 0 14px rgba(239,171,0,0)}}
+  /* Galería de fotos (tocar la foto de una tarjeta en la compu) */
+  #galeria{z-index:1200;background:rgba(10,14,22,.92);align-items:center;justify-content:center;padding:20px}
+  #gal-img{max-width:min(1100px,84vw);max-height:82vh;object-fit:contain;border-radius:10px;background:#111}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);width:52px;height:52px;border-radius:50%;border:none;
+    background:rgba(255,255,255,.18);color:#fff;font-size:34px;line-height:1;cursor:pointer}
+  .gal-nav:hover{background:rgba(255,255,255,.32)}
+  #btn-gal-ant{left:18px} #btn-gal-sig{right:18px}
+  .gal-x{position:absolute;top:16px;right:18px;width:40px;height:40px;border-radius:50%;border:none;
+    background:rgba(255,255,255,.18);color:#fff;font-size:18px;cursor:pointer}
+  .gal-cuenta{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:#fff;font-size:14px;font-weight:700}
   .bloque{background:var(--surface-2);border:1px solid var(--line);
     border-radius:var(--radius);padding:13px}
   .bloque>.titulo{font-size:11px;font-weight:800;text-transform:uppercase;
@@ -707,6 +733,15 @@
       <a class="pin-ver" id="vp-ver" href="#" target="_blank" rel="noopener">Ver aviso completo</a>
     </div>
   </div>
+</div>
+
+<!-- Galería de fotos de una propiedad (en la compu: tocar la foto de la tarjeta) -->
+<div class="ajustes" id="galeria" style="display:none">
+  <button class="gal-x" id="btn-gal-x" aria-label="Cerrar">✕</button>
+  <button class="gal-nav" id="btn-gal-ant" aria-label="Foto anterior">‹</button>
+  <img id="gal-img" alt="" referrerpolicy="no-referrer">
+  <button class="gal-nav" id="btn-gal-sig" aria-label="Foto siguiente">›</button>
+  <div class="gal-cuenta" id="gal-cuenta"></div>
 </div>
 
 <script src="barrios.js"></script>

@@ -134,7 +134,9 @@
   }
 
   // ---------- sincronizar ----------
-  var enCurso = null, timer = null;
+  var enCurso = null, timer = null, pendiente = false;
+  var ESPERA_MS = 3000;   // un cambio se sube a los 3 s (junta varios cambios seguidos en una sola subida)
+  var CADA_MS = 60000;    // con la app abierta y a la vista, cada 1 minuto revisa si otro aparato cambió algo
   function guardarEstado(cambios) {
     var st = leer(ESTADO, null); if (!st) return;
     Object.keys(cambios).forEach(function (k) { st[k] = cambios[k]; });
@@ -156,6 +158,7 @@
         if (proyectar(mezcla) !== proyectar(local)) aplicar(mezcla);
         if (j.v !== 0 && proyectar(mezcla) === proyectar(remoto)) {   // el servidor ya está al día
           guardarEstado({ v: j.v, ultima: Date.now(), error: "" });
+          pendiente = false;
           return { ok: true };
         }
         var p = await fetch(urlSync(d.id), { method: "POST", headers: { "Content-Type": "application/json" },
@@ -164,6 +167,7 @@
         if (!p.ok) throw new Error("http " + p.status);
         var pj = await p.json();
         guardarEstado({ v: pj.v, ultima: Date.now(), error: "" });
+        pendiente = false;
         return { ok: true };
       }
       return { ok: false, error: "Otro aparato estaba guardando a la vez. Probá de nuevo." };
@@ -178,10 +182,11 @@
     enCurso = hacerSync().then(function (r) { enCurso = null; pintar(); return r; }, function (e) { enCurso = null; throw e; });
     return enCurso;
   }
-  function cambio() {   // algo cambió acá: subirlo en unos segundos (junta varios cambios seguidos en una sola subida)
+  function cambio() {   // algo cambió acá: subirlo en unos segundos
     if (!leer(ESTADO, null)) return;
+    pendiente = true;
     clearTimeout(timer);
-    timer = setTimeout(function () { sincronizar(); }, 15000);
+    timer = setTimeout(function () { sincronizar(); }, ESPERA_MS);
   }
   function cambioAssociate() {
     try { localStorage.setItem(ASSOC_MOD, String(Date.now())); } catch (e) {}
@@ -286,11 +291,15 @@
       ultimaVez = Date.now(); sincronizar();
     };
     setTimeout(auto, 1500);
-    document.addEventListener("visibilitychange", function () { if (!document.hidden) auto(); });
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) auto();
+      else if (pendiente) { clearTimeout(timer); sincronizar(); }   // se va de la app con algo sin subir: subirlo ya
+    });
     window.addEventListener("online", auto);
+    setInterval(function () { if (!document.hidden) auto(); }, CADA_MS);
   }
 
   window.SYNC = { crear: crear, vincular: vincular, sincronizar: sincronizar, desvincular: desvincular, estado: estado,
-                  preGuardar: preGuardar, cambio: cambio, cambioAssociate: cambioAssociate };
+                  preGuardar: preGuardar, cambio: cambio, cambioAssociate: cambioAssociate, CADA_MS: CADA_MS };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
 })();

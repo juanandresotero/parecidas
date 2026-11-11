@@ -831,7 +831,20 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
         '<div class="chips">' + chips.map(function (x) { return '<span class="chip">' + x + '</span>'; }).join("") + convChip + '</div>' +
         (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +
       '</div>';
+    // En la compu: el TÍTULO abre el aviso original, la FOTO abre la galería y el resto de la tarjeta no hace nada
+    // (en el celu toda la tarjeta sigue abriendo el aviso, como siempre).
+    link.addEventListener("click", function (e) {
+      if (!document.body.classList.contains("pc-ancho")) return;
+      if (e.target.closest(".titulo-card")) return;
+      e.preventDefault();
+      if (e.target.closest(".foto")) abrirGaleria(c);
+    });
     card.appendChild(link);
+    var vpBtn = document.createElement("button");   // 👁 (solo en la compu): la ficha en el lugar del mapa
+    vpBtn.type = "button"; vpBtn.className = "card-vp"; vpBtn.textContent = "👁";
+    vpBtn.title = "Vista previa"; vpBtn.setAttribute("aria-label", "Vista previa");
+    vpBtn.onclick = function () { abrirVistaPrevia(c); };
+    card.appendChild(vpBtn);
     if (c.lat != null && c.lng != null) {   // 📍 (solo se ve con el mapa a la vista): lleva al pin de esta propiedad
       var pin = document.createElement("button");
       pin.type = "button"; pin.className = "card-pin"; pin.textContent = "📍";
@@ -2057,9 +2070,11 @@ function posicionarMapa(conMapa) {
   var ov = $("mapa-overlay");
   if (conMapa === MAPA_EN_PANEL) { if (MAPA) setTimeout(function () { MAPA.invalidateSize(); }, 120); return; }
   MAPA_EN_PANEL = conMapa;
-  if (conMapa) { $("col-mapa").appendChild(ov); abrirMapa(); }
+  if (conMapa) { $("col-mapa").appendChild(ov); $("col-mapa").appendChild($("vista-previa")); abrirMapa(); }
   else {
-    document.body.appendChild(ov); ov.style.display = "none"; cerrarVistaPrevia();
+    cerrarVistaPrevia();
+    document.body.appendChild(ov); ov.style.display = "none";
+    document.body.insertBefore($("vista-previa"), $("galeria"));
     if (MAPA) setTimeout(function () { MAPA.invalidateSize(); }, 120);
   }
 }
@@ -2456,7 +2471,7 @@ function abrirMapa() {
     if (!MAPA) {
       MAPA = L.map("mapa").setView([-34.9, -56.16], 11);   // vista inicial (Montevideo) hasta que haya pines
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(MAPA);
+        { maxZoom: 19, attribution: "© OpenStreetMap", referrerPolicy: "strict-origin-when-cross-origin" }).addTo(MAPA);
       MAPA._grupo = L.layerGroup().addTo(MAPA);
     }
     pintarMapa();
@@ -2472,7 +2487,7 @@ function pintarMapa() {
     if (!b) return true;                       // sin cliente: todas
     return !!MAPA_VF[valDe(b, c.slug)];        // solo los estados prendidos; descartes NUNCA
   });
-  MAPA._grupo.clearLayers(); MAPA_MARCAS = {};
+  MAPA._grupo.clearLayers(); MAPA_MARCAS = {}; MAPA_FOCO = null;
   var pts = [], usados = {};
   lista.forEach(function (c) {
     var lat = c.lat, lng = c.lng, k = lat.toFixed(5) + "," + lng.toFixed(5);
@@ -2508,10 +2523,17 @@ function cerrarMapa() {
   else guardarEstadoActual();
 }
 
+var MAPA_FOCO = null;   // slug del pin resaltado ("📍 Ver en el mapa")
 function verEnMapa(slug) {
   var m = MAPA_MARCAS[slug];
   if (!m || !MAPA) return;
+  cerrarVistaPrevia();   // si la ficha tapaba el mapa, vuelve el mapa
+  var ant = MAPA_FOCO && MAPA_MARCAS[MAPA_FOCO];
+  if (ant && ant.getElement()) { ant.getElement().querySelector(".pin-gota").classList.remove("pin-foco"); ant.setZIndexOffset(0); }
+  MAPA_FOCO = slug;
   MAPA.setView(m.getLatLng(), Math.max(MAPA.getZoom(), 16));
+  m.setZIndexOffset(900);
+  if (m.getElement()) m.getElement().querySelector(".pin-gota").classList.add("pin-foco");
   m.openPopup();
 }
 
@@ -2632,12 +2654,27 @@ function filasVistaPrevia(c, det) {
   if (c.renta === true) f.push(["💵 Renta", "Con renta"]);
   return f;
 }
-function pintarVistaPrevia(c, det, nota) {
-  var urls = [];
+// Las fotos de la ficha de RE/MAX en orden (max = cuántas; 0 = todas). Sin ficha: la foto del listado.
+function urlsFotos(c, det, max) {
   if (det && (det.photos || []).length) {
-    urls = det.photos.slice().sort(function (a, b) { return (a.position || 0) - (b.position || 0); })
-      .slice(0, 5).map(function (p) { return FOTO_CDN + (p.value || ((p.rawValue || "") + ".jpg")); });
-  } else if (fotoDe(c)) urls = [fotoDe(c)];
+    var l = det.photos.slice().sort(function (a, b) { return (a.position || 0) - (b.position || 0); });
+    if (max) l = l.slice(0, max);
+    return l.map(function (p) { return FOTO_CDN + (p.value || ((p.rawValue || "") + ".jpg")); });
+  }
+  return fotoDe(c) ? [fotoDe(c)] : [];
+}
+// Trae la ficha de RE/MAX (una sola vez por propiedad: queda en VP_CACHE).
+function traerFicha(c) {
+  if (VP_CACHE[c.slug]) return Promise.resolve(VP_CACHE[c.slug]);
+  return fetch(DET_EP + encodeURIComponent(c.slug)).then(function (r) { return r.json(); }).then(function (d) {
+    var det = d && d.data ? (d.data.data || d.data) : d;
+    if (!det || !(det.photos || det.title)) throw new Error("vacío");
+    VP_CACHE[c.slug] = det;
+    return det;
+  });
+}
+function pintarVistaPrevia(c, det, nota) {
+  var urls = urlsFotos(c, det, 5);
   var fotos = $("vp-fotos"); fotos.innerHTML = "";
   urls.forEach(function (u) {
     var im = document.createElement("img"); im.src = u; im.alt = ""; im.loading = "lazy"; fotos.appendChild(im);
@@ -2660,18 +2697,40 @@ function abrirVistaPrevia(c) {
   $("btn-vp-mas").setAttribute("data-mas", c.slug);
   refrescarMas(c.slug);
   pintarVistaPrevia(c, VP_CACHE[c.slug] || null, VP_CACHE[c.slug] ? "" : "Trayendo fotos y datos…");
+  $("btn-vp-x").textContent = pcMapa() ? "← Volver al mapa" : "✕";   // en la compu la ficha tapa el mapa
   $("vista-previa").style.display = "flex";
   $("vista-previa").scrollTop = 0;
   if (VP_CACHE[c.slug]) return;
-  fetch(DET_EP + encodeURIComponent(c.slug)).then(function (r) { return r.json(); }).then(function (d) {
-    var det = d && d.data ? (d.data.data || d.data) : d;
-    if (!det || !(det.photos || det.title)) throw new Error("vacío");
-    VP_CACHE[c.slug] = det;
+  traerFicha(c).then(function (det) {
     if (VP_ACTUAL === c) pintarVistaPrevia(c, det, "");
   }).catch(function () {
     if (VP_ACTUAL === c) pintarVistaPrevia(c, null, "No pude traer las demás fotos (sin conexión o RE/MAX no respondió).");
   });
 }
+// -------------------------- Galería de fotos (compu: tocar la foto de una tarjeta) --------------------------
+var GAL = { slug: null, fotos: [], i: 0 };
+function abrirGaleria(c) {
+  GAL = { slug: c.slug, fotos: urlsFotos(c, VP_CACHE[c.slug] || null, 0), i: 0 };
+  pintarGaleria();
+  abrirOverlay("galeria");
+  traerFicha(c).then(function (det) {
+    if (GAL.slug !== c.slug) return;
+    var u = urlsFotos(c, det, 0);
+    if (u.length) { GAL.fotos = u; pintarGaleria(); }
+  }).catch(function () {});
+}
+function pintarGaleria() {
+  var n = GAL.fotos.length;
+  $("gal-img").src = GAL.fotos[GAL.i] || "";
+  $("gal-cuenta").textContent = n ? (GAL.i + 1) + " / " + n : "Sin fotos";
+  $("btn-gal-ant").style.display = $("btn-gal-sig").style.display = n > 1 ? "" : "none";
+}
+function moverGaleria(d) {
+  var n = GAL.fotos.length; if (n < 2) return;
+  GAL.i = (GAL.i + d + n) % n; pintarGaleria();
+}
+function galeriaAbierta() { return $("galeria").style.display === "flex"; }
+function cerrarGaleria() { GAL.slug = null; cerrarOverlay("galeria"); }
 function cerrarVistaPrevia() { VP_ACTUAL = null; var v = $("vista-previa"); if (v) v.style.display = "none"; }
 
 function initSegs() {
@@ -2793,6 +2852,16 @@ function initSegs() {
   });
   $("btn-mapa-cerrar").addEventListener("click", cerrarMapa);
   $("btn-vp-x").addEventListener("click", cerrarVistaPrevia);
+  $("btn-gal-x").addEventListener("click", cerrarGaleria);
+  $("btn-gal-ant").addEventListener("click", function () { moverGaleria(-1); });
+  $("btn-gal-sig").addEventListener("click", function () { moverGaleria(1); });
+  $("galeria").addEventListener("click", function (e) { if (e.target === $("galeria")) cerrarGaleria(); });
+  document.addEventListener("keydown", function (e) {
+    if (!galeriaAbierta()) return;
+    if (e.key === "ArrowRight") moverGaleria(1);
+    else if (e.key === "ArrowLeft") moverGaleria(-1);
+    else if (e.key === "Escape") cerrarGaleria();
+  });
   $("vista-previa").addEventListener("click", function (e) { if (e.target === $("vista-previa")) cerrarVistaPrevia(); });
   $("btn-vp-mas").addEventListener("click", function () { if (VP_ACTUAL) alternarElegidaMapa(VP_ACTUAL); });
   $("mapa-valfiltro").querySelectorAll(".mv-chip").forEach(function (ch) {
