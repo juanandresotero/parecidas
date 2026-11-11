@@ -349,6 +349,32 @@ def caso_en_el_celu_la_tarjeta_sigue_igual(br):
     page.context.close()
 
 
+def caso_cartel_de_campanas_fuera_de_los_filtros(br):
+    page = pagina_mapa(br, 1440, 900)
+    page.evaluate("$('camp-banner').style.display = ''")
+    banner, filtros = caja(page, "#camp-banner"), caja(page, ".col-filtros")
+    assert banner["x"] >= filtros["r"] - 1, f"en la compu el cartel no va en la columna de los filtros: {banner} {filtros}"
+    assert page.evaluate("$('camp-banner').parentNode.className").find("col-filtros") < 0
+    page.evaluate("$('btn-vista').click()")      # → celular: vuelve arriba de todo, como siempre
+    assert page.evaluate("$('camp-banner').parentNode.className") == "col-filtros", "en el celu sigue arriba de todo"
+    page.context.close()
+
+
+def caso_ajustes_equilibrado_en_la_compu(br):
+    page = pagina_mapa(br, 1440, 900)
+    page.evaluate("$('btn-ajustes').click()")
+    tarjeta_aj = caja(page, "#ajustes .ajustes-card")
+    assert tarjeta_aj["w"] >= 760, f"en la compu Ajustes tiene que ser más ancho: {tarjeta_aj['w']}"
+    assert tarjeta_aj["h"] < 850, f"y menos alargado (en dos columnas): alto {tarjeta_aj['h']}"
+    vin, aso = caja(page, ".aj-vincular"), caja(page, ".aj-associate")
+    assert vin["x"] > aso["r"] - 1, "vincular va en la otra columna"
+    page.context.close()
+    cel = pagina(br, 420, 900, tactil=True)
+    cel.evaluate("$('btn-ajustes').click()")
+    assert caja(cel, "#ajustes .ajustes-card")["w"] <= 400, "en el celu Ajustes sigue igual"
+    cel.context.close()
+
+
 CASOS = [caso_compu_se_detecta_sola, caso_celular_nunca_cambia, caso_tablet_tactil_ancha_sigue_como_celular,
          caso_compu_con_ventana_angosta_sigue_como_celular, caso_el_boton_cambia_y_se_acuerda,
          caso_en_el_celu_el_boton_de_arriba_no_estorba_pero_hay_ajustes, caso_forzar_celular_en_compu_y_auto_vuelve,
@@ -359,7 +385,8 @@ CASOS = [caso_compu_se_detecta_sola, caso_celular_nunca_cambia, caso_tablet_tact
          caso_filtros_mas_anchos, caso_ver_en_mapa_resalta_el_pin, caso_tocar_el_titulo_abre_el_aviso,
          caso_tocar_otra_parte_no_abre_el_aviso, caso_tocar_la_foto_abre_la_galeria,
          caso_vista_previa_de_la_tarjeta_reemplaza_el_mapa, caso_vista_previa_del_pin_tambien_en_la_columna,
-         caso_en_el_celu_la_tarjeta_sigue_igual]
+         caso_en_el_celu_la_tarjeta_sigue_igual, caso_cartel_de_campanas_fuera_de_los_filtros,
+         caso_ajustes_equilibrado_en_la_compu]
 
 
 def main():

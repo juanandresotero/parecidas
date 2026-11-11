@@ -1545,6 +1545,7 @@ function abrirBusqueda(id) {
     window.__formBaseline = snapshotFiltros();                    // foto base: recién abierto = sin cambios
     window.__ultimaVista = null;                                  // baseline nuevo (no descarta al abrir)
     SEL = [];                                                     // otro cliente = otra selección
+    Object.keys(MAPA_VF).forEach(function (k) { MAPA_VF[k] = true; });   // mapa: todo menos descartadas (Juan 2026-11-11)
     b.nuevasMarcadas = slugsNuevasDe(b);                          // las nuevas de esta visita: se marcan adentro
     b.vistas = matchesDe(b).map(function (c) { return c.slug; });  // marca como visto → apaga el numerito
     if (b.recordarAt) b.recordAck = b.recordarAt;                 // lo abrió → apaga el destello del reloj
@@ -2055,6 +2056,8 @@ function aplicarVista() {
   document.body.classList.toggle("pc-ancho", ancho);
   document.body.classList.toggle("pc-mapa", conMapa);
   posicionarMapa(conMapa);
+  var cb = $("camp-banner"), destino = document.querySelector(ancho ? ".col-res" : ".col-filtros");   // en la compu, fuera de los filtros
+  if (cb.parentNode !== destino) destino.insertBefore(cb, destino.firstChild);
   var b = $("btn-vista");
   b.style.display = (pc || window.innerWidth >= 700) ? "" : "none";   // en un celu no ocupa lugar arriba (está en Ajustes)
   b.textContent = pc ? "📱 Vista celular" : "🖥️ Vista escritorio";
@@ -2114,8 +2117,8 @@ function pintarMapaNuevo() {
 // ⚙️ en amarillo hasta que active los avisos (apunta a dónde activarlos). Si ya los
 // activó, no hace falta el amarillo.
 function pintarAjustesNuevo() {
-  var pend = !novedadVista("ajustes-nv") &&
-    (!("Notification" in window) || Notification.permission !== "granted");
+  var pend = !novedadVista("vincular-nv") || (!novedadVista("ajustes-nv") &&
+    (!("Notification" in window) || Notification.permission !== "granted"));
   $("btn-ajustes").classList.toggle("nuevo", pend);
 }
 
@@ -2433,7 +2436,7 @@ var MAPA_MARCAS = {};   // slug → marcador dibujado (para marcarlo cuando se e
 var MAPA_SUCIO = false;   // se cambió una ⭐ desde el mapa: al cerrarlo hay que volver a dibujar la lista
 // Filtro del mapa por ESTADO de valoración. Default: solo "sin valorar". Los estados que
 // NO están acá (los descartes 🔴) NUNCA se muestran.
-var MAPA_VF = { sin_valorar: true, a_enviar: false, enviada: false, favorita: false, pendiente: false };
+var MAPA_VF = { sin_valorar: true, a_enviar: true, enviada: true, favorita: true, pendiente: true };
 // Marcador "gota invertida" con el ícono de la valoración adentro (⭐/💚/📤/⏳).
 function iconoMapa(emoji, elegida) {
   return L.divIcon({
@@ -2792,12 +2795,9 @@ function initSegs() {
   // → arranca limpio y solo verá las novedades de acá en adelante. El que YA usó la app sí
   // ve las novedades nuevas. (Juan 2026-08-14)
   // Todas las ventanitas de novedades, en orden VIEJA → NUEVA. Al sumar una nueva, va al final.
-  // "news-escritorio" = la ventanita única: temporarios + visor por mapa + vista de escritorio (clave nueva:
-  // la ve también quien ya había visto la versión anterior).
-  // "news-escritorio" (temporarios + mapa + compu + vincular) queda APAGADA hasta que Juan apruebe el texto del
-  // aviso (2026-11-11: "luego vamos al aviso"). Para prenderla: sumarla al final de esta lista y volver a poner
-  // caso_ventanita_vuelve_a_salir... en CASOS_NAVEGADOR de test_temporal.py.
-  var NEWS = ["news", "news-agente", "news-avisos"];
+  // "news-vincular" = vincular celu y compu + vista de escritorio (2026-11-11). La anterior (temporarios + mapa)
+  // se BORRÓ a pedido de Juan: quien no la vio, se la pierde.
+  var NEWS = ["news", "news-agente", "news-avisos", "news-vincular"];
   if (!novedadVista("iniciado")) {
     if (esPrimeraVezEnLaApp()) NEWS.forEach(marcarNovedad);
     marcarNovedad("iniciado");
@@ -2832,10 +2832,10 @@ function initSegs() {
   $("btn-news-avisos-ok").addEventListener("click", cerrarNewsAvisos);
   $("btn-news-avisos-x").addEventListener("click", cerrarNewsAvisos);
   $("news-avisos").addEventListener("click", function (e) { if (e.target === $("news-avisos")) cerrarNewsAvisos(); });
-  var cerrarNewsTemporal = function () { marcarNovedad("news-escritorio"); cerrarOverlay("news-escritorio"); };
-  $("btn-news-temporal-ok").addEventListener("click", cerrarNewsTemporal);
-  $("btn-news-temporal-x").addEventListener("click", cerrarNewsTemporal);
-  $("news-escritorio").addEventListener("click", function (e) { if (e.target === $("news-escritorio")) cerrarNewsTemporal(); });
+  var cerrarNewsVincular = function () { marcarNovedad("news-vincular"); cerrarOverlay("news-vincular"); };
+  $("btn-news-vincular-ok").addEventListener("click", cerrarNewsVincular);
+  $("btn-news-vincular-x").addEventListener("click", cerrarNewsVincular);
+  $("news-vincular").addEventListener("click", function (e) { if (e.target === $("news-vincular")) cerrarNewsVincular(); });
   $("btn-agente").addEventListener("click", function () {
     marcarNovedad("agente-btn"); $("btn-agente").classList.remove("nuevo");   // ya lo usó → sale del amarillo
     var a = window.__agente; if (!a) return;
@@ -2908,7 +2908,7 @@ function initSegs() {
   $("btn-limpiar-borrar").addEventListener("click", ejecutarLimpiar);
   // Ajustes (associate editable)
   $("btn-ajustes").addEventListener("click", function () {
-    marcarNovedad("ajustes-nv"); $("btn-ajustes").classList.remove("nuevo");   // ya la vio
+    marcarNovedad("ajustes-nv"); marcarNovedad("vincular-nv"); $("btn-ajustes").classList.remove("nuevo");   // ya la vio
     $("in-associate").value = ASSOCIATE;
     $("ajustes-msg").textContent = "";
     pintarEstadoAvisos();

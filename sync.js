@@ -194,7 +194,9 @@
   }
 
   // ---------- vincular / crear / desvincular ----------
+  function marcarVisto() { try { localStorage.setItem("parecidas_nv_sync-nv", "1"); } catch (e) {} }
   async function crear() {
+    marcarVisto();
     var codigo = codigoNuevo();
     guardar(ESTADO, { codigo: codigo, v: 0, ultima: 0, error: "" });
     await derivar(codigo);
@@ -207,6 +209,7 @@
     var anterior = leer(ESTADO, null);
     guardar(ESTADO, { codigo: codigo, v: 0, ultima: 0, error: "" });
     var r = await sincronizar();
+    if (r.ok) marcarVisto();
     if (!r.ok) { if (anterior) guardar(ESTADO, anterior); else { try { localStorage.removeItem(ESTADO); } catch (e) {} } pintar(); }
     return r;
   }
@@ -230,6 +233,9 @@
     if (!$("sync-sin")) return;
     var st = estado();
     $("sync-sin").style.display = st.vinculado ? "none" : "";
+    var visto = false;
+    try { visto = localStorage.getItem("parecidas_nv_sync-nv") === "1"; } catch (e) {}
+    $("btn-sync-crear").classList.toggle("nuevo", !visto && !st.vinculado);   // dorado: la novedad está acá
     $("sync-con").style.display = st.vinculado ? "" : "none";
     if (st.vinculado) {
       $("sync-estado").textContent = st.error ? "⚠️ " + st.error

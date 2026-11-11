@@ -244,11 +244,30 @@ def caso_el_mapa_vuelve_abierto_y_con_sus_filtros_al_recargar(page):
     preparar(page)
     page.evaluate("guardarBusquedaActual('Cliente prueba', '099111222', '', false); buscar();")
     abrir_mapa(page)
-    page.evaluate("document.querySelector('.mv-chip[data-v=\"favorita\"]').click()")
+    page.evaluate("document.querySelector('.mv-chip[data-v=\"pendiente\"]').click()")   # lo apaga
     page.reload(wait_until="load")
     page.wait_for_function("window.L && window.MAPA_MARCAS", timeout=30000)
     assert page.evaluate("getComputedStyle(document.getElementById('mapa-overlay')).display") != "none", "el mapa tendría que volver abierto"
-    assert page.evaluate("document.querySelector('.mv-chip[data-v=\"favorita\"]').getAttribute('aria-pressed')") == "true", "el filtro del mapa se perdió"
+    assert page.evaluate("document.querySelector('.mv-chip[data-v=\"pendiente\"]').getAttribute('aria-pressed')") == "false", "el filtro del mapa se perdió"
+
+
+def caso_al_abrir_un_cliente_el_mapa_muestra_todo_menos_descartadas(page):
+    """Juan 2026-11-11: al entrar a una búsqueda guardada, el mapa muestra sin valorar, para enviar, enviadas,
+    favoritas y pendientes (todo menos las descartadas)."""
+    preparar(page)
+    page.evaluate("guardarBusquedaActual('Cliente prueba', '099111222', '', false)")
+    slugs = page.evaluate("RENDER_RES.filter(function (c) { return c.lat != null; }).slice(0, 6).map(function (c) { return c.slug; })")
+    page.evaluate("""(s) => { setVal(s[0], 'a_enviar'); setVal(s[1], 'enviada'); setVal(s[2], 'favorita');
+        setVal(s[3], 'pendiente'); setVal(s[4], 'descarte_1'); MAPA_VF.favorita = false; }""", slugs)
+    page.evaluate("abrirBusqueda(busquedaActiva().id)")
+    abrir_mapa(page)
+    en_mapa = page.evaluate("Object.keys(MAPA_MARCAS)")
+    for k in range(4):
+        assert slugs[k] in en_mapa, f"la valorada #{k} tiene que estar en el mapa"
+    assert slugs[5] in en_mapa, "la sin valorar también"
+    assert slugs[4] not in en_mapa, "la descartada NUNCA"
+    chips = page.evaluate("Array.prototype.map.call(document.querySelectorAll('.mv-chip'), function (c) { return c.getAttribute('aria-pressed'); })")
+    assert chips and all(c == "true" for c in chips), f"todos los botoncitos del filtro prendidos: {chips}"
 
 
 # ----------------------------- orden -----------------------------
@@ -277,7 +296,7 @@ CASOS = [
     caso_vista_previa_sin_conexion_muestra_lo_que_hay,
     caso_la_seleccion_sobrevive_a_volver_a_buscar, caso_la_seleccion_sobrevive_a_recargar_la_app,
     caso_enviar_con_cliente_limpia_la_seleccion, caso_el_mapa_vuelve_abierto_y_con_sus_filtros_al_recargar,
-    caso_en_empate_gana_la_mas_cercana_en_m2,
+    caso_en_empate_gana_la_mas_cercana_en_m2, caso_al_abrir_un_cliente_el_mapa_muestra_todo_menos_descartadas,
 ]
 
 
