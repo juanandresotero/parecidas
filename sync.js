@@ -263,6 +263,10 @@
       var r = await vincular($("in-sync-codigo").value);
       pintar(); msg(r.ok ? "✓ Vinculado. Tus clientes ya están acá." : r.error);
     });
+    $("in-sync-codigo").addEventListener("input", function () {   // mayúsculas y guion solo cada 5 (no hay que escribirlo)
+      var t = this.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 20);
+      this.value = (t.match(/.{1,5}/g) || []).join("-");
+    });
     $("btn-sync-ver").addEventListener("click", mostrarCodigo);
     $("btn-sync-copiar-link").addEventListener("click", function () {
       var link = location.origin + location.pathname + "#vincular=" + estado().codigo;

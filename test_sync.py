@@ -269,7 +269,25 @@ def caso_la_compu_abierta_trae_los_cambios_sola(br, bov):
     a.context.close(); b.context.close()
 
 
-CASOS = [caso_crear_y_vincular_otro_aparato, caso_un_cambio_llega_al_otro, caso_borrar_llega_al_otro,
+def caso_el_guion_se_pone_solo(br, bov):
+    """Juan 2026-11-11: al escribir el código tenía que poner los guiones a mano. Se ponen solos (y en mayúscula)."""
+    a = aparato(br, bov)
+    codigo = a.evaluate("SYNC.crear()")
+    b = aparato(br, bov)
+    b.evaluate("$('btn-ajustes').click()")
+    campo = b.locator("#in-sync-codigo")
+    campo.click()
+    campo.type("abcdefghjk")
+    assert campo.input_value() == "ABCDE-FGHJK", f"guion automático cada 5: {campo.input_value()}"
+    campo.fill("")
+    campo.type(codigo.replace("-", "").lower() + "ZZZ")
+    assert campo.input_value() == codigo, f"el código completo queda con sus guiones y sin letras de más: {campo.input_value()}"
+    b.evaluate("$('btn-sync-vincular').click()")
+    b.wait_for_function("SYNC.estado().vinculado", timeout=10000)
+    a.context.close(); b.context.close()
+
+
+CASOS = [caso_el_guion_se_pone_solo, caso_crear_y_vincular_otro_aparato, caso_un_cambio_llega_al_otro, caso_borrar_llega_al_otro,
          caso_gana_el_cambio_mas_reciente, caso_cambios_distintos_se_suman_aunque_choquen, caso_viaja_cifrado,
          caso_codigo_invalido_o_ajeno, caso_associate_viaja, caso_sin_conexion_no_pierde_nada,
          caso_marca_de_modificacion, caso_pantalla_de_ajustes, caso_link_de_vinculacion,

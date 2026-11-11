@@ -2091,6 +2091,14 @@ function cerrarOverlay(id) { $(id).style.display = "none"; }
 
 // -------------------------- Novedades (cartel 1 vez + resaltado amarillo) --------------------------
 function novedadVista(k) { try { return localStorage.getItem("parecidas_nv_" + k) === "1"; } catch (e) { return true; } }
+// Algunas ventanitas valen solo unas semanas: después de su fecha, el que no la vio ya no la ve (Juan 2026-11-11).
+var NEWS_HASTA = { "news-celu-compu": "2026-12-09" };   // último día que se muestra (inclusive)
+function novedadVigente(k, hoy) {
+  var h = NEWS_HASTA[k]; if (!h) return true;
+  var d = hoy || new Date();
+  var f = d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+  return f <= h;
+}
 function marcarNovedad(k) { try { localStorage.setItem("parecidas_nv_" + k, "1"); } catch (e) {} }
 // ¿Primera vez ABSOLUTA en la app? = localStorage sin ninguna huella de uso previo.
 function esPrimeraVezEnLaApp() {
@@ -2822,7 +2830,7 @@ function initSegs() {
   // De las novedades pendientes, mostrar SOLO LA ÚLTIMA (la más nueva). Las viejas pendientes
   // se dan por vistas (quedaron superadas): si alguien no entró en varios cambios, no se le
   // encadenan 4 ventanitas — ve solo la última. (Juan 2026-08-15)
-  var newsPend = NEWS.filter(function (k) { return !novedadVista(k); });
+  var newsPend = NEWS.filter(function (k) { return !novedadVista(k) && novedadVigente(k); });
   if (newsPend.length) {
     newsPend.slice(0, -1).forEach(marcarNovedad);      // las viejas pendientes → dadas por vistas
     abrirOverlay(newsPend[newsPend.length - 1]);        // la más nueva se muestra (se marca al cerrarla)

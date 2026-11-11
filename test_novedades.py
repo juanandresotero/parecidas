@@ -80,7 +80,17 @@ def caso_ajustes_en_dorado_hasta_abrirlo(br):
     page.context.close()
 
 
-CASOS = [caso_la_ve_quien_ya_usaba_la_app, caso_la_vieja_no_existe_mas, caso_no_sale_a_quien_abre_la_app_por_primera_vez,
+def caso_vence_en_unas_semanas(br):
+    """Juan 2026-11-11: la ventanita vale solo por las próximas semanas (hasta el 9/12/2026). Después no sale más."""
+    page = pagina_nueva(br)
+    assert page.evaluate("novedadVigente('news-celu-compu', new Date('2026-11-20T12:00:00'))") is True, "en noviembre se muestra"
+    assert page.evaluate("novedadVigente('news-celu-compu', new Date('2026-12-09T23:00:00'))") is True, "el 9/12 todavía"
+    assert page.evaluate("novedadVigente('news-celu-compu', new Date('2026-12-10T08:00:00'))") is False, "desde el 10/12 ya no"
+    assert page.evaluate("novedadVigente('news-avisos', new Date('2030-01-01'))") is True, "las que no tienen vencimiento siguen igual"
+    page.context.close()
+
+
+CASOS = [caso_vence_en_unas_semanas, caso_la_ve_quien_ya_usaba_la_app, caso_la_vieja_no_existe_mas, caso_no_sale_a_quien_abre_la_app_por_primera_vez,
          caso_ajustes_en_dorado_hasta_abrirlo]
 
 
