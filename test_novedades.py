@@ -39,7 +39,9 @@ def caso_la_ve_quien_ya_usaba_la_app(br):
     assert "ompu" in txt and "elu" in txt, f"habla de compu y celu: {txt}"
     assert "ecarg" in txt, f"avisa que en el otro aparato hay que recargar para ver los cambios: {txt}"
     assert "scritorio" in txt, f"explica la vista de escritorio: {txt}"
-    assert len(txt) < 560, f"tiene que ser breve ({len(txt)} caracteres)"
+    assert "otro aparato" in txt and "código" in txt, f"explica que el código se escribe en el otro aparato: {txt}"
+    assert "uardá el código" in txt and "respaldo" in txt, f"explica que hay que guardar el código como respaldo: {txt}"
+    assert len(txt) < 650, f"tiene que ser breve ({len(txt)} caracteres)"
     titulos = page.evaluate(f"Array.prototype.map.call(document.querySelectorAll('#{VENT} .news-item .news-tit'), function (t) {{ return t.textContent; }})")
     assert len(titulos) == 2, f"dos novedades, cada una con su TÍTULO descriptivo: {titulos}"
     assert "elu" in titulos[0] and "ompu" in titulos[0], f"el título 1 dice de qué se trata (celu y compu): {titulos[0]}"
