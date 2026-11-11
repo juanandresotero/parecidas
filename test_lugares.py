@@ -205,7 +205,7 @@ def caso_la_captura_del_colega(page):
     esperado = slugs(
         x for x in venta()
         if x["depto"] in ("Montevideo", "Canelones")
-        and x.get("precio_usd") is not None and x["precio_usd"] <= 57500
+        and (x.get("precio_usd") is None or x["precio_usd"] <= 57500)   # sin precio entra con "Falta dato" (Juan 2026-10-16)
         and x.get("dorm") is not None and 1 <= x["dorm"] <= 3
         and x.get("banos") is not None and 1 <= x["banos"] <= 3
         and x.get("m2_homog") is not None and x["m2_homog"] <= 100
