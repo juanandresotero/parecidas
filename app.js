@@ -451,6 +451,7 @@ function buscar() {
   render(lista, totalVisible, [], fuera, yaNoEntra);
   pintarIgnoradas(textoIgnoradas(nd.ign));
   recordarLista(lista, b);
+  if (pcMapa()) { if (window.__noRepintarMapa) window.__noRepintarMapa = false; else abrirMapa(); }
   guardarEstadoActual();   // recordar lo que se está viendo (sobrevive a recargar)
 }
 // Cartel "Ignoradas: 3 reservadas y 1 en negociación" (vacío = escondido).
@@ -831,6 +832,13 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
         (porque(c, f) ? '<span class="porque">' + porque(c, f) + '</span>' : "") +
       '</div>';
     card.appendChild(link);
+    if (c.lat != null && c.lng != null) {   // 📍 (solo se ve con el mapa a la vista): lleva al pin de esta propiedad
+      var pin = document.createElement("button");
+      pin.type = "button"; pin.className = "card-pin"; pin.textContent = "📍";
+      pin.title = "Ver en el mapa"; pin.setAttribute("aria-label", "Ver en el mapa");
+      pin.onclick = function () { verEnMapa(c.slug); };
+      card.appendChild(pin);
+    }
     if (bAct) {
       var vb = document.createElement("button");
       vb.className = "val-btn"; vb.textContent = VAL_ESTADOS[valDe(bAct, c.slug)].icono;
@@ -2027,7 +2035,11 @@ function pcProbable() {
 function aplicarVista() {
   var pref = vistaPref();
   var pc = pref === "pc" || (pref !== "celu" && pcProbable());
+  var ancho = pc && window.innerWidth >= 900, conMapa = pc && window.innerWidth >= 1200;
   document.body.classList.toggle("vista-pc", pc);
+  document.body.classList.toggle("pc-ancho", ancho);
+  document.body.classList.toggle("pc-mapa", conMapa);
+  posicionarMapa(conMapa);
   var b = $("btn-vista");
   b.style.display = (pc || window.innerWidth >= 700) ? "" : "none";   // en un celu no ocupa lugar arriba (está en Ajustes)
   b.textContent = pc ? "📱 Vista celular" : "🖥️ Vista escritorio";
@@ -2035,6 +2047,19 @@ function aplicarVista() {
   ["auto", "celu", "pc"].forEach(function (k) {
     $("vista-" + k).setAttribute("aria-pressed", String(k === "auto" ? !pref : pref === k));
   });
+}
+// Pantalla grande: el mapa vive en su columna y siempre está a la vista. Si no, es el overlay de siempre.
+var MAPA_EN_PANEL = false;
+function pcMapa() { return document.body.classList.contains("pc-mapa"); }
+function posicionarMapa(conMapa) {
+  var ov = $("mapa-overlay");
+  if (conMapa === MAPA_EN_PANEL) { if (MAPA) setTimeout(function () { MAPA.invalidateSize(); }, 120); return; }
+  MAPA_EN_PANEL = conMapa;
+  if (conMapa) { $("col-mapa").appendChild(ov); abrirMapa(); }
+  else {
+    document.body.appendChild(ov); ov.style.display = "none"; cerrarVistaPrevia();
+    if (MAPA) setTimeout(function () { MAPA.invalidateSize(); }, 120);
+  }
 }
 function elegirVista(v) {
   try { if (v) localStorage.setItem(VISTA_KEY, v); else localStorage.removeItem(VISTA_KEY); } catch (e) {}
@@ -2415,8 +2440,9 @@ function abrirMapa() {
   var res = filtrar(f, ref, window.__slugActual || null);
   var vistos = {}; res.forEach(function (c) { vistos[c.slug] = 1; });
   (RENDER_RES || []).forEach(function (c) { if (!vistos[c.slug]) { res.push(c); vistos[c.slug] = 1; } });
+  if (pcMapa() && !(RENDER_RES || []).length) res = [];   // en el panel, sin búsqueda hecha el mapa arranca vacío
   MAPA_RES = res.filter(function (c) { return c.lat != null && c.lng != null; });
-  if (!MAPA_RES.length) { alert("Estas parecidas todavía no tienen ubicación en el mapa."); return; }
+  if (!MAPA_RES.length && !pcMapa()) { alert("Estas parecidas todavía no tienen ubicación en el mapa."); return; }
   var b = busquedaActiva();
   $("mapa-valfiltro").style.display = b ? "flex" : "none";   // filtro solo con cliente abierto
   if (b) $("mapa-valfiltro").querySelectorAll(".mv-chip").forEach(function (ch) {
@@ -2426,7 +2452,7 @@ function abrirMapa() {
   guardarEstadoActual();   // recuerda que el mapa está abierto (si se sale a "Ver aviso completo", al volver sigue)
   cargarLeaflet(function () {
     if (!MAPA) {
-      MAPA = L.map("mapa");
+      MAPA = L.map("mapa").setView([-34.9, -56.16], 11);   // vista inicial (Montevideo) hasta que haya pines
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
         { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(MAPA);
       MAPA._grupo = L.layerGroup().addTo(MAPA);
@@ -2472,12 +2498,19 @@ function pintarMapa() {
   $("mapa-titulo").textContent = "Parecidas en el mapa (" + lista.length + ")";
   if (pts.length) MAPA.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });
 }
-function mapaAbierto() { var o = $("mapa-overlay"); return !!o && o.style.display !== "none"; }
+function mapaAbierto() { var o = $("mapa-overlay"); return !!o && !pcMapa() && o.style.display !== "none"; }
 function cerrarMapa() {
-  $("mapa-overlay").style.display = "none";
+  if (!pcMapa()) $("mapa-overlay").style.display = "none";   // en el panel de escritorio no se cierra
   cerrarVistaPrevia();
   if (MAPA_SUCIO) { MAPA_SUCIO = false; buscar(); }   // una ⭐ cambió en el mapa: la lista la muestra (y guarda el estado)
   else guardarEstadoActual();
+}
+
+function verEnMapa(slug) {
+  var m = MAPA_MARCAS[slug];
+  if (!m || !MAPA) return;
+  MAPA.setView(m.getLatLng(), Math.max(MAPA.getZoom(), 16));
+  m.openPopup();
 }
 
 // Ícono que va dentro del pin: el de la valoración del cliente (⭐/💚/📤/⏳); "sin valorar" = gota vacía.
@@ -2536,7 +2569,13 @@ function alternarElegidaMapa(c) {
     g.querySelector("span").textContent = emojiPin(c);
   }
   refrescarMas(c.slug);
-  if (modoEstrella()) MAPA_SUCIO = true;   // con cliente la ⭐ cambió: al cerrar el mapa se redibuja la lista
+  if (modoEstrella()) listaCambioDesdeMapa();   // con cliente la ⭐ cambió: la lista tiene que redibujarse
+}
+// Cambió algo desde el mapa y la lista tiene que redibujarse. En el celular se hace al cerrar el mapa; en el
+// panel de escritorio, ya mismo, pero SIN repintar el mapa (así el cartelito no se cierra ni el mapa se mueve).
+function listaCambioDesdeMapa() {
+  if (pcMapa()) { window.__noRepintarMapa = true; buscar(); }
+  else MAPA_SUCIO = true;
 }
 
 // El "−" del mapa (solo con la búsqueda guardada): descarta la propiedad con 🔴 "No me gustó". Sale del
@@ -2549,7 +2588,7 @@ function descartarDesdeMapa(c) {
   var m = MAPA_MARCAS[c.slug];
   if (m) { m.closePopup(); MAPA._grupo.removeLayer(m); delete MAPA_MARCAS[c.slug]; }
   $("mapa-titulo").textContent = "Parecidas en el mapa (" + Object.keys(MAPA_MARCAS).length + ")";
-  MAPA_SUCIO = true;   // al cerrar el mapa se vuelve a dibujar la lista y la muestra con 🔴
+  listaCambioDesdeMapa();   // la lista se vuelve a dibujar y la muestra con 🔴
   guardarEstadoActual();
 }
 

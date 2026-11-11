@@ -56,16 +56,28 @@
   .vista-btn{width:auto;padding:0 12px;border-radius:17px;font-size:12.5px;font-weight:700;white-space:nowrap}
   /* VISTA DE ESCRITORIO: solo si el JS pone body.vista-pc Y la ventana mide 900 px o más. Un celular
      nunca la usa (si algo falla, queda la vista de celular de siempre). */
-  @media (min-width:900px){
-    body.vista-pc .wrap{max-width:1280px}
-    body.vista-pc .cuerpo{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:20px;align-items:start}
-    body.vista-pc .col-filtros{display:flex;flex-direction:column;gap:15px;position:sticky;top:78px;
-      max-height:calc(100vh - 92px);overflow-y:auto;padding:2px 6px 8px 2px}
-    body.vista-pc .col-res{display:block;min-width:0}
-    body.vista-pc .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
-    body.vista-pc .vp-card{max-width:640px}
-    body.vista-pc .vp-fotos img{height:340px}
-  }
+  .col-mapa{display:none}
+  .card-pin{display:none}
+  /* El JS pone body.pc-ancho (escritorio y ventana ≥ 900 px) y body.pc-mapa (escritorio y ventana ≥ 1200 px). */
+  body.pc-ancho .wrap{max-width:1280px}
+  body.pc-ancho .cuerpo{display:grid;grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:20px;align-items:start}
+  body.pc-ancho .col-filtros{display:flex;flex-direction:column;gap:15px;position:sticky;top:78px;
+    max-height:calc(100vh - 92px);overflow-y:auto;padding:2px 6px 8px 2px}
+  body.pc-ancho .col-res{display:block;min-width:0}
+  body.pc-ancho .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
+  body.pc-ancho .vp-card{max-width:640px}
+  body.pc-ancho .vp-fotos img{height:340px}
+  /* Pantalla grande (≥ 1200 px): filtros | lista | MAPA siempre a la vista */
+  body.pc-mapa .wrap{max-width:1760px}
+  body.pc-mapa .cuerpo{grid-template-columns:minmax(300px,340px) minmax(340px,1fr) minmax(0,1.25fr)}
+  body.pc-mapa .cards{grid-template-columns:1fr}
+  body.pc-mapa .col-mapa{display:block;min-width:0;position:sticky;top:78px;height:calc(100vh - 92px)}
+  body.pc-mapa #mapa-overlay{position:relative !important;inset:auto !important;z-index:1 !important;display:flex !important;
+    height:100%;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+  body.pc-mapa #btn-mapa-cerrar,body.pc-mapa #btn-mapa{display:none !important}
+  body.pc-mapa .card-pin{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
+    width:34px;height:34px;border:1px solid var(--line);background:var(--surface);border-radius:50%;cursor:pointer;
+    font-size:16px;align-self:center}
   .bloque{background:var(--surface-2);border:1px solid var(--line);
     border-radius:var(--radius);padding:13px}
   .bloque>.titulo{font-size:11px;font-weight:800;text-transform:uppercase;
@@ -639,6 +651,7 @@
          la última parecida si hay resultados (queda después de #resultados). -->
     <div id="datos-fecha" style="text-align:center;color:#8a9099;font-size:12.5px;margin:14px 4px 2px;line-height:1.35"></div>
    </div>
+   <div class="col-mapa" id="col-mapa"></div>
   </div>
 </div>
 <div class="multibar" id="multibar" style="display:none">

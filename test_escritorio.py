@@ -122,10 +122,121 @@ def caso_mapa_y_ventanas_en_escritorio(br):
     page.context.close()
 
 
+PNG_1X1 = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082")
+
+
+def pagina_mapa(br, ancho=1400, alto=900):
+    """Compu con los mosaicos del mapa simulados (rápido y sin red)."""
+    ctx = br.new_context(service_workers="block", viewport={"width": ancho, "height": alto})
+    ctx.route("**/tile.openstreetmap.org/**", lambda r: r.fulfill(status=200, body=PNG_1X1, content_type="image/png"))
+    ctx.route("**/d1acdg20u0pmxj.cloudfront.net/**", lambda r: r.fulfill(status=200, body=PNG_1X1, content_type="image/png"))
+    page = ctx.new_page()
+    page.goto(f"http://127.0.0.1:{PUERTO}/", wait_until="load")
+    page.wait_for_function("DATA.length > 0", timeout=20000)
+    return page
+
+
+def mapa_listo(page):
+    page.wait_for_function("window.L && window.MAPA && document.querySelector('#mapa .leaflet-tile-pane')", timeout=30000)
+
+
+def en_el_panel(page):
+    return page.evaluate("document.getElementById('mapa-overlay').parentNode.id || document.getElementById('mapa-overlay').parentNode.tagName")
+
+
+def caso_en_compu_grande_el_mapa_esta_siempre_a_la_vista(br):
+    page = pagina_mapa(br)
+    mapa_listo(page)
+    assert en_el_panel(page) == "col-mapa", "en pantalla grande el mapa vive en su columna"
+    assert caja(page, "#mapa-overlay")["w"] > 350, "el mapa tiene que verse aunque todavía no se buscó nada"
+    assert page.evaluate("$('btn-mapa-cerrar').offsetParent === null"), "no hay botón Cerrar: el mapa no se cierra"
+    page.evaluate(BUSCAR)
+    page.wait_for_function("Object.keys(MAPA_MARCAS).length > 0", timeout=30000)
+    marcas = page.evaluate("Object.keys(MAPA_MARCAS).length")
+    con_coords = page.evaluate("RENDER_RES.filter(function (c) { return c.lat != null; }).length")
+    assert marcas == con_coords, f"el mapa muestra lo mismo que la lista: {marcas} pines vs {con_coords}"
+    lista, mapa = caja(page, "#resultados"), caja(page, "#mapa-overlay")
+    assert mapa["x"] >= lista["r"] - 1, f"el mapa va a la derecha de la lista: {lista} {mapa}"
+    assert page.evaluate("$('btn-mapa').offsetParent === null"), "el botón 'Ver en el mapa' sobra: el mapa ya está"
+    assert sin_scroll_horizontal(page)
+    page.context.close()
+
+
+def caso_cada_busqueda_repinta_el_mapa(br):
+    page = pagina_mapa(br)
+    page.evaluate(BUSCAR)
+    page.wait_for_function("Object.keys(MAPA_MARCAS).length > 0", timeout=30000)
+    page.evaluate("() => { setSeg('f-oper', 'rent'); $('f-precio-max').value = ''; buscar(); }")
+    page.wait_for_function("RENDER_RES.length > 0 && RENDER_RES[0].operacion === 'rent'", timeout=10000)
+    ok = page.evaluate("""() => { var n = Object.keys(MAPA_MARCAS).length;
+        return n === RENDER_RES.filter(function (c) { return c.lat != null; }).length; }""")
+    assert ok, "al buscar de nuevo, el mapa se actualiza con la nueva lista"
+    page.context.close()
+
+
+def caso_el_mas_del_mapa_no_cierra_el_cartelito(br):
+    """Con cliente guardado el ＋ marca la ⭐ y la lista se actualiza SIN repintar el mapa (el cartelito queda abierto)."""
+    page = pagina_mapa(br)
+    page.evaluate(BUSCAR)
+    page.wait_for_function("Object.keys(MAPA_MARCAS).length > 0", timeout=30000)
+    page.evaluate("guardarBusquedaActual('Cliente prueba', '099111222', '', false)")
+    slug = page.evaluate("Object.keys(MAPA_MARCAS)[0]")
+    page.evaluate("(s) => MAPA_MARCAS[s].openPopup()", slug)
+    page.wait_for_selector(".leaflet-popup .pin-mas", timeout=5000)
+    page.locator(".leaflet-popup .pin-mas").click()
+    page.wait_for_timeout(400)
+    assert page.evaluate("valDe(busquedaActiva(), %r)" % slug) == "a_enviar", "el ＋ tiene que dejar la ⭐ para enviar"
+    assert page.locator(".leaflet-popup .pin-mas").count() == 1, "el cartelito no se tiene que cerrar al tocar ＋"
+    estrella = page.evaluate("""(s) => { var o = CARDS.filter(function (x) { return x.slug === s; })[0]; return !!o && o.card.classList.contains('val-a_enviar'); }""", slug)
+    assert estrella, "la tarjeta de la lista también quedó con ⭐"
+    page.context.close()
+
+
+def caso_el_pin_de_la_tarjeta_lleva_al_mapa(br):
+    page = pagina_mapa(br)
+    page.evaluate(BUSCAR)
+    page.wait_for_function("Object.keys(MAPA_MARCAS).length > 0", timeout=30000)
+    slug = page.evaluate("RENDER_RES.filter(function (c) { return c.lat != null; })[0].slug")
+    page.evaluate("""(s) => { var o = CARDS.filter(function (x) { return x.slug === s; })[0]; o.card.querySelector('.card-pin').click(); }""", slug)
+    page.wait_for_selector(".leaflet-popup .pin-mas", timeout=5000)
+    assert page.evaluate("document.querySelector('.leaflet-popup a.pin-ver').getAttribute('href').endsWith(%r)" % slug), "el cartelito es el de esa propiedad"
+    page.context.close()
+
+
+def caso_ventana_mediana_usa_el_mapa_de_siempre(br):
+    page = pagina_mapa(br, 1100, 800)
+    page.evaluate(BUSCAR)
+    assert es_pc(page) and en_el_panel(page) == "BODY", "entre 1000 y 1199 px hay escritorio pero el mapa sigue siendo el botón de siempre"
+    assert page.evaluate("$('btn-mapa').offsetParent !== null"), "el botón del mapa sigue visible"
+    assert page.evaluate("$('mapa-overlay').style.display === 'none'"), "y el mapa arranca cerrado"
+    page.context.close()
+
+
+def caso_celular_no_tiene_mapa_fijo(br):
+    page = pagina(br, 420, 900, tactil=True)
+    page.evaluate(BUSCAR)
+    assert en_el_panel(page) == "BODY" and page.evaluate("$('mapa-overlay').style.display === 'none'"), "el celular no muestra el mapa solo"
+    page.context.close()
+
+
+def caso_pasar_a_celular_devuelve_el_mapa_al_boton(br):
+    page = pagina_mapa(br)
+    page.evaluate(BUSCAR)
+    page.wait_for_function("Object.keys(MAPA_MARCAS).length > 0", timeout=30000)
+    page.evaluate("$('btn-vista').click()")      # → vista de celular
+    assert en_el_panel(page) == "BODY" and page.evaluate("$('mapa-overlay').style.display === 'none'"), "en vista de celular el mapa vuelve a ser el botón"
+    page.evaluate("$('btn-vista').click()")      # → escritorio otra vez
+    page.wait_for_function("document.getElementById('mapa-overlay').parentNode.id === 'col-mapa'", timeout=5000)
+    page.context.close()
+
+
 CASOS = [caso_compu_se_detecta_sola, caso_celular_nunca_cambia, caso_tablet_tactil_ancha_sigue_como_celular,
          caso_compu_con_ventana_angosta_sigue_como_celular, caso_el_boton_cambia_y_se_acuerda,
          caso_en_el_celu_el_boton_de_arriba_no_estorba_pero_hay_ajustes, caso_forzar_celular_en_compu_y_auto_vuelve,
-         caso_mapa_y_ventanas_en_escritorio]
+         caso_mapa_y_ventanas_en_escritorio, caso_en_compu_grande_el_mapa_esta_siempre_a_la_vista,
+         caso_cada_busqueda_repinta_el_mapa, caso_el_mas_del_mapa_no_cierra_el_cartelito,
+         caso_el_pin_de_la_tarjeta_lleva_al_mapa, caso_ventana_mediana_usa_el_mapa_de_siempre,
+         caso_celular_no_tiene_mapa_fijo, caso_pasar_a_celular_devuelve_el_mapa_al_boton]
 
 
 def main():
