@@ -69,7 +69,7 @@ def caso_boton_amarillo_hasta_el_primer_toque(br):
     assert not page.evaluate(es_nuevo), "ya lo usó: no tiene que volver a amarillo al recargar"
 
 
-VENTANITA = "news-temporal-mapa"   # una sola ventanita: temporarios + visor por mapa
+VENTANITA = "news-escritorio"   # una sola ventanita: temporarios + visor por mapa
 
 
 def _usuario_que_ya_conocia_la_app(page):
@@ -77,7 +77,7 @@ def _usuario_que_ya_conocia_la_app(page):
     (La 1ª carga de pagina_nueva lo trató como usuario nuevo y marcó todo visto: ajustamos lo que corresponde.)"""
     page.evaluate("""() => { ['news', 'news-agente', 'news-avisos', 'news-temporal', 'temporal-btn', 'iniciado'].forEach(function (k) {
         localStorage.setItem('parecidas_nv_' + k, '1'); });
-        ['news-temporal-mapa', 'mapa-btn'].forEach(function (k) { localStorage.removeItem('parecidas_nv_' + k); });
+        ['news-escritorio', 'mapa-btn'].forEach(function (k) { localStorage.removeItem('parecidas_nv_' + k); });
         localStorage.setItem('parecidas_busquedas', '[]'); }""")
     page.reload(wait_until="load")
     page.wait_for_function("DATA.length > 0", timeout=20000)
@@ -91,8 +91,9 @@ def caso_ventanita_vuelve_a_salir_con_lo_del_mapa_a_quien_ya_vio_la_de_temporari
     assert page.evaluate(visible), "quien ya vio la ventanita de temporarios tiene que ver esta, con lo del mapa"
     txt = page.evaluate(f"document.getElementById('{VENTANITA}').textContent")
     assert "emporario" in txt and "apa" in txt, f"la ventanita tiene que hablar de temporarios Y del mapa: {txt}"
+    assert "ompu" in txt, f"la ventanita también tiene que avisar de la vista de escritorio: {txt}"
     assert len(txt) < 420, f"tiene que ser súper breve ({len(txt)} caracteres)"
-    assert page.evaluate("document.querySelectorAll('#%s li').length" % VENTANITA) == 3, "debe tener 3 renglones: 2 de temporarios y 1 del mapa"
+    assert page.evaluate("document.querySelectorAll('#%s li').length" % VENTANITA) == 4, "debe tener 4 renglones: 2 de temporarios, 1 del mapa y 1 de la compu"
     assert not page.evaluate("['news','news-agente','news-avisos'].some(function (k) { return getComputedStyle(document.getElementById(k)).display !== 'none'; })"), \
         "no se deben mostrar las ventanitas viejas a la vez"
     page.evaluate("document.getElementById('btn-news-temporal-ok').click()")
@@ -117,7 +118,7 @@ def caso_el_boton_del_mapa_arranca_en_amarillo_hasta_el_primer_toque(br):
 
 def caso_ventanita_no_sale_a_quien_abre_la_app_por_primera_vez(br):
     page = pagina_nueva(br)
-    visible = "['news','news-agente','news-avisos','news-temporal-mapa'].some(function (k) { var e = document.getElementById(k); return e && getComputedStyle(e).display !== 'none'; })"
+    visible = "['news','news-agente','news-avisos','news-escritorio'].some(function (k) { var e = document.getElementById(k); return e && getComputedStyle(e).display !== 'none'; })"
     page.wait_for_timeout(300)
     assert not page.evaluate(visible), "la primera vez que alguien abre la app no se le muestran novedades"
 

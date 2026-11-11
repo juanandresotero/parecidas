@@ -2014,6 +2014,33 @@ async function probarAviso() {
   } catch (e) { el.textContent = "No pude mandar la prueba."; }
 }
 
+// -------------------------- Vista de escritorio --------------------------
+// Automático = escritorio solo si la ventana mide 1000 px o más Y hay mouse (hover + puntero fino): un celular
+// o una tablet táctil NUNCA cumplen eso. Quien quiera, elige a mano (se acuerda): "pc" | "celu" | "" (auto).
+var VISTA_KEY = "parecidas_vista";
+function vistaPref() {
+  try { var v = localStorage.getItem(VISTA_KEY); return (v === "pc" || v === "celu") ? v : ""; } catch (e) { return ""; }
+}
+function pcProbable() {
+  return !!(window.matchMedia && window.matchMedia("(min-width:1000px) and (hover:hover) and (pointer:fine)").matches);
+}
+function aplicarVista() {
+  var pref = vistaPref();
+  var pc = pref === "pc" || (pref !== "celu" && pcProbable());
+  document.body.classList.toggle("vista-pc", pc);
+  var b = $("btn-vista");
+  b.style.display = (pc || window.innerWidth >= 700) ? "" : "none";   // en un celu no ocupa lugar arriba (está en Ajustes)
+  b.textContent = pc ? "📱 Vista celular" : "🖥️ Vista escritorio";
+  b.classList.toggle("nuevo", !novedadVista("vista-btn"));
+  ["auto", "celu", "pc"].forEach(function (k) {
+    $("vista-" + k).setAttribute("aria-pressed", String(k === "auto" ? !pref : pref === k));
+  });
+}
+function elegirVista(v) {
+  try { if (v) localStorage.setItem(VISTA_KEY, v); else localStorage.removeItem(VISTA_KEY); } catch (e) {}
+  marcarNovedad("vista-btn");   // ya lo usó → sale del amarillo
+  aplicarVista();
+}
 function abrirOverlay(id) { $(id).style.display = "flex"; }
 function cerrarOverlay(id) { $(id).style.display = "none"; }
 
@@ -2665,13 +2692,19 @@ function initSegs() {
   // → arranca limpio y solo verá las novedades de acá en adelante. El que YA usó la app sí
   // ve las novedades nuevas. (Juan 2026-08-14)
   // Todas las ventanitas de novedades, en orden VIEJA → NUEVA. Al sumar una nueva, va al final.
-  // "news-temporal-mapa" = la ventanita de temporarios + visor por mapa (clave nueva: la ve también
-  // quien ya había visto la de temporarios sola).
-  var NEWS = ["news", "news-agente", "news-avisos", "news-temporal-mapa"];
+  // "news-escritorio" = la ventanita única: temporarios + visor por mapa + vista de escritorio (clave nueva:
+  // la ve también quien ya había visto la versión anterior).
+  var NEWS = ["news", "news-agente", "news-avisos", "news-escritorio"];
   if (!novedadVista("iniciado")) {
     if (esPrimeraVezEnLaApp()) NEWS.forEach(marcarNovedad);
     marcarNovedad("iniciado");
   }
+  aplicarVista();
+  window.addEventListener("resize", aplicarVista);
+  $("btn-vista").addEventListener("click", function () { elegirVista(document.body.classList.contains("vista-pc") ? "celu" : "pc"); });
+  $("vista-auto").addEventListener("click", function () { elegirVista(""); });
+  $("vista-celu").addEventListener("click", function () { elegirVista("celu"); });
+  $("vista-pc").addEventListener("click", function () { elegirVista("pc"); });
   pintarMarcaNueva();
   pintarAjustesNuevo();
   pintarTemporalNuevo();
@@ -2696,10 +2729,10 @@ function initSegs() {
   $("btn-news-avisos-ok").addEventListener("click", cerrarNewsAvisos);
   $("btn-news-avisos-x").addEventListener("click", cerrarNewsAvisos);
   $("news-avisos").addEventListener("click", function (e) { if (e.target === $("news-avisos")) cerrarNewsAvisos(); });
-  var cerrarNewsTemporal = function () { marcarNovedad("news-temporal-mapa"); cerrarOverlay("news-temporal-mapa"); };
+  var cerrarNewsTemporal = function () { marcarNovedad("news-escritorio"); cerrarOverlay("news-escritorio"); };
   $("btn-news-temporal-ok").addEventListener("click", cerrarNewsTemporal);
   $("btn-news-temporal-x").addEventListener("click", cerrarNewsTemporal);
-  $("news-temporal-mapa").addEventListener("click", function (e) { if (e.target === $("news-temporal-mapa")) cerrarNewsTemporal(); });
+  $("news-escritorio").addEventListener("click", function (e) { if (e.target === $("news-escritorio")) cerrarNewsTemporal(); });
   $("btn-agente").addEventListener("click", function () {
     marcarNovedad("agente-btn"); $("btn-agente").classList.remove("nuevo");   // ya lo usó → sale del amarillo
     var a = window.__agente; if (!a) return;
