@@ -590,6 +590,14 @@
       <button class="btn btn-brand" id="btn-limpiar-borrar" style="width:100%;margin-top:12px">Borrar lo tildado</button>
     </div>
   </div>
+  <div class="ajustes" id="previas" style="display:none">
+    <div class="ajustes-card">
+      <div class="ajustes-head"><b>↶ Filtros anteriores</b><button id="btn-previas-cerrar" aria-label="Cerrar">✕</button></div>
+      <p class="hint" style="margin:0 0 8px">¿Seguro que querés volver a una configuración anterior de este cliente? Los filtros de hoy quedan guardados acá, por si querés deshacerlo.</p>
+      <div id="previas-lista"></div>
+      <button class="btn" id="btn-previas-cancelar" style="width:100%;margin-top:12px">Cancelar</button>
+    </div>
+  </div>
   <div class="cuerpo">
    <div class="col-filtros">
 
@@ -748,6 +756,7 @@
       <div id="ignoradas" class="ignoradas" style="display:none"></div>
       <button class="btn btn-guardar-busq" id="btn-guardar-busq">🔖 Guardar esta búsqueda</button>
       <button class="btn btn-guardar-busq" id="btn-guardar-cambios" style="display:none">💾 Guardar cambios en este cliente</button>
+      <button class="btn btn-guardar-busq" id="btn-previas" style="display:none">↶ Volver a filtros anteriores</button>
       <button class="btn btn-guardar-busq" id="btn-limpiar" style="display:none">🧹 Limpiar (sacar propiedades por categoría)</button>
       <button class="btn btn-guardar-busq" id="btn-mapa" style="display:none">🗺️ Ver las parecidas en el mapa</button>
       <div class="cards" id="cards"></div>

@@ -932,6 +932,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
   $("btn-guardar-busq").style.display = window.__busquedaActiva ? "none" : "";
   $("btn-guardar-cambios").style.display = (window.__busquedaActiva && filtrosCambiaron()) ? "" : "none";
   $("btn-limpiar").style.display = window.__busquedaActiva ? "" : "none";   // limpiar por categoría
+  pintarBotonPrevias();                                                     // ↶ solo si hay versiones anteriores
   var cont = $("cards");
   if (!total) {
     $("cuenta").textContent = "0 encontradas";
@@ -1702,7 +1703,12 @@ function guardarFiltrosEnCliente() {
   var arr = cargarBusquedas();
   var bb = arr.filter(function (x) { return x.id === b.id; })[0];
   if (!bb) return;
-  bb.form = snapshotForm();
+  var nuevo = snapshotForm();
+  if (bb.form && formComparable(bb.form) !== formComparable(nuevo)) {   // la versión que se reemplaza → "anteriores"
+    bb.previas = [{ fecha: new Date().toISOString(), form: bb.form, filtro: bb.filtro, slugActual: bb.slugActual || null }]
+      .concat(bb.previas || []).slice(0, MAX_PREVIAS);
+  }
+  bb.form = nuevo;
   bb.filtro = leerFiltros();
   bb.slugActual = window.__slugActual || null;
   bb.vistas = DATA.filter(function (c) { return pasa(c, bb.filtro, bb.slugActual); })
@@ -1712,6 +1718,76 @@ function guardarFiltrosEnCliente() {
   delete bb.ocultas; delete bb.ocultasFiltro;   // sistema viejo de "ocultas": ya no existe
   guardarBusquedas(arr);
   window.__formBaseline = snapshotFiltros();   // recién guardado → ya no hay "cambios"
+}
+// -------- ↶ Filtros anteriores (Juan 2026-11-12) --------
+// Cada "Guardar cambios" se acuerda de la versión que reemplaza (solo las últimas 2): a veces uno le erra a los
+// filtros y se da cuenta a los días. Volver a una = la de hoy pasa a ser anterior (se puede deshacer).
+var MAX_PREVIAS = 2;
+function formComparable(s) {
+  var c = Object.assign({}, s); delete c.base; delete c.slugActual;
+  return JSON.stringify(c);
+}
+// Qué era distinto entre una versión anterior (a) y la de hoy (h), en palabras: "Precio máx: 150.000 (hoy 135.000)".
+var PREV_CAMPOS = [["link", "Link"], ["oper", "Operación", "f-oper"], ["periodo", "Período", "f-periodo"], ["moneda", "Moneda"],
+  ["tipos", "Tipo", "f-tipo"], ["tiposOtros", "Otros tipos", "f-tipo-otros"], ["precioMin", "Precio mín"], ["precioMax", "Precio máx"],
+  ["cubMin", "m² construidos mín"], ["cubMax", "m² construidos máx"], ["padronMin", "m² totales mín"], ["padronMax", "m² totales máx"],
+  ["gastosMin", "Gastos comunes mín"], ["gastosMax", "Gastos comunes máx"], ["barrios", "Barrios"],
+  ["dmin", "Dorm. mín"], ["dmax", "Dorm. máx"], ["bmin", "Baños mín"], ["bmax", "Baños máx"],
+  ["coch", "Cochera", "f-coch"], ["estado", "Estado", "f-estado"], ["rentaSel", "Renta", "f-renta"]];
+function textoValorPrevio(v, seg) {
+  var arr = Array.isArray(v) ? v : (v == null || v === "" ? [] : [v]);
+  if (!arr.length) return "—";
+  return arr.map(function (x) {
+    var b = seg && document.querySelector("#" + seg + ' [data-v="' + x + '"]');
+    var t = b ? b.textContent.replace("▾", "").trim() : String(x);
+    return /^\d{4,}$/.test(t) ? new Intl.NumberFormat("es-UY").format(Number(t)) : t;
+  }).join(", ");
+}
+function diferenciasPrevia(a, h) {
+  var out = [];
+  PREV_CAMPOS.forEach(function (k) {
+    var va = textoValorPrevio(a[k[0]], k[2]), vh = textoValorPrevio(h[k[0]], k[2]);
+    if (va.replace(/\./g, "") !== vh.replace(/\./g, "")) out.push(k[1] + ": " + va + " (hoy " + vh + ")");
+  });
+  return out;
+}
+function pintarBotonPrevias() {
+  var b = busquedaActiva();
+  $("btn-previas").style.display = (b && b.previas && b.previas.length) ? "" : "none";
+}
+function abrirPrevias() {
+  var b = busquedaActiva(); if (!b || !b.previas || !b.previas.length) return;
+  var cont = $("previas-lista"); cont.innerHTML = "";
+  b.previas.forEach(function (p, i) {
+    var dif = diferenciasPrevia(p.form || {}, b.form || {});
+    var d = new Date(p.fecha);
+    var fila = document.createElement("div");
+    fila.className = "prev-fila";
+    fila.style.cssText = "border:1px solid #dfe6f0;border-radius:12px;padding:10px 12px;margin-bottom:8px";
+    fila.innerHTML = '<div style="font-weight:700;margin-bottom:4px">📅 Usados hasta el ' + esc(d.toLocaleDateString("es-UY")) +
+        " a las " + esc(d.toLocaleTimeString("es-UY", { hour: "2-digit", minute: "2-digit" })) + "</div>" +
+      '<div style="font-size:14px;color:#3a4a63;line-height:1.45">' +
+      (dif.length ? dif.map(esc).join("<br>") : "Mismos filtros") + "</div>";
+    var bt = document.createElement("button");
+    bt.className = "btn btn-brand prev-volver"; bt.style.cssText = "width:100%;margin-top:8px";
+    bt.textContent = "Sí, volver a estos filtros";
+    bt.onclick = function () { volverAPrevia(i); };
+    fila.appendChild(bt);
+    cont.appendChild(fila);
+  });
+  abrirOverlay("previas");
+}
+function volverAPrevia(i) {
+  var arr = cargarBusquedas(), b = busquedaActiva();
+  var bb = b && arr.filter(function (x) { return x.id === b.id; })[0];
+  if (!bb || !bb.previas || !bb.previas[i]) return;
+  var p = bb.previas.splice(i, 1)[0];
+  guardarBusquedas(arr);                    // sale de "anteriores"…
+  restoreForm(p.form);
+  guardarFiltrosEnCliente();                // …y queda guardada; la de hoy pasa a "anteriores" (deshacer)
+  cerrarOverlay("previas");
+  $("hint").innerHTML = "↶ Volviste a los filtros anteriores. Los de antes quedaron en “Volver a filtros anteriores”.";
+  buscar();
 }
 // Diálogo de 3 opciones: Guardar / Salir sin guardar / Cancelar. Llama a cb con
 // "guardar" | "salir" | "cancelar". Cancelar = no hace nada (se queda donde está).
@@ -3157,6 +3233,10 @@ function initSegs() {
   $("btn-limpiar-cerrar").addEventListener("click", function () { cerrarOverlay("limpiar"); });
   $("limpiar").addEventListener("click", function (e) { if (e.target === $("limpiar")) cerrarOverlay("limpiar"); });
   $("btn-limpiar-borrar").addEventListener("click", ejecutarLimpiar);
+  $("btn-previas").addEventListener("click", abrirPrevias);
+  $("btn-previas-cancelar").addEventListener("click", function () { cerrarOverlay("previas"); });
+  $("btn-previas-cerrar").addEventListener("click", function () { cerrarOverlay("previas"); });
+  $("previas").addEventListener("click", function (e) { if (e.target === $("previas")) cerrarOverlay("previas"); });
   // Ajustes (associate editable)
   $("btn-ajustes").addEventListener("click", function () {
     marcarNovedad("ajustes-nv"); marcarNovedad("vincular-nv"); $("btn-ajustes").classList.remove("nuevo");   // ya la vio
