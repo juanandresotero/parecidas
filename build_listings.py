@@ -618,6 +618,13 @@ def _sanear(fila: dict, es_apto: bool, tipo: str) -> None:
         fila["m2_total"] = None
     if not _en_uruguay(fila.get("lat"), fila.get("lng")):
         fila["lat"], fila["lng"] = None, None
+    # Gastos comunes absurdos → vacíos (Juan 2026-11-11). Relativos al precio (las torres de lujo tienen gastos
+    # altos de verdad): menos de USD 10 = relleno ("1 peso"); en venta, más del 1% del precio POR MES; en
+    # alquiler anual, más que el propio alquiler.
+    g, p = fila.get("gastos_usd"), fila.get("precio_usd")
+    if g is not None and (g < 10 or (p and fila.get("operacion") == "sale" and g > 0.01 * p)
+                          or (p and fila.get("operacion") == "rent" and g > p)):
+        fila["gastos"], fila["gastos_moneda"], fila["gastos_usd"] = None, "", None
 
 
 def bajar_listado() -> list:

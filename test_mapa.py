@@ -270,6 +270,16 @@ def caso_al_abrir_un_cliente_el_mapa_muestra_todo_menos_descartadas(page):
     assert chips and all(c == "true" for c in chips), f"todos los botoncitos del filtro prendidos: {chips}"
 
 
+def caso_el_cartelito_no_repite_el_precio(page):
+    """Juan 2026-11-11: el precio ya está en el título del cartelito; no repetirlo abajo."""
+    preparar(page)
+    slug = abrir_mapa(page)
+    abrir_cartelito(page, slug)
+    txt = page.evaluate("document.querySelector('.leaflet-popup .pin-popup').textContent")
+    precio = page.evaluate("(s) => fmtK(BY_SLUG[s].precio, BY_SLUG[s].moneda)", slug)
+    assert txt.count(precio) == 1, f"el precio ({precio}) aparece {txt.count(precio)} veces: {txt[:150]}"
+
+
 # ----------------------------- orden -----------------------------
 def caso_en_empate_gana_la_mas_cercana_en_m2(page):
     """Tres propiedades iguales en todo menos en m²: arriba la que tiene los m² más cerca de lo buscado."""
@@ -297,6 +307,7 @@ CASOS = [
     caso_la_seleccion_sobrevive_a_volver_a_buscar, caso_la_seleccion_sobrevive_a_recargar_la_app,
     caso_enviar_con_cliente_limpia_la_seleccion, caso_el_mapa_vuelve_abierto_y_con_sus_filtros_al_recargar,
     caso_en_empate_gana_la_mas_cercana_en_m2, caso_al_abrir_un_cliente_el_mapa_muestra_todo_menos_descartadas,
+    caso_el_cartelito_no_repite_el_precio,
 ]
 
 

@@ -722,6 +722,131 @@ function estimarAlquiler(base) {
     hiUsd: Math.round(pctl(0.75) * bm)
   };
 }
+// -------------------------- Análisis de mercado: ¿está bien de precio? --------------------------
+// Al traer un link: ubica su precio frente a las propiedades parecidas DISPONIBLES (Juan 2026-11-11: "igual a lo que
+// hace Auto-Meta en Recomendadas"). Mismas reglas que el medidor de Auto-Meta (campanas/mercado_metricas.py,
+// indicador_precio_m2), con los datos que hay acá (sin descripción → sin cooperativa/deuda).
+// Se compara en US$ por m² HOMOGENEIZADO (para ANALIZAR sí va el homogeneizado; para filtrar, los m² reales).
+var PM_BANDA_PCT = 8, PM_FUERTE_PCT = 25;
+var COCH_CARA = { "pocitos": 1, "malvin": 1, "carrasco": 1, "punta gorda": 1, "punta carretas": 1, "villa biarritz": 1, "buceo": 1 };
+var COCH_MEDIA = { "pocitos nuevo": 1, "parque rodo": 1, "parque batlle": 1, "malvin norte": 1, "carrasco norte": 1,
+  "tres cruces": 1, "cordon": 1, "la blanqueada": 1, "palermo": 1, "centro": 1, "prado": 1, "puerto del buceo": 1,
+  "barrio sur": 1, "bella vista": 1, "la comercial": 1 };
+var COCH_PERIF = { "colon": 1, "sayago": 1, "penarol": 1, "manga": 1, "nuevo paris": 1, "pajas blancas": 1, "cerro": 1,
+  "cerrito": 1, "belvedere": 1, "villa espanola": 1, "ituzaingo": 1, "paso de la arena": 1, "la teja": 1, "las acacias": 1,
+  "casavalle": 1, "piedras blancas": 1, "flor de maronas": 1, "maronas": 1, "villa garcia": 1, "lezica": 1, "melilla": 1,
+  "conciliacion": 1, "jardines del hipodromo": 1, "punta de rieles": 1, "parque guarani": 1, "tres ombues": 1,
+  "abayuba": 1, "casabo": 1 };
+// Valor de una cochera (USD) para empatar comparables con/sin cochera. Solo venta en Montevideo.
+function valorCochera(c) {
+  if (norm(c.depto) !== "montevideo") return null;
+  var b = norm(c.barrio);
+  return COCH_CARA[b] ? 30000 : (COCH_MEDIA[b] ? 25000 : (COCH_PERIF[b] ? 12000 : 20000));
+}
+// Mismo porte (m² homogeneizados) por tramos: <43 y 43–70 bolsas fijas; 70–95 ±33%; 95–200 ±25%; 200–300 ±20%; >300 ±17%.
+function mismoPorte(tam, t) {
+  if (tam >= 70) {
+    var b = tam < 95 ? 0.33 : (tam < 200 ? 0.25 : (tam < 300 ? 0.20 : 0.17));
+    return t >= tam * (1 - b) && t <= tam * (1 + b);
+  }
+  if (tam >= 43) return t >= 43 && t < 70;
+  return t < 43;
+}
+// Zona INVE / carenciada: "INVE" o dirección "Calle <número>" (solo Montevideo/Canelones).
+function zonaInve(c) {
+  var dir = String(c.direccion || ""), dn = norm(c.depto);
+  return /\binve\b/i.test(dir) || (/^calle\s+\d/i.test(dir) && (dn === "montevideo" || dn === "canelones"));
+}
+function bolsaDe(c) {
+  var cat = tipoCat(c.tipo);
+  if (cat === "apto" && /penthouse/i.test(c.tipo || "")) cat = "penthouse";   // penthouse contra penthouse
+  return cat + (c.estado === "a_estrenar" ? "_nuevo" : "");                  // a estrenar contra a estrenar
+}
+function mediana(xs) {
+  var a = xs.slice().sort(function (x, y) { return x - y; }), n = a.length;
+  return n ? (n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2) : null;
+}
+function analisisMercado(base, lista) {
+  if (!base) return null;
+  var cat = tipoCat(base.tipo), op = base.operacion;
+  if ((cat !== "apto" && cat !== "casa") || (op !== "sale" && op !== "rent")) return null;   // solo casas y aptos
+  if (op === "sale" && String(base.moneda || "USD").toUpperCase() !== "USD") return null;   // venta: solo dólares
+  var tam = base.m2_homog, pu = base.precio_usd, bn = norm(base.barrio), dn = norm(base.depto);
+  if (!tam || !pu || !bn) return null;
+  var bolsa = bolsaDe(base), objInve = zonaInve(base), coch = op === "sale" ? valorCochera(base) : null;
+  var cands = (lista || DATA).filter(function (c) {
+    return c.slug !== base.slug && (!c.estado_pub || c.estado_pub === "active") && c.operacion === op &&
+      norm(c.barrio) === bn && (!dn || norm(c.depto) === dn) && bolsaDe(c) === bolsa && c.precio_usd > 0 &&
+      c.m2_homog > 0 && (op !== "sale" || String(c.moneda || "USD").toUpperCase() === "USD") && mismoPorte(tam, c.m2_homog);
+  });
+  // Mismos dormitorios primero; si no hay, ±1; si no, cualquiera (como Auto-Meta).
+  var sims = [], usados = [];
+  [0, 1, null].some(function (tol) {
+    sims = cands.filter(function (c) {
+      return tol === null || base.dorm == null || (c.dorm != null && Math.abs(c.dorm - base.dorm) <= tol);
+    }).map(function (c) {
+      var v = c.precio_usd / c.m2_homog;
+      if (coch && base.cochera != null && c.cochera != null && base.cochera !== c.cochera) {   // empatar cochera
+        var vj = v + (base.cochera ? coch : -coch) / c.m2_homog;
+        if (vj > 0) v = vj;
+      }
+      return { c: c, v: v, excluido: zonaInve(c) && !objInve };
+    });
+    usados = sims.filter(function (s) { return !s.excluido; });
+    return usados.length >= 1;
+  });
+  if (!usados.length) return null;   // no inventa
+  var valor = pu / tam, ref = mediana(usados.map(function (s) { return s.v; }));
+  var pct = Math.round((valor / ref - 1) * 100);
+  var enPesos = op === "rent" && USD_RATE;
+  var k = enPesos ? USD_RATE : 1;
+  return {
+    pct: pct, nivel: pct < -PM_BANDA_PCT ? "barato" : (pct > PM_BANDA_PCT ? "caro" : "justo"),
+    fuerte: Math.abs(pct) >= PM_FUERTE_PCT, n: usados.length,
+    valor: Math.round(valor * k), ref: Math.round(ref * k),
+    unidad: enPesos ? "$U/m² por mes" : (op === "rent" ? "US$/m² por mes" : "US$/m²"),
+    comparables: sims.slice().sort(function (a, b) { return (a.excluido - b.excluido) || (a.v - b.v); })
+      .map(function (s) { return { c: s.c, v: Math.round(s.v * k), excluido: s.excluido }; })
+  };
+}
+var PM_ETIQ = { barato: "BUEN PRECIO", justo: "EN PRECIO", caro: "CARO" };
+function renderPrecioMercado() {
+  var el = $("precio-mercado");
+  if (!el) return;
+  var r = analisisMercado(window.__base);
+  if (!r) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "";
+  var etq = (r.fuerte && r.nivel !== "justo" ? "MUY " : "") + PM_ETIQ[r.nivel];
+  var dif = r.pct === 0 ? "igual al promedio" : Math.abs(r.pct) + "% " + (r.pct > 0 ? "sobre" : "bajo") + " el promedio";
+  var pos = Math.max(2, Math.min(98, 50 + r.pct * 1.25));   // −40% … +40% sobre la barra
+  var mon = r.unidad.indexOf("$U") === 0 ? "$ " : "U$S ";
+  var m2 = function (v) { return mon + fmtMiles(String(v)) + "/m²"; };
+  el.innerHTML =
+    '<div class="ea-tit">📊 ¿Está bien de precio? <span class="ea-est">vs el mercado</span></div>' +
+    '<div class="pm-veredicto pm-' + r.nivel + '">' + etq + ' <span>· ' + dif + '</span></div>' +
+    '<div class="pm-barra"><span class="pm-aguja" style="left:' + pos + '%"></span></div>' +
+    '<div class="pm-eje"><span>Buen precio</span><span>En precio</span><span>Caro</span></div>' +
+    '<div class="ea-nota">Esta: <b>' + m2(r.valor) + '</b> · promedio de <b>' + r.n + '</b> parecida' + (r.n > 1 ? "s" : "") +
+    ' disponible' + (r.n > 1 ? "s" : "") + ': <b>' + m2(r.ref) + '</b> (mismo barrio, tipo, tamaño' +
+    (r.unidad.indexOf("mes") > 0 ? "" : " y estado") + ').' + (r.n < 3 ? ' <b class="ea-warn">Pocas: tomalo como referencia gruesa.</b>' : '') + '</div>' +
+    '<button type="button" class="pm-ver" id="pm-ver">Ver ' + (r.n > 1 ? "las " + r.n + " comparables" : "la comparable") + ' ▾</button>' +
+    '<div id="pm-lista" style="display:none"></div>';
+  var lista = $("pm-lista");
+  r.comparables.forEach(function (x) {
+    var f = document.createElement("button");
+    f.type = "button"; f.className = "pm-fila" + (x.excluido ? " pm-excl" : "");
+    f.innerHTML = '<span class="pm-f-tit">' + esc(resumenCard(x.c)) + '</span><b>' + m2(x.v) + '</b>' +
+      (x.excluido ? '<span class="pm-f-nota">zona INVE · fuera del promedio</span>' : '');
+    f.title = "Ver ficha";
+    f.onclick = function () { abrirVistaPrevia(x.c); };
+    lista.appendChild(f);
+  });
+  $("pm-ver").onclick = function () {
+    var abierta = lista.style.display !== "none";
+    lista.style.display = abierta ? "none" : "";
+    this.textContent = this.textContent.replace(abierta ? "▴" : "▾", abierta ? "▾" : "▴");
+  };
+}
 function renderEstimAlquiler() {
   var el = $("alquiler-estim");
   if (!el) return;
@@ -755,6 +880,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
   var selPrevia = SEL.map(function (c) { return c.slug; });   // lo elegido antes de volver a dibujar
   SEL = []; CARDS = []; RENDER_RES = []; actualizarMulticopy();
   $("resultados").style.display = "";
+  renderPrecioMercado();   // "¿está bien de precio?" (solo con link)
   renderEstimAlquiler();   // "¿cuánto se alquila?" al final (el div va después de #cards) — con o sin resultados
   // Si la búsqueda ya está guardada (cliente activo), no ofrezco "Guardar" de nuevo;
   // pero si cambiaste algo, muestro "Guardar cambios".
@@ -2605,9 +2731,8 @@ function emojiPin(c) {
 }
 // Cartelito del pin: resumen + "＋" (elegir para enviar) + "Vista previa" + "Ver aviso completo".
 function popupDe(c) {
-  var precio = fmtK(c.precio, c.moneda);
   var box = document.createElement("div"); box.className = "pin-popup";
-  box.innerHTML = '<b>' + esc(resumenCard(c)) + '</b>' + (precio ? '<br>' + esc(precio) : "");
+  box.innerHTML = '<b>' + esc(resumenCard(c)) + '</b>';   // el precio ya va en el título (no repetirlo)
   var fila = document.createElement("div"); fila.className = "pin-acciones";
   var mas = document.createElement("button");
   mas.type = "button"; mas.className = "pin-mas"; mas.setAttribute("data-mas", c.slug);

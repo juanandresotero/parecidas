@@ -146,6 +146,21 @@
   /* Estimador de alquiler (al final de las parecidas) */
   #alquiler-estim{margin:14px 2px 4px;padding:13px 15px;border:1px solid var(--line);
     border-radius:14px;background:var(--surface-2)}
+  #precio-mercado{margin:14px 2px 4px;padding:13px 15px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+  .pm-veredicto{font-size:19px;font-weight:800;margin-top:5px;line-height:1.25}
+  .pm-veredicto span{font-size:13px;font-weight:600;color:var(--muted)}
+  .pm-barato{color:#15803d} .pm-justo{color:var(--brand)} .pm-caro{color:#c0262d}
+  .pm-barra{position:relative;height:8px;border-radius:99px;margin:10px 0 3px;
+    background:linear-gradient(90deg,#16a34a 0%,#86efac 35%,#dbe4f0 42%,#dbe4f0 58%,#fca5a5 65%,#dc2626 100%)}
+  .pm-aguja{position:absolute;top:-5px;width:4px;height:18px;margin-left:-2px;border-radius:3px;background:var(--ink)}
+  .pm-eje{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)}
+  .pm-ver{margin-top:9px;border:none;background:none;color:var(--brand);font-weight:700;font-size:13px;cursor:pointer;padding:0}
+  #pm-lista{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .pm-fila{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;text-align:left;font:inherit;font-size:12.5px;
+    padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);cursor:pointer;color:var(--ink)}
+  .pm-f-tit{flex:1;min-width:0}
+  .pm-excl{opacity:.6;text-decoration:line-through}
+  .pm-f-nota{width:100%;font-size:11px;color:#b26a00;text-decoration:none}
   .ea-tit{font-size:13px;color:var(--muted);font-weight:700}
   .ea-est{font-weight:600;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
   .ea-mid{font-size:22px;font-weight:800;color:var(--brand);margin-top:5px;line-height:1.2}
@@ -731,6 +746,7 @@
       <button class="btn btn-guardar-busq" id="btn-mapa" style="display:none">🗺️ Ver las parecidas en el mapa</button>
       <div class="cards" id="cards"></div>
       <!-- Estimador de alquiler: al final de las parecidas (solo si pegaste un link) -->
+      <div id="precio-mercado" style="display:none"></div>
       <div id="alquiler-estim" style="display:none"></div>
     </div>
     <!-- Fecha de los datos, SIEMPRE visible: abajo del botón si no se buscó nada; abajo de

@@ -177,6 +177,23 @@ def caso_padron_de_complejo_es_dato_dudoso():
     assert bp["m2_padron"] == 930, "barrio privado: el lote es de la casa"
 
 
+# ---------------- gastos comunes absurdos → vacíos (Juan 2026-11-11) ----------------
+def caso_gastos_absurdos_quedan_vacios():
+    def g(op, precio, gastos, moneda):
+        f = R._fila(item(operation={"value": op}, price=precio, type={"value": "departamento_estandar"}),
+                    ficha(expensesPrice=gastos, expensesCurrency={"value": moneda}), 40.0)
+        return f["gastos_usd"]
+    assert g("sale", 60000, 4000, "USD") is None, "USD 4.000 por mes en un apto de USD 60.000: absurdo"
+    assert g("rent", 1200, 5000, "USD") is None, "gastos de USD 5.000 en un alquiler de USD 1.200: absurdo"
+    assert g("sale", 150000, 1, "UYU") is None, "1 peso de gastos: es relleno"
+    assert g("sale", 150000, 250, "UYU") is None, "250 pesos: relleno"
+    assert g("sale", 1290000, 55000, "UYU") == 1375, "torre de lujo (USD 1,29 millones) con $ 55.000: real"
+    assert g("sale", 150000, 6000, "UYU") == 150, "lo normal no se toca"
+    assert g("rent", 800, 9000, "UYU") == 225, "alquiler normal no se toca"
+    f = R._fila(item(price=60000, type={"value": "departamento_estandar"}), ficha(expensesPrice=4000, expensesCurrency={"value": "USD"}), 40.0)
+    assert f["gastos"] is None and f["gastos_moneda"] == "", "sin rastros del dato roto"
+
+
 # ---------------- repetidos ----------------
 def caso_sin_repetidos():
     filas = [{"slug": "a", "n": 1}, {"slug": "b"}, {"slug": "a", "n": 2}]
@@ -189,7 +206,7 @@ CASOS = [caso_rescata_propiedades_de_todo_el_pais, caso_no_rescata_lo_que_cae_fu
          caso_emprendimiento_guarda_rangos, caso_propiedad_comun_sin_rangos, caso_temporario_guarda_el_periodo,
          caso_hectareas_no_se_aplican_a_apartamentos, caso_campo_grande_real_se_respeta,
          caso_cochera_por_texto_sin_falsos_positivos, caso_datos_absurdos_quedan_como_falta_dato, caso_sin_repetidos,
-         caso_guarda_los_m2_construidos_reales, caso_padron_de_complejo_es_dato_dudoso]
+         caso_guarda_los_m2_construidos_reales, caso_padron_de_complejo_es_dato_dudoso, caso_gastos_absurdos_quedan_vacios]
 
 
 def main():
