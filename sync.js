@@ -199,6 +199,7 @@
     marcarVisto();
     var codigo = codigoNuevo();
     guardar(ESTADO, { codigo: codigo, v: 0, ultima: 0, error: "" });
+    pintar();   // ya está vinculado: la pantalla cambia al toque (sin esperar a que termine de subir)
     await derivar(codigo);
     await sincronizar();
     return codigo;
