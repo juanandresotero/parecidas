@@ -75,13 +75,32 @@ def _tiene_renta(texto: str, titulo: str = "") -> bool:
     return True
 
 
+# Menciones de cochera que NO son de la propiedad (auditoría 2026-11-11): "posibilidad de alquilar cochera",
+# "cocheras disponibles desde USD…", "hoy funciona como cochera", "cochera opcional / aparte"…
+COCHERA_AJENA_RE = re.compile(
+    r"posibilidad\s+de\s+(?:alquilar|comprar|adquirir|tener|agregar)?\s*(?:una\s+)?(?:cochera|garaj|garage)"
+    r"|(?:cochera|garaj|garage)(?:e|es|s)?\s+(?:opcional|disponibles?|aparte|por\s+separado|adicional(?:es)?|con\s+costo|extra|en\s+alquiler|a\s+la\s+venta|en\s+venta)"
+    r"|(?:cochera|garaj|garage)(?:e|es|s)?\s+(?:\w+\s+){0,2}desde"
+    r"|funciona\s+como\s+(?:cochera|garaj|garage)"
+    r"|se\s+(?:vende|alquila)n?\s+(?:la\s+|una\s+)?(?:cochera|garaj|garage)"
+    r"|opci[oó]n\s+(?:a|de)\s+(?:cochera|garaj|garage)", re.I)
+
+
 def _dice_cochera(texto: str) -> bool:
     t = texto or ""
-    return bool(COCHERA_RE.search(t)) and not SIN_COCHERA_RE.search(t)
+    if SIN_COCHERA_RE.search(t):
+        return False
+    return bool(COCHERA_RE.search(COCHERA_AJENA_RE.sub(" ", t)))
 
 API = "https://api-ar.redremax.com/remaxweb-uy/api/listings"
 LIST_EP = API + "/findAllWithEntrepreneurships"
 DET_EP = API + "/findBySlug/"
+# Los emprendimientos (obra nueva) tienen OTRA ficha: la de propiedades responde "No se encuentra" (auditoría 2026-11-11).
+ENT_DET_EP = "https://api-ar.redremax.com/remaxweb-uy/api/entrepreneurships/findBySlug/"
+
+
+def url_ficha(it: dict) -> str:
+    return (ENT_DET_EP if it.get("entrepreneurship") else DET_EP) + (it.get("slug") or "")
 CDN = "https://d1acdg20u0pmxj.cloudfront.net/"
 LISTING_URL = "https://www.remax.com.uy/listings/"
 PAGE_SIZE = 100
@@ -210,6 +229,75 @@ def _fetch_detalle(slug: str):
         return _unwrap(_http_json(DET_EP + slug, timeout=20))
     except Exception:
         return None
+
+
+def _fetch_ficha(it: dict):
+    """La ficha correcta según sea propiedad común o emprendimiento."""
+    try:
+        return _unwrap(_http_json(url_ficha(it), timeout=20))
+    except Exception:
+        return None
+
+
+def _coords_item(it: dict):
+    c = ((it or {}).get("location") or {}).get("coordinates")
+    return (c[1], c[0]) if (isinstance(c, list) and len(c) >= 2) else None
+
+
+# Uruguay (con margen): lo que cae fuera es una ubicación mal cargada (ej. en el mar).
+def _en_uruguay(lat, lng) -> bool:
+    return lat is not None and lng is not None and -35.2 <= lat <= -30.0 and -58.6 <= lng <= -53.0
+
+
+def rescatar_sin_zona(listado: list, props_uy: list, traer_ficha, coords_de) -> list:
+    """RE/MAX a veces publica propiedades SIN zona (geoLabel vacío). Se rescatan por sus COORDENADAS, en todo
+    el país (antes solo Montevideo + Canelones → se perdían las de Colonia, Lavalleja, Rocha…):
+    - departamento = el de la propiedad CON zona más cercana;
+    - barrio = el nombre de barrio de ESE departamento que aparezca en el título (el más largo: "Flor de Maroñas"
+      gana a "Maroñas"; nunca un nombre que en realidad es un departamento); si no hay, el de la propiedad más
+      cercana si está a menos de ~2 km; si no, queda sin barrio (pero con departamento y ubicación)."""
+    deptos = {_sin_acentos(_depto(it.get("geoLabel"))) for it in props_uy}
+    barrios = {}
+    for it in props_uy:
+        bn = _sin_acentos(_barrio(it.get("geoLabel")))
+        if bn and bn not in deptos and bn not in barrios:
+            barrios[bn] = it.get("geoLabel")
+    puntos = [(c, it.get("geoLabel")) for it in props_uy for c in [coords_de(it)] if c]
+    rescatadas = []
+    for it in listado:
+        if (it.get("geoLabel") or "").strip():
+            continue
+        c = coords_de(it)
+        if not c:
+            det = traer_ficha(it.get("slug") or "")
+            cc = ((det or {}).get("location") or {}).get("coordinates")
+            c = (cc[1], cc[0]) if (isinstance(cc, list) and len(cc) >= 2) else None
+        if not c or not _en_uruguay(c[0], c[1]) or not puntos:
+            continue
+        lat, lng = c
+        cerca = min(puntos, key=lambda q: (q[0][0] - lat) ** 2 + (q[0][1] - lng) ** 2)
+        dep = _depto(cerca[1])
+        depn, tn = _sin_acentos(dep), _sin_acentos(it.get("title") or "")
+        gl = next((barrios[bn] for bn in sorted(barrios, key=len, reverse=True)
+                   if _sin_acentos(_depto(barrios[bn])) == depn and re.search(r"\b" + re.escape(bn) + r"\b", tn)), None)
+        if not gl:
+            d2 = (cerca[0][0] - lat) ** 2 + (cerca[0][1] - lng) ** 2
+            bcerca = _sin_acentos(_barrio(cerca[1]))
+            gl = cerca[1] if (d2 <= 0.02 ** 2 and bcerca and bcerca not in deptos) else ", , " + dep
+        it["geoLabel"] = gl
+        rescatadas.append(it)
+    return rescatadas
+
+
+def sin_repetidos(filas: list) -> list:
+    """RE/MAX a veces tiene 2 avisos con la MISMA dirección web (slug): se deja el primero."""
+    vistos, out = set(), []
+    for f in filas:
+        if f.get("slug") in vistos:
+            continue
+        vistos.add(f.get("slug"))
+        out.append(f)
+    return out
 
 
 # ------------------------- Detector de MULTI-UNIDAD (varias viviendas en un padrón) ---
@@ -367,8 +455,10 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     # el texto dice hectáreas y el dato es 0 o absurdo, uso las hectáreas (× 10.000).
     _terreno = src.get("dimensionLand") or 0
     _padron = round(_terreno) if _terreno else 0
-    _ha = _hectareas_m2((it.get("title") or "") + " " + ((det.get("description") or "") if det else ""))
-    if _ha and (_padron <= 0 or _padron > 5000000):
+    # Un apto NO tiene padrón propio: las "hectáreas" del texto son del complejo/barrio (auditoría 2026-11-11).
+    _ha = None if es_apto else _hectareas_m2((it.get("title") or "") + " " + ((det.get("description") or "") if det else ""))
+    # Dato gigante: si coincide con las hectáreas del texto (±10%) es REAL (campo de 948 ha); si no, está inflado.
+    if _ha and (_padron <= 0 or (_padron > 5000000 and abs(_padron - _ha) > 0.1 * _ha)):
         _padron = _ha
     cubiertos = src.get("dimensionCovered")
     totales = src.get("dimensionTotalBuilt")
@@ -403,7 +493,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     foto_out = _foto_url[len(CDN):] if _foto_url.startswith(CDN) else _foto_url
     # NOTA: `link` (= remax+slug), `titulo`, `agente_id` e `id` NO se guardan: la app no
     # los usa (el link lo reconstruye del slug). Ahorra ~40% del archivo.
-    return {
+    fila = {
         "slug": slug,
         "tipo": tipo,
         "operacion": (it.get("operation") or {}).get("value") or "",
@@ -438,7 +528,70 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "gastos_moneda": exp_cur if gastos else "",
         "gastos_usd": _precio_usd(gastos, exp_cur, rate),
         "detalle_ok": det is not None,
+        # Alquiler temporario: por qué período es el precio (daily/weekly/fortnightly/monthly). Sin esto se
+        # comparaban USD 100 por día con USD 4.400 por quincena (auditoría 2026-11-11).
+        "periodo": ((det or {}).get("billingFrequency") or {}).get("value") if isinstance((det or {}).get("billingFrequency"), dict) else None,
     }
+    if det and ("minBedrooms" in det or "minPrice" in det):
+        fila.update(_rangos_emprendimiento(det, es_apto, rate, texto))
+    _sanear(fila, es_apto, tipo)
+    return fila
+
+
+def _rangos_emprendimiento(det: dict, es_apto: bool, rate, texto: str) -> dict:
+    """Un emprendimiento ofrece varias unidades: se guardan los RANGOS (dormitorios, baños, precio "desde/hasta",
+    m²). La app lo muestra si la búsqueda se superpone con el rango (ej. busca 3 dorm y ofrece 1 a 3)."""
+    def num(k):
+        v = det.get(k)
+        return v if isinstance(v, (int, float)) else None
+
+    def mon(k):
+        v = det.get(k)
+        return (v.get("value") if isinstance(v, dict) else v) or "USD"
+
+    out = {}
+    dmin, dmax = num("minBedrooms"), num("maxBedrooms")
+    if dmin is not None:
+        out["dorm"] = int(dmin)
+        out["dorm_max"] = int(dmax) if (dmax is not None and dmax > dmin) else None
+    bmin = (num("minBathrooms") or 0) + (num("minToiletrooms") or 0)
+    bmax = (num("maxBathrooms") or 0) + (num("maxToiletrooms") or 0)
+    if num("minBathrooms") is not None:
+        out["banos"] = int(bmin)
+        out["banos_max"] = int(bmax) if bmax > bmin else None
+    pmin, pmax = num("minPrice"), num("maxPrice")
+    if pmin:
+        out["precio"], out["moneda"] = pmin, mon("minCurrency")
+        out["precio_usd"] = _precio_usd(pmin, out["moneda"], rate)
+        pmx = _precio_usd(pmax, mon("maxCurrency"), rate) if pmax else None
+        out["precio_max_usd"] = pmx if (pmx and out["precio_usd"] and pmx > out["precio_usd"]) else None
+    h1 = _homog(num("minDimensionCovered"), None, num("minDimensionLand"), es_apto,
+                num("minDimensionSemicovered"), num("minDimensionUncovered"))
+    h2 = _homog(num("maxDimensionCovered"), None, num("maxDimensionLand"), es_apto,
+                num("maxDimensionSemicovered"), num("maxDimensionUncovered"))
+    if h1:
+        out["m2_homog"] = h1
+        out["m2_homog_max"] = h2 if h2 > h1 else None
+    out["cochera"] = bool((num("maxParkingSpaces") or 0) > 0) or _dice_cochera(texto)
+    return out
+
+
+def _sanear(fila: dict, es_apto: bool, tipo: str) -> None:
+    """Datos absurdos cargados en RE/MAX → se guardan VACÍOS (la app los muestra como "Falta dato") en vez de
+    usarlos como reales (auditoría 2026-11-11: monoambientes de 35.000 m², venta a USD 146, ubicación en el mar)."""
+    vivienda = es_apto or tipo.startswith("casa") or tipo == "ph"
+    if not fila.get("precio"):
+        fila["precio"], fila["precio_usd"] = None, None
+    p = fila.get("precio_usd")
+    if p is not None and ((fila.get("operacion") == "sale" and p < 3000) or (fila.get("operacion") != "sale" and p < 50)):
+        fila["precio_usd"] = None
+    m = fila.get("m2_homog")
+    if vivienda and (not m or (es_apto and m > 2000) or m > 20000):
+        fila["m2_homog"] = None          # una vivienda con 0 m² es un dato que falta; 35.000 m² en un apto, un error
+    if es_apto and (fila.get("m2_total") or 0) > 2000:
+        fila["m2_total"] = None
+    if not _en_uruguay(fila.get("lat"), fila.get("lng")):
+        fila["lat"], fila["lng"] = None, None
 
 
 def bajar_listado() -> list:
@@ -468,33 +621,9 @@ def main():
     # porque el agente la pone en el mapa al publicar. Así que uso las coordenadas para
     # decidir si es de Mvd/Can (más confiable que el título). El barrio lo saco del título
     # si nombra uno conocido; si no, queda sin barrio pero CON ubicación (mapa + botón 📍).
-    _barrio_geo = {}   # norm(barrio) -> un geoLabel válido de ejemplo con ese barrio
-    for it in props_uy:
-        _bn = _sin_acentos(_barrio(it.get("geoLabel")))
-        if _bn and _bn not in _barrio_geo:
-            _barrio_geo[_bn] = it.get("geoLabel")
-    _rescatadas = 0
-    for it in listado:
-        if (it.get("geoLabel") or "").strip():
-            continue
-        _tn = _sin_acentos(it.get("title") or "")
-        # NO filtramos por nombre de departamento en el título: la CAJA de coordenadas (abajo) es
-        # la autoridad y rechaza lo que cae fuera de Mvd+Canelones. Un guard por substring chocaba
-        # con localidades reales (Colonia Nicolich, San José de Carrasco, La Floresta).
-        _det = _fetch_detalle(it.get("slug") or "")
-        _c = ((_det or {}).get("location") or {}).get("coordinates")
-        if not (_c and len(_c) >= 2):
-            continue
-        _lng, _lat = _c[0], _c[1]
-        if not (-34.95 <= _lat <= -34.45 and -56.55 <= _lng <= -55.25):   # caja Mvd+Canelones
-            continue
-        _gl = next((g for _bn, g in _barrio_geo.items()
-                    if _bn and re.search(r"\b" + re.escape(_bn) + r"\b", _tn)), None)
-        if not _gl:   # sin barrio conocido: dept por las coords (Mvd ciudad vs Canelones)
-            _dep = "Montevideo" if (-34.96 <= _lat <= -34.84 and -56.45 <= _lng <= -56.00) else "Canelones"
-            _gl = ", , " + _dep
-        it["geoLabel"] = _gl
-        props_uy.append(it); _rescatadas += 1
+    _rescate = rescatar_sin_zona(listado, props_uy, _fetch_detalle, _coords_item)
+    props_uy.extend(_rescate)
+    _rescatadas = len(_rescate)
     print(f"Listón: {len(listado)} total, {len(props_uy)} con zona (todo Uruguay) "
           f"(rescatadas sin zona, por coordenadas: {_rescatadas})", file=sys.stderr)
     if limite:
@@ -504,7 +633,7 @@ def main():
     print(f"Dólar: {rate}", file=sys.stderr)
     filas, fallidos = [], 0
     for i, it in enumerate(props_uy, 1):
-        det = _fetch_detalle(it.get("slug") or "")
+        det = _fetch_ficha(it)   # emprendimientos: su propia ficha
         if det is None:
             fallidos += 1
         filas.append(_fila(it, det, rate))
@@ -516,6 +645,7 @@ def main():
     # RE/MAX: responde 200 pero vacío/truncado), NO pisar el listings.json bueno NI borrar
     # el historial de primera_vez.json. Abortamos: mañana reintenta con los datos de ayer
     # intactos. (En modo prueba LIMIT sí puede ser chico a propósito, no aplica.)
+    filas = sin_repetidos(filas)
     if not limite and len(filas) < 500:
         sys.exit(f"Listado sospechosamente chico ({len(filas)} props): no piso los archivos, reintenta la próxima corrida")
     # "Subida hace N días": RE/MAX NO publica la fecha de alta, así que el robot registra

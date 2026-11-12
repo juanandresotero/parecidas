@@ -102,10 +102,12 @@ def cumple(c, cfg, ctx):
         if not (dn in deptos or any(z["depto"] == dn and bn in z["barrios"] for z in zonas) or bn in barrios):
             return False
     # dormitorios / baños: 0 o vacío = da igual
+    # (emprendimientos: rango dorm…dorm_max; entra si la búsqueda se superpone con el rango)
     for campo, a, b in (("dorm", "dmin", "dmax"), ("banos", "bmin", "bmax")):
         lo, hi = rango({k: (cfg.get(k) or None) for k in (a, b)}, a, b)
         v = c.get(campo)
-        if lo and (v is None or v < lo):
+        v_hi = c.get(campo + "_max") if c.get(campo + "_max") is not None else v
+        if lo and (v_hi is None or v_hi < lo):
             return False
         if hi and (v is None or v > hi):
             return False
@@ -113,14 +115,21 @@ def cumple(c, cfg, ctx):
     rate = ctx["rate"]
     lo, hi = rango({"a": a_usd(cfg.get("pmin"), cfg["moneda"], rate), "b": a_usd(cfg.get("pmax"), cfg["moneda"], rate)}, "a", "b")
     p = c.get("precio_usd")
-    if p is not None and ((lo is not None and p < lo) or (hi is not None and p > hi)):
+    p_hi = c.get("precio_max_usd") if c.get("precio_max_usd") is not None else p
+    if lo is not None and p_hi is not None and p_hi < lo:
         return False
-    # m² construidos (homogeneizados): sin dato → no entra si hay filtro
+    if hi is not None and p is not None and p > hi:
+        return False
+    # m² construidos (homogeneizados): sin dato (null) → entra con "Falta dato"; 0 es un dato (terreno)
     lo, hi = rango(cfg, "cubmin", "cubmax")
     m = c.get("m2_homog")
-    if lo is not None and (m is None or m < lo):
+    m_hi = c.get("m2_homog_max") if c.get("m2_homog_max") is not None else m
+    if lo is not None and m_hi is not None and m_hi < lo:
         return False
-    if hi is not None and (m is None or m > hi):
+    if hi is not None and m is not None and m > hi:
+        return False
+    # temporario: solo el mismo período (día/semana/quincena/mes); desconocido entra
+    if cfg["oper"] == "temporal" and cfg.get("periodo") and c.get("periodo") and c["periodo"] != cfg["periodo"]:
         return False
     # m² totales / padrón: apto = su superficie total; casa/terreno sin dato → no se descarta
     lo, hi = rango(cfg, "padmin", "padmax")
@@ -154,7 +163,7 @@ def cumple(c, cfg, ctx):
 # ----------------------------------------------------------------------------------------------------------
 APLICAR = """(cfg) => {
   limpiarTodo();
-  setSeg('f-oper', cfg.oper);
+  setSeg('f-oper', cfg.oper); setSeg('f-periodo', cfg.periodo || ''); togglePeriodo();
   setSegMulti('f-tipo', cfg.tipos); setSegMulti('f-tipo-otros', cfg.otros); toggleOtros(); toggleGastos();
   SELBARRIOS = cfg.lugares.slice(); renderChips(); pintarGrupo();
   setStep('f-dmin', cfg.dmin); setStep('f-dmax', cfg.dmax); setStep('f-bmin', cfg.bmin); setStep('f-bmax', cfg.bmax);
@@ -170,7 +179,7 @@ APLICAR = """(cfg) => {
   return { f: f, slugs: slugs };
 }"""
 
-BASE = {"oper": "sale", "tipos": [], "otros": [], "lugares": [], "dmin": None, "dmax": None, "bmin": None, "bmax": None,
+BASE = {"oper": "sale", "periodo": "", "tipos": [], "otros": [], "lugares": [], "dmin": None, "dmax": None, "bmin": None, "bmax": None,
         "moneda": "USD", "pmin": None, "pmax": None, "cubmin": None, "cubmax": None, "padmin": None, "padmax": None,
         "gmin": None, "gmax": None, "coch": "", "estado": "", "renta": [], "conPuntos": False}
 
@@ -192,6 +201,7 @@ OPCIONES = {
     "estado": ["", "usada", "a_estrenar"],
     "renta": [[], ["con"], ["sin"], ["multi"], ["con", "multi"], ["con", "sin", "multi"]],
     "gastos": [(None, None), (None, 8000), (3000, None), (2000, 6000)],
+    "periodo": ["", "daily", "fortnightly", "monthly"],   # solo cuenta en temporario
 }
 
 
@@ -217,6 +227,8 @@ def poner(cfg, dim, val):
         cfg[dim] = val
     elif dim == "renta":
         cfg["renta"] = list(val)
+    elif dim == "periodo":
+        cfg["periodo"] = val
     elif dim == "gastos":
         cfg["gmin"], cfg["gmax"] = val
         if val != (None, None) and "apto" not in cfg["tipos"]:

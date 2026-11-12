@@ -186,6 +186,7 @@ function leerFiltros() {
             : (lug.barrios.length ? lug.barrios : null);
   var f = {
     operacion: segVal("f-oper"),                 // siempre 'sale', 'rent' o 'temporal'
+    periodo: segVal("f-oper") === "temporal" ? segVal("f-periodo") : "",   // temporario: precio por día/semana/quincena/mes
     tipos: tiposSeleccionados(),                  // casa/apto/otros(expandido) (vacío = cualquiera)
     grupo: grupo,
     deptos: lug.deptos.length ? lug.deptos : null,   // departamentos enteros (normalizados)
@@ -289,15 +290,23 @@ function pasa(c, f, slugActual, conNoActivas) {
   // escondida del link frenaba barrios elegidos a mano (un link de Montevideo + un barrio de
   // Maldonado daba 0). Hoy los nombres de barrio casi no se repiten entre departamentos.
   // dorm/baños: 0 = "da igual" (no filtra). Con !=null, un TOPE de 0 dejaba 0 resultados.
-  if (f.dmin && (c.dorm == null || c.dorm < f.dmin)) return false;
+  // Emprendimientos: traen RANGOS (dorm…dorm_max, etc.). Entra si la búsqueda se SUPERPONE con el rango
+  // (ofrece de 1 a 3 dorm → una búsqueda de 3 lo encuentra). Una propiedad común no tiene *_max: rango de un valor.
+  var dHi = c.dorm_max != null ? c.dorm_max : c.dorm, bHi = c.banos_max != null ? c.banos_max : c.banos;
+  if (f.dmin && (dHi == null || dHi < f.dmin)) return false;
   if (f.dmax && (c.dorm == null || c.dorm > f.dmax)) return false;
-  if (f.bmin && (c.banos == null || c.banos < f.bmin)) return false;
+  if (f.bmin && (bHi == null || bHi < f.bmin)) return false;
   if (f.bmax && (c.banos == null || c.banos > f.bmax)) return false;
   // Precio que falta ("Consultar") NO excluye: se muestra marcando "falta precio" (ver faltantes()).
-  if (f.precioMinUsd != null && c.precio_usd != null && c.precio_usd < f.precioMinUsd) return false;
+  var pHi = c.precio_max_usd != null ? c.precio_max_usd : c.precio_usd;
+  if (f.precioMinUsd != null && pHi != null && pHi < f.precioMinUsd) return false;
   if (f.precioMaxUsd != null && c.precio_usd != null && c.precio_usd > f.precioMaxUsd) return false;
-  if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
-  if (f.cubMax != null && (c.m2_homog == null || c.m2_homog > f.cubMax)) return false;
+  // m² construidos que FALTAN (null) no descartan: aparece con "Falta dato" (un terreno con 0 sí es un dato).
+  var mHi = c.m2_homog_max != null ? c.m2_homog_max : c.m2_homog;
+  if (f.cubMin != null && mHi != null && mHi < f.cubMin) return false;
+  if (f.cubMax != null && c.m2_homog != null && c.m2_homog > f.cubMax) return false;
+  // Temporario: el precio es por un período (día/semana/quincena/mes) → solo se comparan iguales. Desconocido: entra.
+  if (f.periodo && f.operacion === "temporal" && c.periodo && c.periodo !== f.periodo) return false;
   // Padrón desconocido (0 = el robot no lo pudo leer) NO excluye; solo compara si hay valor real.
   var mt = metrosTotales(c);
   if (f.padronMin != null && mt && mt < f.padronMin) return false;
@@ -506,6 +515,8 @@ function fmtPrecio(c) {
 function faltantes(c, f) {
   var r = [];
   if ((f.precioMinUsd != null || f.precioMaxUsd != null) && c.precio_usd == null) r.push("precio");
+  if ((f.cubMin != null || f.cubMax != null) && c.m2_homog == null) r.push("m² construidos");
+  if (f.periodo && f.operacion === "temporal" && !c.periodo) r.push("período");
   if ((f.padronMin != null || f.padronMax != null) && !metrosTotales(c)) r.push("padrón");
   if ((f.cochera === "si" || f.cochera === "no") && c.cochera == null) r.push("cochera");
   if (f.estado && !c.estado) r.push("estado");
@@ -542,6 +553,9 @@ function fmtK(precio, moneda) {
 }
 // Las 3 operaciones que existen (lo que manda RE/MAX en `operacion`) y cómo se llaman.
 var OPER_ETIQ = { sale: "Venta", rent: "Alquiler", temporal: "Alquiler temporario" };
+// Período del precio de un alquiler temporario (billingFrequency de RE/MAX).
+var PERIODO_ETIQ = { daily: "día", weekly: "semana", fortnightly: "quincena", monthly: "mes" };
+function togglePeriodo() { $("f-periodo-wrap").style.display = segVal("f-oper") === "temporal" ? "" : "none"; }
 // Resumen corto del título: Operación · tipo · (dorm o m²) · precio.
 // Terreno usa m² totales (padrón); casa/apto usan dormitorios.
 function resumen(c) {
@@ -558,9 +572,12 @@ function resumenCard(c) {
   var oper = OPER_ETIQ[c.operacion] || "Venta";
   var t = tipoCat(c.tipo);
   var tipoTxt = t === "apto" ? "apto" : (t === "casa" ? "casa" : (t === "terreno" ? "terreno" : "propiedad"));
-  var med = t === "terreno" ? (c.m2_padron ? c.m2_padron + " m²" : "")
-                            : (c.dorm != null ? c.dorm + " dorm" : "");
-  return [oper, tipoTxt, med, c.barrio || "", fmtK(c.precio, c.moneda)].filter(Boolean).join(" · ");
+  var dorm = c.dorm != null ? (c.dorm_max != null ? c.dorm + " a " + c.dorm_max : String(c.dorm)) + " dorm" : "";
+  var med = t === "terreno" ? (c.m2_padron ? c.m2_padron + " m²" : "") : dorm;
+  var precio = fmtK(c.precio, c.moneda);
+  if (precio && c.precio_max_usd != null) precio = "desde " + precio;                 // emprendimiento
+  if (precio && c.periodo && PERIODO_ETIQ[c.periodo]) precio += " por " + PERIODO_ETIQ[c.periodo];   // temporario
+  return [oper, tipoTxt, med, c.barrio || "", precio].filter(Boolean).join(" · ");
 }
 
 var SEL = [];      // propiedades elegidas para enviar, EN ORDEN (para numerar 1,2,3)
@@ -1385,7 +1402,7 @@ function migrarBusquedas() {
 function snapshotForm() {
   return {
     link: $("link").value,
-    oper: segVal("f-oper"), moneda: segVal("f-moneda"), tipos: segMulti("f-tipo"),
+    oper: segVal("f-oper"), periodo: segVal("f-periodo"), moneda: segVal("f-moneda"), tipos: segMulti("f-tipo"),
     tiposOtros: segMulti("f-tipo-otros"),
     precioMin: $("f-precio-min").value, precioMax: $("f-precio-max").value,
     cubMin: $("f-cub-min").value, cubMax: $("f-cub-max").value,
@@ -1401,6 +1418,7 @@ function snapshotForm() {
 function restoreForm(s) {
   $("link").value = s.link || "";
   setSeg("f-oper", s.oper || "sale");
+  setSeg("f-periodo", s.periodo || ""); togglePeriodo();
   setSeg("f-moneda", s.moneda || (s.oper === "rent" ? "UYU" : "USD"));
   setSegMulti("f-tipo", s.tipos || []);
   setSegMulti("f-tipo-otros", s.tiposOtros || []); toggleOtros();
@@ -2187,7 +2205,7 @@ function restaurarEstado() {
 // Todos los filtros en "da igual" (sin tocar el link ni los resultados). Lo usan "Parecidas" y
 // "Traer": traer un link PISA todo el formulario, no queda nada de la búsqueda anterior.
 function vaciarFiltros() {
-  setSeg("f-oper", "sale"); setSeg("f-moneda", "USD");
+  setSeg("f-oper", "sale"); setSeg("f-moneda", "USD"); setSeg("f-periodo", ""); togglePeriodo();
   setSegMulti("f-tipo", []); setSegMulti("f-tipo-otros", []); toggleOtros();
   ["f-precio-min", "f-precio-max", "f-cub-min", "f-cub-max", "f-padron-min", "f-padron-max",
    "f-gastos-min", "f-gastos-max"]
@@ -2773,7 +2791,7 @@ function cerrarGaleria() { GAL.slug = null; cerrarOverlay("galeria"); }
 function cerrarVistaPrevia() { VP_ACTUAL = null; var v = $("vista-previa"); if (v) v.style.display = "none"; }
 
 function initSegs() {
-  ["f-oper", "f-coch", "f-estado", "f-moneda"].forEach(function (id) {   // una sola opción
+  ["f-oper", "f-coch", "f-estado", "f-moneda", "f-periodo"].forEach(function (id) {   // una sola opción
     $(id).addEventListener("click", function (e) {
       if (e.target.tagName !== "BUTTON") return;
       setSeg(id, e.target.getAttribute("data-v"));
@@ -2783,6 +2801,9 @@ function initSegs() {
   $("f-oper").addEventListener("click", function (e) {
     if (e.target.tagName !== "BUTTON") return;
     setSeg("f-moneda", segVal("f-oper") === "rent" ? "UYU" : "USD");   // temporario: casi todos en dólares
+    // Temporario: el precio es por período; arranca en Quincena (la mayoría de los avisos).
+    setSeg("f-periodo", segVal("f-oper") === "temporal" ? (segVal("f-periodo") || "fortnightly") : "");
+    togglePeriodo();
     toggleGastos();
     if (e.target.getAttribute("data-v") === "temporal") {   // ya lo usó → sale del amarillo
       marcarNovedad("temporal-btn"); e.target.classList.remove("nuevo");

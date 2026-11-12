@@ -253,14 +253,22 @@ function pasa(c, f, slugActual) {
   // Búsquedas viejas guardadas con `region` la traen, pero se ignora.
   // dorm/baños: 0 = "da igual" (no filtra). Con !=null, un TOPE de 0 (o una búsqueda vieja
   // guardada con máx 0) dejaba 0 resultados. Espejo de pasa() en app.js.
-  if (f.dmin && (c.dorm == null || c.dorm < f.dmin)) return false;
+  // Emprendimientos: traen RANGOS (dorm…dorm_max, etc.). Entra si la búsqueda se SUPERPONE con el rango
+  // (ofrece de 1 a 3 dorm → una búsqueda de 3 lo encuentra). Una propiedad común no tiene *_max: rango de un valor.
+  var dHi = c.dorm_max != null ? c.dorm_max : c.dorm, bHi = c.banos_max != null ? c.banos_max : c.banos;
+  if (f.dmin && (dHi == null || dHi < f.dmin)) return false;
   if (f.dmax && (c.dorm == null || c.dorm > f.dmax)) return false;
-  if (f.bmin && (c.banos == null || c.banos < f.bmin)) return false;
+  if (f.bmin && (bHi == null || bHi < f.bmin)) return false;
   if (f.bmax && (c.banos == null || c.banos > f.bmax)) return false;
-  if (f.precioMinUsd != null && c.precio_usd != null && c.precio_usd < f.precioMinUsd) return false;
+  var pHi = c.precio_max_usd != null ? c.precio_max_usd : c.precio_usd;
+  if (f.precioMinUsd != null && pHi != null && pHi < f.precioMinUsd) return false;
   if (f.precioMaxUsd != null && c.precio_usd != null && c.precio_usd > f.precioMaxUsd) return false;
-  if (f.cubMin != null && (c.m2_homog == null || c.m2_homog < f.cubMin)) return false;
-  if (f.cubMax != null && (c.m2_homog == null || c.m2_homog > f.cubMax)) return false;
+  // m² construidos que FALTAN (null) no descartan: aparece con "Falta dato" (un terreno con 0 sí es un dato).
+  var mHi = c.m2_homog_max != null ? c.m2_homog_max : c.m2_homog;
+  if (f.cubMin != null && mHi != null && mHi < f.cubMin) return false;
+  if (f.cubMax != null && c.m2_homog != null && c.m2_homog > f.cubMax) return false;
+  // Temporario: el precio es por un período (día/semana/quincena/mes) → solo se comparan iguales. Desconocido: entra.
+  if (f.periodo && f.operacion === "temporal" && c.periodo && c.periodo !== f.periodo) return false;
   // Dato DESCONOCIDO (padrón 0, cochera null, estado "") NO excluye — indulgente, igual que la app.
   var mt = metrosTotales(c);
   if (f.padronMin != null && mt && mt < f.padronMin) return false;
