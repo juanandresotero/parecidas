@@ -1754,6 +1754,7 @@ function diferenciasPrevia(a, h) {
 function pintarBotonPrevias() {
   var b = busquedaActiva();
   $("btn-previas").style.display = (b && b.previas && b.previas.length) ? "" : "none";
+  $("btn-previas").classList.toggle("nuevo", novedadEmpezo("news-previas") && !novedadVista("previas-btn"));   // dorado desde su ventanita
 }
 function abrirPrevias() {
   var b = busquedaActiva(); if (!b || !b.previas || !b.previas.length) return;
@@ -2399,12 +2400,16 @@ function cerrarOverlay(id) { $(id).style.display = "none"; }
 // -------------------------- Novedades (cartel 1 vez + resaltado amarillo) --------------------------
 function novedadVista(k) { try { return localStorage.getItem("parecidas_nv_" + k) === "1"; } catch (e) { return true; } }
 // Algunas ventanitas valen solo unas semanas: después de su fecha, el que no la vio ya no la ve (Juan 2026-11-11).
-var NEWS_HASTA = { "news-mercado": "2026-12-10" };   // último día que se muestra (inclusive)
+var NEWS_HASTA = { "news-mercado": "2026-12-10", "news-previas": "2027-01-10" };   // último día que se muestra (inclusive)
+// Y otras esperan a que venza la anterior: "si ponemos todo junto no lo van a leer" (Juan 2026-11-12).
+var NEWS_DESDE = { "news-previas": "2026-12-11" };   // primer día que se muestra
+function fechaISO(d) {
+  return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+}
+function novedadEmpezo(k, hoy) { return !NEWS_DESDE[k] || fechaISO(hoy || new Date()) >= NEWS_DESDE[k]; }
 function novedadVigente(k, hoy) {
-  var h = NEWS_HASTA[k]; if (!h) return true;
-  var d = hoy || new Date();
-  var f = d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
-  return f <= h;
+  var h = NEWS_HASTA[k];
+  return novedadEmpezo(k, hoy) && (!h || fechaISO(hoy || new Date()) <= h);
 }
 function marcarNovedad(k) { try { localStorage.setItem("parecidas_nv_" + k, "1"); } catch (e) {} }
 // ¿Primera vez ABSOLUTA en la app? = localStorage sin ninguna huella de uso previo.
@@ -3124,7 +3129,8 @@ function initSegs() {
   // "news-celu-compu" = vincular celu y compu + vista de escritorio, con TÍTULO + explicación (2026-11-11; la 1ª
   // versión "news-vincular" no quedaba clara → clave nueva para que la vean todos). La de temporarios + mapa se BORRÓ.
   // "news-mercado" (2026-11-12) = la misma + "📊 si está en precio y cuánto se alquila" (clave nueva: la ven todos).
-  var NEWS = ["news", "news-agente", "news-avisos", "news-mercado"];
+  // "news-previas" (sale desde el 11/12/2026, cuando vence news-mercado) = ↶ volver a filtros anteriores.
+  var NEWS = ["news", "news-agente", "news-avisos", "news-mercado", "news-previas"];
   if (!novedadVista("iniciado")) {
     if (esPrimeraVezEnLaApp()) NEWS.forEach(marcarNovedad);
     marcarNovedad("iniciado");
@@ -3151,6 +3157,10 @@ function initSegs() {
   $("btn-news-ok").addEventListener("click", cerrarNews);
   $("btn-news-x").addEventListener("click", cerrarNews);
   $("news").addEventListener("click", function (e) { if (e.target === $("news")) cerrarNews(); });
+  var cerrarNewsPrevias = function () { marcarNovedad("news-previas"); cerrarOverlay("news-previas"); };
+  $("btn-news-previas-ok").addEventListener("click", cerrarNewsPrevias);
+  $("btn-news-previas-x").addEventListener("click", cerrarNewsPrevias);
+  $("news-previas").addEventListener("click", function (e) { if (e.target === $("news-previas")) cerrarNewsPrevias(); });
   var cerrarNewsAgente = function () { marcarNovedad("news-agente"); cerrarOverlay("news-agente"); };
   $("btn-news-agente-ok").addEventListener("click", cerrarNewsAgente);
   $("btn-news-agente-x").addEventListener("click", cerrarNewsAgente);
@@ -3233,7 +3243,7 @@ function initSegs() {
   $("btn-limpiar-cerrar").addEventListener("click", function () { cerrarOverlay("limpiar"); });
   $("limpiar").addEventListener("click", function (e) { if (e.target === $("limpiar")) cerrarOverlay("limpiar"); });
   $("btn-limpiar-borrar").addEventListener("click", ejecutarLimpiar);
-  $("btn-previas").addEventListener("click", abrirPrevias);
+  $("btn-previas").addEventListener("click", function () { marcarNovedad("previas-btn"); $("btn-previas").classList.remove("nuevo"); abrirPrevias(); });
   $("btn-previas-cancelar").addEventListener("click", function () { cerrarOverlay("previas"); });
   $("btn-previas-cerrar").addEventListener("click", function () { cerrarOverlay("previas"); });
   $("previas").addEventListener("click", function (e) { if (e.target === $("previas")) cerrarOverlay("previas"); });
