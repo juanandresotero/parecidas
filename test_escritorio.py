@@ -414,6 +414,29 @@ def caso_barra_de_arriba_ordenada_en_la_compu(br):
     cel.context.close()
 
 
+def caso_busquedas_guardadas_equilibrado_en_la_compu(br):
+    """Juan 2026-11-11: en la compu, 'Búsquedas guardadas' más ancho y en 2 columnas (no la tira finita del celu)."""
+    poner = """() => { limpiarTodo(); setSeg('f-oper', 'sale'); buscar();
+        guardarBusquedaActual('Cliente 1', '099111222', 'Lecocq 1500', false);
+        var arr = cargarBusquedas(), b = arr[0];
+        for (var i = 2; i <= 6; i++) { var c = JSON.parse(JSON.stringify(b)); c.id = 'x' + i; c.nombre = 'Cliente ' + i; arr.push(c); }
+        guardarBusquedas(arr); $('btn-busquedas').click(); }"""
+    page = pagina_mapa(br, 1440, 900)
+    page.evaluate(poner)
+    tarj = caja(page, "#busquedas .ajustes-card")
+    assert tarj["w"] >= 760, f"en la compu la ventana es más ancha: {tarj['w']}"
+    xs = page.evaluate("Array.prototype.map.call(document.querySelectorAll('#busq-lista .busq-item'), function (e) { return Math.round(e.getBoundingClientRect().x); })")
+    assert len(set(xs)) == 2, f"las búsquedas van en 2 columnas: {sorted(set(xs))}"
+    assert tarj["b"] <= 900, "entra en la pantalla"
+    page.context.close()
+    cel = pagina(br, 420, 900, tactil=True)
+    cel.evaluate(poner)
+    assert caja(cel, "#busquedas .ajustes-card")["w"] <= 400, "en el celu sigue igual"
+    xs = cel.evaluate("Array.prototype.map.call(document.querySelectorAll('#busq-lista .busq-item'), function (e) { return Math.round(e.getBoundingClientRect().x); })")
+    assert len(set(xs)) == 1, "en el celu, una columna"
+    cel.context.close()
+
+
 CASOS = [caso_compu_se_detecta_sola, caso_celular_nunca_cambia, caso_tablet_tactil_ancha_sigue_como_celular,
          caso_compu_con_ventana_angosta_sigue_como_celular, caso_el_boton_cambia_y_se_acuerda,
          caso_en_el_celu_el_boton_de_arriba_no_estorba_pero_hay_ajustes, caso_forzar_celular_en_compu_y_auto_vuelve,
@@ -426,7 +449,7 @@ CASOS = [caso_compu_se_detecta_sola, caso_celular_nunca_cambia, caso_tablet_tact
          caso_vista_previa_de_la_tarjeta_reemplaza_el_mapa, caso_vista_previa_del_pin_tambien_en_la_columna,
          caso_en_el_celu_la_tarjeta_sigue_igual, caso_cartel_de_campanas_fuera_de_los_filtros,
          caso_ajustes_equilibrado_en_la_compu, caso_vista_previa_en_la_compu_tiene_toda_la_descripcion,
-         caso_barra_de_arriba_ordenada_en_la_compu]
+         caso_barra_de_arriba_ordenada_en_la_compu, caso_busquedas_guardadas_equilibrado_en_la_compu]
 
 
 def main():

@@ -91,6 +91,10 @@
   body.pc-ancho .card-link{cursor:default}
   /* Ajustes en la compu: más ancho y en 2 columnas (izquierda: associate, avisos, vista; derecha: vincular) */
   body.pc-ancho #ajustes .ajustes-card{max-width:900px}
+  /* Búsquedas guardadas en la compu: ventana ancha y las búsquedas en 2 columnas */
+  body.pc-ancho #busquedas .ajustes-card{max-width:900px}
+  body.pc-ancho .busq-lista{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;max-height:72vh;align-content:start}
+  body.pc-ancho .busq-lista>.vacio{grid-column:1 / -1}
   body.pc-ancho .aj-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:36px;row-gap:18px;align-items:start}
   body.pc-ancho .aj-associate{grid-column:1;grid-row:1}
   body.pc-ancho .aj-avisos{grid-column:1;grid-row:2}
