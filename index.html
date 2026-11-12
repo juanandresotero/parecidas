@@ -147,6 +147,7 @@
   #alquiler-estim{margin:14px 2px 4px;padding:13px 15px;border:1px solid var(--line);
     border-radius:14px;background:var(--surface-2)}
   #precio-mercado{margin:14px 2px 4px;padding:13px 15px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+  .nuevo-caja{border:2px solid #efab00 !important;background:#fff8e1 !important;box-shadow:0 0 0 3px rgba(239,171,0,.22)}
   .pm-veredicto{font-size:19px;font-weight:800;margin-top:5px;line-height:1.25}
   .pm-veredicto span{font-size:13px;font-weight:600;color:var(--muted)}
   .pm-barato{color:#15803d} .pm-justo{color:var(--brand)} .pm-caro{color:#c0262d}
@@ -535,7 +536,7 @@
     </div>
   </div>
 
-  <div class="ajustes" id="news-celu-compu" style="display:none">
+  <div class="ajustes" id="news-mercado" style="display:none">
     <div class="ajustes-card">
       <div class="ajustes-head"><b>👋 Novedades</b><button id="btn-news-vincular-x" aria-label="Cerrar">✕</button></div>
       <div class="news-item">
@@ -545,6 +546,10 @@
       <div class="news-item">
         <div class="news-tit">🖥️ Parecidas, ahora pensada para la compu</div>
         <p>Filtros, propiedades y mapa juntos en una sola pantalla. Con el botón de arriba (en <b>dorado</b>) cambiás entre vista escritorio y celular.</p>
+      </div>
+      <div class="news-item">
+        <div class="news-tit">📊 Pegá un link y sabé si está en precio y cuánto se alquila</div>
+        <p>Después de <b>Traer</b> (en <b>dorado</b>), al final de la lista vas a ver si la propiedad está <b>cara, en precio o con buen precio</b>, y <b>cuánto se podría alquilar</b>.<br><i>De dónde sale:</i> compara su precio por m² con parecidas del mismo barrio, tipo, tamaño y estado, entre disponibles, reservadas y las que se vendieron o alquilaron en el último año. Te dice con cuántas comparó y las podés ver una por una.</p>
       </div>
       <button class="btn btn-brand" id="btn-news-vincular-ok" style="width:100%;margin-top:6px">Entendido</button>
     </div>

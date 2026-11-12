@@ -12,7 +12,8 @@ from playwright.sync_api import sync_playwright
 
 from test_ocultas import servir, pagina_nueva
 
-VENT = "news-celu-compu"   # 2ª versión (título + explicación). La 1ª ("news-vincular") no quedaba clara.
+VENT = "news-mercado"   # 3ª versión: + análisis de precio (2026-11-12). Antes: "news-celu-compu", "news-vincular".
+VIEJA = "news-celu-compu"   # 2ª versión (título + explicación). La 1ª ("news-vincular") no quedaba clara.
 VISIBLE = f"(function () {{ var e = document.getElementById('{VENT}'); return !!e && getComputedStyle(e).display !== 'none'; }})()"
 
 
@@ -24,9 +25,9 @@ def recargar(page):
 
 def usuario_que_ya_usaba_la_app(page):
     """Ya había visto todas las ventanitas viejas, pero no la nueva."""
-    page.evaluate("""() => { ['news', 'news-agente', 'news-avisos', 'news-temporal', 'news-temporal-mapa', 'news-vincular', 'iniciado'].forEach(function (k) {
+    page.evaluate("""() => { ['news', 'news-agente', 'news-avisos', 'news-temporal', 'news-temporal-mapa', 'news-vincular', 'news-celu-compu', 'iniciado'].forEach(function (k) {
         localStorage.setItem('parecidas_nv_' + k, '1'); });
-        ['%s', 'vincular-nv', 'sync-nv', 'vista-btn'].forEach(function (k) { localStorage.removeItem('parecidas_nv_' + k); }); }""" % VENT)
+        ['%s', 'vincular-nv', 'sync-nv', 'vista-btn', 'traer-btn'].forEach(function (k) { localStorage.removeItem('parecidas_nv_' + k); }); }""" % VENT)
     recargar(page)
 
 
@@ -41,12 +42,14 @@ def caso_la_ve_quien_ya_usaba_la_app(br):
     assert "scritorio" in txt, f"explica la vista de escritorio: {txt}"
     assert "otro aparato" in txt and "código" in txt, f"explica que el código se escribe en el otro aparato: {txt}"
     assert "uardá el código" in txt and "respaldo" in txt, f"explica que hay que guardar el código como respaldo: {txt}"
-    assert len(txt) < 650, f"tiene que ser breve ({len(txt)} caracteres)"
+    assert len(txt) < 1150, f"tiene que ser breve ({len(txt)} caracteres)"
     titulos = page.evaluate(f"Array.prototype.map.call(document.querySelectorAll('#{VENT} .news-item .news-tit'), function (t) {{ return t.textContent; }})")
-    assert len(titulos) == 2, f"dos novedades, cada una con su TÍTULO descriptivo: {titulos}"
+    assert len(titulos) == 3, f"tres novedades, cada una con su TÍTULO descriptivo: {titulos}"
+    assert "precio" in titulos[2] and "alquila" in titulos[2], f"el título 3 dice de qué se trata: {titulos[2]}"
+    assert "barrio" in txt and "último año" in txt, "explica de dónde salen los datos del análisis"
     assert "elu" in titulos[0] and "ompu" in titulos[0], f"el título 1 dice de qué se trata (celu y compu): {titulos[0]}"
     assert "ompu" in titulos[1] or "PC" in titulos[1], f"el título 2 dice que es para la compu: {titulos[1]}"
-    assert page.evaluate(f"document.querySelectorAll('#{VENT} .news-item p').length") == 2, "y abajo de cada título, su explicación"
+    assert page.evaluate(f"document.querySelectorAll('#{VENT} .news-item p').length") == 3, "y abajo de cada título, su explicación"
     page.evaluate("document.getElementById('btn-news-vincular-ok').click()")
     assert not page.evaluate(VISIBLE), "'Entendido' la cierra"
     recargar(page)
@@ -58,6 +61,7 @@ def caso_la_vieja_no_existe_mas(br):
     page = pagina_nueva(br)
     assert page.evaluate("document.getElementById('news-escritorio') === null"), "la ventanita vieja (temporarios + mapa) se borró"
     assert page.evaluate("document.getElementById('news-vincular') === null"), "la 1ª versión (sin títulos) se reemplazó"
+    assert page.evaluate("document.getElementById('%s') === null" % VIEJA), "la 2ª versión se reemplazó por la de 3 novedades"
     page.context.close()
 
 
@@ -91,14 +95,27 @@ def caso_ajustes_en_dorado_hasta_abrirlo(br):
 def caso_vence_en_unas_semanas(br):
     """Juan 2026-11-11: la ventanita vale solo por las próximas semanas (hasta el 9/12/2026). Después no sale más."""
     page = pagina_nueva(br)
-    assert page.evaluate("novedadVigente('news-celu-compu', new Date('2026-11-20T12:00:00'))") is True, "en noviembre se muestra"
-    assert page.evaluate("novedadVigente('news-celu-compu', new Date('2026-12-09T23:00:00'))") is True, "el 9/12 todavía"
-    assert page.evaluate("novedadVigente('news-celu-compu', new Date('2026-12-10T08:00:00'))") is False, "desde el 10/12 ya no"
+    assert page.evaluate("novedadVigente('news-mercado', new Date('2026-11-20T12:00:00'))") is True, "en noviembre se muestra"
+    assert page.evaluate("novedadVigente('news-mercado', new Date('2026-12-10T23:00:00'))") is True, "el 10/12 todavía"
+    assert page.evaluate("novedadVigente('news-mercado', new Date('2026-12-11T08:00:00'))") is False, "desde el 11/12 ya no"
     assert page.evaluate("novedadVigente('news-avisos', new Date('2030-01-01'))") is True, "las que no tienen vencimiento siguen igual"
     page.context.close()
 
 
-CASOS = [caso_vence_en_unas_semanas, caso_la_ve_quien_ya_usaba_la_app, caso_la_vieja_no_existe_mas, caso_no_sale_a_quien_abre_la_app_por_primera_vez,
+def caso_traer_en_dorado_hasta_el_primer_uso(br):
+    page = pagina_nueva(br)
+    usuario_que_ya_usaba_la_app(page)
+    page.evaluate("document.getElementById('btn-news-vincular-ok').click()")
+    dorado = "document.getElementById('btn-traer').classList.contains('nuevo')"
+    assert page.evaluate(dorado), "'Traer' en dorado (ahí está lo del análisis de precio)"
+    page.evaluate("$('btn-traer').click()")
+    assert not page.evaluate(dorado), "al usarlo sale del dorado"
+    recargar(page)
+    assert not page.evaluate(dorado), "y no vuelve"
+    page.context.close()
+
+
+CASOS = [caso_traer_en_dorado_hasta_el_primer_uso, caso_vence_en_unas_semanas, caso_la_ve_quien_ya_usaba_la_app, caso_la_vieja_no_existe_mas, caso_no_sale_a_quien_abre_la_app_por_primera_vez,
          caso_ajustes_en_dorado_hasta_abrirlo]
 
 

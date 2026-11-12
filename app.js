@@ -830,6 +830,15 @@ function analisisMercado(base, lista) {
   };
 }
 var PM_ETIQ = { barato: "BUEN PRECIO", justo: "EN PRECIO", caro: "CARO" };
+// Dorado de los cuadros de análisis (precio + alquiler): 24 horas desde la PRIMERA vez que se ven (Juan 2026-11-12).
+function analisisEnDorado() {
+  var k = "parecidas_nv_analisis-desde", t;
+  try {
+    t = Number(localStorage.getItem(k)) || 0;
+    if (!t) { t = Date.now(); localStorage.setItem(k, String(t)); }
+  } catch (e) { return false; }
+  return Date.now() - t < 24 * 3600000;
+}
 function renderPrecioMercado() {
   var el = $("precio-mercado");
   if (!el) return;
@@ -837,6 +846,7 @@ function renderPrecioMercado() {
   var r = analisisMercado(window.__base);
   if (!r) { el.style.display = "none"; el.innerHTML = ""; return; }
   el.style.display = "";
+  el.classList.toggle("nuevo-caja", analisisEnDorado());
   var etq = (r.fuerte && r.nivel !== "justo" ? "MUY " : "") + PM_ETIQ[r.nivel];
   var dif = r.pct === 0 ? "igual al promedio" : Math.abs(r.pct) + "% " + (r.pct > 0 ? "sobre" : "bajo") + " el promedio";
   var pos = Math.max(2, Math.min(98, 50 + r.pct * 1.25));   // −40% … +40% sobre la barra
@@ -879,6 +889,7 @@ function renderEstimAlquiler() {
   var e = estimarAlquiler(window.__base);
   if (!e) { el.style.display = "none"; el.innerHTML = ""; return; }
   el.style.display = "";
+  el.classList.toggle("nuevo-caja", analisisEnDorado());
   if (e.pocos) {
     el.innerHTML = '<div class="ea-tit">💰 Cuánto se puede alquilar</div>' +
       '<div class="ea-nota">Todavía no hay suficientes alquileres parecidos en la zona para estimar' +
@@ -2293,7 +2304,7 @@ function cerrarOverlay(id) { $(id).style.display = "none"; }
 // -------------------------- Novedades (cartel 1 vez + resaltado amarillo) --------------------------
 function novedadVista(k) { try { return localStorage.getItem("parecidas_nv_" + k) === "1"; } catch (e) { return true; } }
 // Algunas ventanitas valen solo unas semanas: después de su fecha, el que no la vio ya no la ve (Juan 2026-11-11).
-var NEWS_HASTA = { "news-celu-compu": "2026-12-09" };   // último día que se muestra (inclusive)
+var NEWS_HASTA = { "news-mercado": "2026-12-10" };   // último día que se muestra (inclusive)
 function novedadVigente(k, hoy) {
   var h = NEWS_HASTA[k]; if (!h) return true;
   var d = hoy || new Date();
@@ -3002,6 +3013,8 @@ function initSegs() {
    "f-gastos-min", "f-gastos-max"]
     .forEach(function (id) { attachMiles(id, false); });
   toggleGastos();
+  $("btn-traer").classList.toggle("nuevo", !novedadVista("traer-btn"));   // dorado: el análisis de precio sale de acá
+  $("btn-traer").addEventListener("click", function () { marcarNovedad("traer-btn"); $("btn-traer").classList.remove("nuevo"); });
   $("btn-traer").addEventListener("click", traer);
   $("btn-buscar").addEventListener("click", buscar);
   $("marca").addEventListener("click", function () {   // tocar 🏠 Parecidas = empezar de cero
@@ -3015,7 +3028,8 @@ function initSegs() {
   // Todas las ventanitas de novedades, en orden VIEJA → NUEVA. Al sumar una nueva, va al final.
   // "news-celu-compu" = vincular celu y compu + vista de escritorio, con TÍTULO + explicación (2026-11-11; la 1ª
   // versión "news-vincular" no quedaba clara → clave nueva para que la vean todos). La de temporarios + mapa se BORRÓ.
-  var NEWS = ["news", "news-agente", "news-avisos", "news-celu-compu"];
+  // "news-mercado" (2026-11-12) = la misma + "📊 si está en precio y cuánto se alquila" (clave nueva: la ven todos).
+  var NEWS = ["news", "news-agente", "news-avisos", "news-mercado"];
   if (!novedadVista("iniciado")) {
     if (esPrimeraVezEnLaApp()) NEWS.forEach(marcarNovedad);
     marcarNovedad("iniciado");
@@ -3050,10 +3064,10 @@ function initSegs() {
   $("btn-news-avisos-ok").addEventListener("click", cerrarNewsAvisos);
   $("btn-news-avisos-x").addEventListener("click", cerrarNewsAvisos);
   $("news-avisos").addEventListener("click", function (e) { if (e.target === $("news-avisos")) cerrarNewsAvisos(); });
-  var cerrarNewsVincular = function () { marcarNovedad("news-celu-compu"); cerrarOverlay("news-celu-compu"); };
+  var cerrarNewsVincular = function () { marcarNovedad("news-mercado"); cerrarOverlay("news-mercado"); };
   $("btn-news-vincular-ok").addEventListener("click", cerrarNewsVincular);
   $("btn-news-vincular-x").addEventListener("click", cerrarNewsVincular);
-  $("news-celu-compu").addEventListener("click", function (e) { if (e.target === $("news-celu-compu")) cerrarNewsVincular(); });
+  $("news-mercado").addEventListener("click", function (e) { if (e.target === $("news-mercado")) cerrarNewsVincular(); });
   $("btn-agente").addEventListener("click", function () {
     marcarNovedad("agente-btn"); $("btn-agente").classList.remove("nuevo");   // ya lo usó → sale del amarillo
     var a = window.__agente; if (!a) return;
