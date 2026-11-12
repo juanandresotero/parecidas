@@ -561,7 +561,7 @@ function fmtK(precio, moneda) {
 // Las 3 operaciones que existen (lo que manda RE/MAX en `operacion`) y cómo se llaman.
 var OPER_ETIQ = { sale: "Venta", rent: "Alquiler", temporal: "Alquiler temporario" };
 // Período del precio de un alquiler temporario (billingFrequency de RE/MAX).
-var PERIODO_ETIQ = { daily: "día", weekly: "semana", fortnightly: "quincena", monthly: "mes" };
+var PERIODO_ETIQ = { daily: "día", weekly: "semana", fortnightly: "quincena", monthly: "mes", biannual: "semestre" };
 function togglePeriodo() { $("f-periodo-wrap").style.display = segVal("f-oper") === "temporal" ? "" : "none"; }
 // Resumen corto del título: Operación · tipo · (dorm o m²) · precio.
 // Terreno usa m² totales (padrón); casa/apto usan dormitorios.

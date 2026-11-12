@@ -83,10 +83,14 @@ def caso_barrio_elegido_a_mano_no_lo_frena_el_link(page):
 
 def caso_la_propiedad_del_link_no_se_ofrece_a_si_misma(page):
     """Lo que SÍ sigue valiendo del link: la propiedad pegada no aparece entre sus propias parecidas."""
-    c = next(x for x in activas(operacion="sale", depto="Montevideo") if x.get("dorm") and x.get("precio_usd"))
-    r = page.evaluate("""(s) => { limpiarTodo(); rellenar(BY_SLUG[s]); buscar();
-        return { en: RENDER_RES.some(function (x) { return x.slug === s; }), n: RENDER_RES.length }; }""", c["slug"])
-    assert r["n"] > 0 and not r["en"], f"la propiedad del link aparece entre sus propias parecidas: {r}"
+    # una propiedad que SÍ tenga parecidas (si no, la prueba no prueba nada; los datos cambian todos los días)
+    cands = [x["slug"] for x in activas(operacion="sale", depto="Montevideo") if x.get("dorm") and x.get("precio_usd")][:60]
+    r = page.evaluate("""(lista) => { for (var i = 0; i < lista.length; i++) { var s = lista[i];
+            limpiarTodo(); rellenar(BY_SLUG[s]); buscar();
+            if (RENDER_RES.length) return { s: s, en: RENDER_RES.some(function (x) { return x.slug === s; }), n: RENDER_RES.length }; }
+        return null; }""", cands)
+    assert r and r["n"] > 0, "ninguna de las primeras 60 tiene parecidas (raro)"
+    assert not r["en"], f"la propiedad del link aparece entre sus propias parecidas: {r}"
 
 
 CASOS = [caso_traer_de_remax_pisa_todos_los_filtros, caso_traer_de_otro_portal_pisa_todos_los_filtros,

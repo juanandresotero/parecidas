@@ -249,7 +249,31 @@ def _en_uruguay(lat, lng) -> bool:
     return lat is not None and lng is not None and -35.2 <= lat <= -30.0 and -58.6 <= lng <= -53.0
 
 
-def rescatar_sin_zona(listado: list, props_uy: list, traer_ficha, coords_de) -> list:
+def barrios_conocidos() -> dict:
+    """Los barrios que conoce la app (window.GRUPOS de barrios.js, agrupados por departamento con "// ---- X ----"):
+    {nombre sin acentos: (nombre, departamento)}. Sirve para reconocer en el título un barrio que hoy no tiene
+    ninguna propiedad cargada con zona (ej. "Flor de Maroñas")."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "barrios.js"), encoding="utf-8") as f:
+            txt = f.read()
+    except OSError:
+        return {}
+    ini = txt.find("window.GRUPOS")
+    fin = txt.find("];", ini)
+    out, depto = {}, ""
+    for linea in txt[ini:fin].splitlines():
+        m = re.search(r"//\s*-+\s*([^-]+?)\s*-+", linea)
+        if m:
+            depto = m.group(1).strip()
+            continue
+        if linea.strip().startswith("//") or not depto:
+            continue
+        for nombre in re.findall(r'"([^"]+)"', linea):
+            out.setdefault(_sin_acentos(nombre), (nombre, depto))
+    return out
+
+
+def rescatar_sin_zona(listado: list, props_uy: list, traer_ficha, coords_de, extra_barrios: dict | None = None) -> list:
     """RE/MAX a veces publica propiedades SIN zona (geoLabel vacío). Se rescatan por sus COORDENADAS, en todo
     el país (antes solo Montevideo + Canelones → se perdían las de Colonia, Lavalleja, Rocha…):
     - departamento = el de la propiedad CON zona más cercana;
@@ -262,6 +286,9 @@ def rescatar_sin_zona(listado: list, props_uy: list, traer_ficha, coords_de) -> 
         bn = _sin_acentos(_barrio(it.get("geoLabel")))
         if bn and bn not in deptos and bn not in barrios:
             barrios[bn] = it.get("geoLabel")
+    for bn, (nombre, dep) in (extra_barrios or {}).items():   # los que conoce la app, aunque hoy no haya ninguno
+        if bn and bn not in deptos and bn not in barrios:
+            barrios[bn] = nombre + ", , " + dep
     puntos = [(c, it.get("geoLabel")) for it in props_uy for c in [coords_de(it)] if c]
     rescatadas = []
     for it in listado:
@@ -696,7 +723,7 @@ def main():
     # porque el agente la pone en el mapa al publicar. Así que uso las coordenadas para
     # decidir si es de Mvd/Can (más confiable que el título). El barrio lo saco del título
     # si nombra uno conocido; si no, queda sin barrio pero CON ubicación (mapa + botón 📍).
-    _rescate = rescatar_sin_zona(listado, props_uy, _fetch_detalle, _coords_item)
+    _rescate = rescatar_sin_zona(listado, props_uy, _fetch_detalle, _coords_item, barrios_conocidos())
     props_uy.extend(_rescate)
     _rescatadas = len(_rescate)
     print(f"Listón: {len(listado)} total, {len(props_uy)} con zona (todo Uruguay) "

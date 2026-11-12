@@ -67,6 +67,19 @@ def caso_elige_el_barrio_mas_largo_y_no_un_departamento():
     assert R._barrio(res["mo"]) == "Montes", f"Montes, no Canelones (que es el departamento): {res['mo']}"
 
 
+def caso_usa_la_lista_de_barrios_de_la_app():
+    """Si ninguna propiedad de hoy está cargada como 'Flor de Maroñas', igual se reconoce: el robot conoce la lista
+    de barrios de la app (barrios.js)."""
+    zonas = [z for z in ZONAS if z["slug"] != "c"]          # sin ninguna "Flor de Maroñas" en los datos
+    nueva = [item(slug="fm", geoLabel="", title="Venta casa 3 dormitorios en Flor de Maroñas")]
+    res = R.rescatar_sin_zona(zonas + nueva, list(zonas), lambda s: {"location": {"coordinates": [-56.14, -34.846]}}, coords_de,
+                              R.barrios_conocidos())
+    assert res and R._sin_acentos(R._barrio(res[0]["geoLabel"])) == "flor de maronas", f"Flor de Maroñas: {res and res[0]['geoLabel']}"
+    assert R._depto(res[0]["geoLabel"]) == "Montevideo"
+    bc = R.barrios_conocidos()
+    assert bc.get("flor de maronas", (None, None))[1] == "Montevideo" and bc.get("solymar", (None, None))[1] == "Canelones", "barrio → departamento"
+
+
 # ---------------- 3: emprendimientos ----------------
 EMP = {"title": "The Corner", "description": "Edificio con cocheras disponibles para comprar", "displayAddress": "Ruta 10 (20000), Zona La Barra, Maldonado, Uruguay",
        "location": {"type": "Point", "coordinates": [-54.86, -34.91]}, "minBedrooms": 1, "maxBedrooms": 2, "minBathrooms": 1, "maxBathrooms": 2,
@@ -242,7 +255,7 @@ def caso_sin_repetidos():
     assert [f["slug"] for f in out] == ["a", "b"] and out[0]["n"] == 1
 
 
-CASOS = [caso_rescata_propiedades_de_todo_el_pais, caso_no_rescata_lo_que_cae_fuera_de_uruguay,
+CASOS = [caso_usa_la_lista_de_barrios_de_la_app, caso_rescata_propiedades_de_todo_el_pais, caso_no_rescata_lo_que_cae_fuera_de_uruguay,
          caso_elige_el_barrio_mas_largo_y_no_un_departamento, caso_emprendimiento_usa_su_propia_ficha,
          caso_emprendimiento_guarda_rangos, caso_propiedad_comun_sin_rangos, caso_temporario_guarda_el_periodo,
          caso_hectareas_no_se_aplican_a_apartamentos, caso_campo_grande_real_se_respeta,

@@ -33,8 +33,13 @@ def caso_el_boton_temporario_busca_los_temporarios(page):
     assert r is not None, "no existe el botón Temporario en Operación"
     assert r["oper"] == "temporal", f"la operación elegida tiene que ser 'temporal' y es {r['oper']}"
     assert r["moneda"] == "USD", f"los temporarios son casi todos en dólares, y la moneda quedó en {r['moneda']}"
+    # Arranca en "Quincena" (precio por período, 2026-11-11): las de quincena + las de período desconocido.
+    quincena = {x["slug"] for x in activas("temporal") if x.get("periodo") in (None, "fortnightly")}
+    assert set(r["slugs"]) == quincena, f"con Quincena: {len(quincena)} temporarios, trajo {len(r['slugs'])}"
+    todos = page.evaluate("""() => { setSeg('f-periodo', ''); var f = leerFiltros();
+        return DATA.filter(function (c) { return pasa(c, f, null); }).map(function (c) { return c.slug; }); }""")
     esperado = {x["slug"] for x in activas("temporal")}
-    assert set(r["slugs"]) == esperado, f"debe traer los {len(esperado)} temporarios, trajo {len(r['slugs'])}"
+    assert set(todos) == esperado, f"con 'Todos' debe traer los {len(esperado)} temporarios, trajo {len(todos)}"
 
 
 def caso_alquiler_comun_no_cambia(page):
