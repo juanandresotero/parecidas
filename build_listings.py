@@ -187,14 +187,16 @@ def _homog(cubiertos, totales, terreno, es_apto, semi, descub) -> int:
     semi = semi or 0
     total = totales or 0
     terreno = terreno or 0
-    if es_apto:
-        d = max(0, descub) if descub is not None else max(0, total - construido - semi)
-    elif descub is not None:
+    # Patio / jardín / terraza (descubierto): el que cargó el agente; si vino en 0 o vacío (RE/MAX manda 0 cuando
+    # no lo completaron), se DEDUCE siempre: apto = total − construido − semi; casa = terreno − construido − semi
+    # (Juan 2026-11-12: "si hay un terreno gigante y un construido chico es obvio que hay descubierto"). Esto es
+    # solo para ANALIZAR (homogeneizado); los filtros usan los metros reales (m2_cub, m2_padron).
+    if descub:
         d = max(0, descub)
-    elif terreno >= construido + semi and terreno > 0:
-        d = terreno - construido - semi
+    elif es_apto:
+        d = max(0, total - construido - semi)
     else:
-        d = 0
+        d = max(0, terreno - construido - semi) if (terreno > 0 and construido + semi > 0) else 0   # terreno baldío: no hay "patio"
     x = construido + semi * 0.4 + d * _coef_descubierto(d, construido)
     return round(x) if x > 0 else 0
 
@@ -549,6 +551,7 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     if _padron and cubiertos and _padron > 8 * cubiertos and COMPLEJO_RE.search(
             _sin_acentos((it.get("title") or "") + " " + ((det.get("description") or "") if det else ""))):
         _padron = None   # el terreno es del complejo entero → falta el dato (la app no la descarta)
+        terreno = 0      # …y tampoco hay patio propio que sumar al homogeneizado
     conds = [str((c or {}).get("value", "")).lower()
              for c in (det.get("conditions") or [])] if det else []
     a_estrenar = any("estrenar" in c or "construccion" in c for c in conds)

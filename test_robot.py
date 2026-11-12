@@ -248,6 +248,27 @@ def caso_historial_descarta_lo_muy_viejo():
     assert "viejo" not in h, "más de 3 años: ya no sirve de referencia"
 
 
+# ---------------- patio deducido para el ANÁLISIS (Juan 2026-11-12) ----------------
+def caso_patio_se_deduce_siempre_para_analizar():
+    """RE/MAX manda 'descubierto' en 0 cuando el agente no lo completa. Si el terreno (o el total en un apto) da para
+    más que lo construido, ese resto ES patio/jardín: la cuenta se hace siempre (solo para analizar, no para filtrar)."""
+    pde = R._fila(item(), ficha(dimensionCovered=204, dimensionTotalBuilt=204, dimensionLand=1657, dimensionUncovered=0), 41.25)
+    assert pde["m2_homog"] == 495 and pde["m2_cub"] == 204, f"Punta del Este: patio 1.453 ponderado → 495 (filtro sigue 204): {pde['m2_homog']}, {pde['m2_cub']}"
+    ph = R._fila(item(), ficha(dimensionCovered=115, dimensionTotalBuilt=115, dimensionLand=495, dimensionUncovered=0), 41.25)
+    assert ph["m2_homog"] == 191, f"Playa Hermosa: 115 + 380 ponderado = 191: {ph['m2_homog']}"
+    lag = R._fila(item(), ficha(dimensionCovered=97, dimensionSemicovered=14, dimensionTotalBuilt=111, dimensionLand=388, dimensionUncovered=0), 41.25)
+    assert lag["m2_homog"] == 164, f"Lagomar: 97 + 14·0,4 + 277 ponderado = 164: {lag['m2_homog']}"
+    real = R._fila(item(), ficha(dimensionCovered=100, dimensionLand=600, dimensionUncovered=150), 41.25)
+    assert real["m2_homog"] == 100 + round(150 * 0.22), f"si el agente cargó el patio, se usa ese: {real['m2_homog']}"
+    pando = R._fila(item(title="Alquiler 1 dormitorio en complejo cerrado"), ficha(dimensionCovered=53, dimensionTotalBuilt=53, dimensionLand=812,
+                    dimensionUncovered=0, description="Casa en complejo cerrado"), 41.25)
+    assert pando["m2_homog"] == 53, f"complejo: el terreno es de todos, no hay patio propio que sumar: {pando['m2_homog']}"
+    terraza = R._fila(item(type={"value": "departamento_estandar"}), ficha(dimensionCovered=80, dimensionTotalBuilt=100, dimensionLand=0, dimensionUncovered=0), 41.25)
+    assert terraza["m2_homog"] == 80 + round(20 * 0.25), f"apto: total − construido = terraza/balcón: {terraza['m2_homog']}"
+    edificio = R._fila(item(type={"value": "departamento_estandar"}), ficha(dimensionCovered=62, dimensionTotalBuilt=62, dimensionLand=500, dimensionUncovered=0), 41.25)
+    assert edificio["m2_homog"] == 62, f"apto con padrón grande (es del edificio entero): el padrón NO suma patio: {edificio['m2_homog']}"
+
+
 # ---------------- repetidos ----------------
 def caso_sin_repetidos():
     filas = [{"slug": "a", "n": 1}, {"slug": "b"}, {"slug": "a", "n": 2}]
@@ -262,7 +283,8 @@ CASOS = [caso_usa_la_lista_de_barrios_de_la_app, caso_rescata_propiedades_de_tod
          caso_cochera_por_texto_sin_falsos_positivos, caso_datos_absurdos_quedan_como_falta_dato, caso_sin_repetidos,
          caso_guarda_los_m2_construidos_reales, caso_padron_de_complejo_es_dato_dudoso, caso_gastos_absurdos_quedan_vacios,
          caso_historial_guarda_las_reservadas, caso_historial_reserva_caida_se_borra,
-         caso_historial_marca_cerrada_si_deja_de_publicarse, caso_historial_descarta_lo_muy_viejo]
+         caso_historial_marca_cerrada_si_deja_de_publicarse, caso_historial_descarta_lo_muy_viejo,
+         caso_patio_se_deduce_siempre_para_analizar]
 
 
 def main():

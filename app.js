@@ -132,10 +132,11 @@ function coefDescub(descub, construido) {
 }
 function homog(cub, tot, terr, esApto, semi, descub) {
   var construido = cub || 0, s = semi || 0, total = tot || 0, terreno = terr || 0, d;
-  if (esApto) d = (descub != null) ? Math.max(0, descub) : Math.max(0, total - construido - s);
-  else if (descub != null) d = Math.max(0, descub);
-  else if (terreno >= construido + s && terreno > 0) d = terreno - construido - s;
-  else d = 0;
+  // Patio: el cargado; si vino en 0/vacío se DEDUCE siempre (apto: total − construido − semi; casa: terreno −
+  // construido − semi). Solo para ANALIZAR; los filtros usan metros reales. Misma cuenta que el robot (_homog).
+  if (descub) d = Math.max(0, descub);
+  else if (esApto) d = Math.max(0, total - construido - s);
+  else d = (terreno > 0 && construido + s > 0) ? Math.max(0, terreno - construido - s) : 0;   // terreno baldío: no hay "patio"
   var x = construido + s * 0.4 + d * coefDescub(d, construido);
   return x > 0 ? Math.round(x) : 0;
 }
@@ -2006,6 +2007,7 @@ function huellaDe(prop, desde) {
     agente: norm(prop.agente || ""),
     direccionN: norm(prop.direccion || ""),
     m2: prop.m2_homog || null,
+    m2c: metrosConstruidos(prop) || null,   // m² reales (no cambian si cambia la cuenta del homogeneizado)
     dorm: (prop.dorm != null) ? prop.dorm : null,
     lat: (prop.lat != null) ? prop.lat : null,
     lng: (prop.lng != null) ? prop.lng : null,
@@ -2022,13 +2024,23 @@ function _mismaUbic(c, h) {
 }
 // Candidatos a ser la misma propiedad: mismo tipo, mismo agente, mismos dormitorios,
 // m² parecido (±12%) y misma ubicación.
+// m² parecido (±12%) comparando por los m² reales y/o el homogeneizado. Las huellas viejas guardaron el homogeneizado
+// SIN patio (≈ los m² reales); desde 2026-11-12 el homogeneizado de las casas incluye el patio deducido → se acepta
+// la coincidencia por cualquiera de los dos para no dejar de reconocer una campaña republicada.
+function m2Parecido(c, h) {
+  var cerca = function (a, b) { return a && b && Math.abs(a - b) / b <= 0.12; };
+  if (!h.m2 && !h.m2c) return true;
+  var mc = metrosConstruidos(c);
+  return cerca(c.m2_homog, h.m2) || cerca(mc, h.m2) || cerca(mc, h.m2c) || cerca(c.m2_homog, h.m2c) ||
+    (!c.m2_homog && !mc);   // sin dato de m² no se descarta (como antes)
+}
 function _candidatosHuella(h, viejoSlug) {
   return DATA.filter(function (c) {
     if (c.slug === viejoSlug) return false;
     if ((c._tipoCat || tipoCat(c.tipo)) !== h.tipo) return false;
     if (h.agente && norm(c.agente || "") !== h.agente) return false;
     if (h.dorm != null && c.dorm != null && c.dorm !== h.dorm) return false;
-    if (h.m2 && c.m2_homog && Math.abs(c.m2_homog - h.m2) / h.m2 > 0.12) return false;
+    if (!m2Parecido(c, h)) return false;
     return _mismaUbic(c, h);
   });
 }

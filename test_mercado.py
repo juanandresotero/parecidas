@@ -96,6 +96,25 @@ def caso_zona_inve(page):
     assert r2 and r2["n"] == 3, "si la evaluada también es de esa zona, sí se comparan"
 
 
+def caso_homogeneizado_de_la_app_igual_al_robot(page):
+    """Al pegar un link en vivo la app calcula el homogeneizado sola: misma cuenta que el robot (patio deducido)."""
+    r = page.evaluate("[homog(204, 204, 1657, false, 0, 0), homog(97, 111, 388, false, 14, 0), homog(80, 100, 0, true, 0, 0), homog(100, 0, 600, false, 0, 150)]")
+    assert r == [495, 164, 85, 133], f"misma cuenta que el robot: {r}"
+
+
+def caso_huella_de_campana_sobrevive_al_patio(page):
+    """Una casa en campaña guardada con el homogeneizado VIEJO (sin patio) se sigue reconociendo si la republican,
+    aunque ahora su homogeneizado incluya el patio deducido (2026-11-12)."""
+    r = page.evaluate("""() => { var viejo = DATA; var casa = { slug: 'nueva-publicacion', tipo: 'casa', agente: 'Ana Pérez', dorm: 3,
+            m2_homog: 495, m2_cub: 204, lat: -34.91, lng: -54.95, direccion: 'X 100', estado_pub: 'active' };
+        DATA = [casa];
+        var huellaVieja = { tipo: 'casa', agente: norm('Ana Pérez'), direccionN: norm('X 100'), m2: 204, dorm: 3, lat: -34.91, lng: -54.95, desde: '2026-01-01' };
+        var huellaNueva = huellaDe(Object.assign({}, casa, { slug: 'vieja' }), '2026-01-01');
+        var a = _candidatosHuella(huellaVieja, 'vieja').length, b = _candidatosHuella(huellaNueva, 'vieja').length;
+        DATA = viejo; return [a, b]; }""")
+    assert r == [1, 1], f"se reconoce con la huella vieja (m² sin patio) y con la nueva: {r}"
+
+
 def caso_sin_datos_no_inventa(page):
     assert analizar(page, BASE, []) is None, "sin comparables: nada"
     assert analizar(page, prop("b", 50000, 100, tipo="local"), COMPS) is None, "solo casas y aptos"
@@ -131,7 +150,8 @@ def caso_se_ve_al_traer_un_link(page):
 CASOS = [caso_veredicto_caro, caso_veredicto_en_precio_y_buen_precio, caso_solo_comparables_que_corresponden,
          caso_usa_reservadas_en_negociacion_y_cerradas,
          caso_prioriza_mismos_dormitorios, caso_ajuste_por_cochera, caso_zona_inve, caso_sin_datos_no_inventa,
-         caso_alquiler_en_pesos, caso_se_ve_al_traer_un_link]
+         caso_alquiler_en_pesos, caso_se_ve_al_traer_un_link, caso_homogeneizado_de_la_app_igual_al_robot,
+         caso_huella_de_campana_sobrevive_al_patio]
 
 
 def main():
