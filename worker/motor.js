@@ -234,6 +234,13 @@ function tipoCat(t) {
 }
 // "m² totales / padrón": el terreno del padrón; un apartamento no tiene → vale su superficie total.
 // Misma regla que metrosTotales() de app.js (0 = desconocido: no se excluye).
+// m² CONSTRUIDOS REALES (cubierto + semicubierto) para FILTRAR (Juan 2026-11-11). Datos viejos sin m2_cub: el que hay.
+// El homogeneizado (m2_homog, con el patio ponderado) es para ANALIZAR, no para filtrar.
+function metrosConstruidos(c) { return c.m2_cub != null ? c.m2_cub : (c.m2_homog != null ? c.m2_homog : null); }
+function metrosConstruidosMax(c) {
+  var mx = c.m2_cub != null ? c.m2_cub_max : c.m2_homog_max;
+  return mx != null ? mx : metrosConstruidos(c);
+}
 function metrosTotales(c) {
   if (c.m2_padron) return c.m2_padron;
   return tipoCat(c.tipo) === "apto" ? (c.m2_total || c.m2_homog || 0) : 0;
@@ -264,9 +271,9 @@ function pasa(c, f, slugActual) {
   if (f.precioMinUsd != null && pHi != null && pHi < f.precioMinUsd) return false;
   if (f.precioMaxUsd != null && c.precio_usd != null && c.precio_usd > f.precioMaxUsd) return false;
   // m² construidos que FALTAN (null) no descartan: aparece con "Falta dato" (un terreno con 0 sí es un dato).
-  var mHi = c.m2_homog_max != null ? c.m2_homog_max : c.m2_homog;
+  var mc = metrosConstruidos(c), mHi = metrosConstruidosMax(c);
   if (f.cubMin != null && mHi != null && mHi < f.cubMin) return false;
-  if (f.cubMax != null && c.m2_homog != null && c.m2_homog > f.cubMax) return false;
+  if (f.cubMax != null && mc != null && mc > f.cubMax) return false;
   // Temporario: el precio es por un período (día/semana/quincena/mes) → solo se comparan iguales. Desconocido: entra.
   if (f.periodo && f.operacion === "temporal" && c.periodo && c.periodo !== f.periodo) return false;
   // Dato DESCONOCIDO (padrón 0, cochera null, estado "") NO excluye — indulgente, igual que la app.

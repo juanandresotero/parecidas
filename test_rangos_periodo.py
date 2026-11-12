@@ -88,6 +88,18 @@ def caso_el_periodo_se_guarda_con_el_cliente(page):
     assert page.evaluate("segVal('f-periodo')") == "monthly", "al reabrir el cliente vuelve su período"
 
 
+def caso_filtro_m2_construidos_usa_metros_reales(page):
+    """Juan 2026-11-11: el filtro compara METROS REALES (lo techado), no el homogeneizado (que suma el patio ponderado)."""
+    pde = "{ slug: 'pde', estado_pub: 'active', operacion: 'sale', tipo: 'casa', m2_cub: 204, m2_homog: 495, m2_padron: 1657, precio_usd: 900000 }"
+    assert pasa(page, pde, "{ cubMax: 300 }") is True, "204 m² construidos reales entra en 'hasta 300' (aunque homogeneizado sean 495)"
+    assert pasa(page, pde, "{ cubMin: 400 }") is False, "no tiene 400 m² construidos"
+    assert pasa(page, pde, "{ padronMin: 1500 }") is True, "y el terreno real (1.657) entra en 'desde 1.500'"
+    viejo = "{ slug: 'v', estado_pub: 'active', operacion: 'sale', tipo: 'casa', m2_homog: 120 }"
+    assert pasa(page, viejo, "{ cubMin: 100 }") is True and pasa(page, viejo, "{ cubMin: 130 }") is False, "datos viejos sin m2_cub: usa el que hay"
+    chip = page.evaluate("() => metrosConstruidos(%s)" % pde)
+    assert chip == 204
+
+
 JS_WORKER = r"""
 const fs = require('fs'), vm = require('vm');
 const src = fs.readFileSync(process.argv[1], 'utf8');
@@ -97,7 +109,8 @@ const base = %s, emp = %s, tmp = %s;
 const p = (c, x) => ctx.pasa(c, Object.assign({}, base, x), null);
 console.log(JSON.stringify({ d3: p(emp, { dmin: 3 }), d4: p(emp, { dmin: 4 }), p250: p(emp, { precioMaxUsd: 250000 }), p450: p(emp, { precioMinUsd: 450000 }),
   per: p(tmp, { operacion: 'temporal', periodo: 'fortnightly' }), perMal: p(tmp, { operacion: 'temporal', periodo: 'daily' }),
-  m2null: p({ slug: 'c', estado_pub: 'active', operacion: 'sale', tipo: 'casa', m2_homog: null }, { cubMin: 80 }) }));
+  m2null: p({ slug: 'c', estado_pub: 'active', operacion: 'sale', tipo: 'casa', m2_homog: null }, { cubMin: 80 }),
+  real: p({ slug: 'pde', estado_pub: 'active', operacion: 'sale', tipo: 'casa', m2_cub: 204, m2_homog: 495 }, { cubMax: 300 }) }));
 """ % (BASE, EMP, TEMP)
 
 
@@ -105,12 +118,12 @@ def caso_worker_misma_regla(page):
     out = subprocess.run(["node", "-e", JS_WORKER, os.path.join(CARPETA, "worker", "motor.js")], capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr[:300]
     r = json.loads(out.stdout)
-    assert r == {"d3": True, "d4": False, "p250": True, "p450": False, "per": True, "perMal": False, "m2null": True}, f"worker: {r}"
+    assert r == {"d3": True, "d4": False, "p250": True, "p450": False, "per": True, "perMal": False, "m2null": True, "real": True}, f"worker: {r}"
 
 
 CASOS = [caso_emprendimiento_por_rango_de_dormitorios, caso_emprendimiento_por_rango_de_precio_y_m2, caso_tarjeta_del_emprendimiento,
          caso_m2_que_falta_aparece_con_cartel, caso_periodo_del_temporario, caso_tarjeta_dice_el_periodo,
-         caso_el_periodo_se_guarda_con_el_cliente, caso_worker_misma_regla]
+         caso_el_periodo_se_guarda_con_el_cliente, caso_worker_misma_regla, caso_filtro_m2_construidos_usa_metros_reales]
 
 
 def main():

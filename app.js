@@ -268,6 +268,13 @@ function precioAUsd(monto) {
 // Metros del filtro "m² totales / padrón": el terreno del padrón. Un APARTAMENTO no tiene terreno
 // propio → vale su superficie total (m2_total; si el robot todavía no la trae, la homogeneizada).
 // Casas/terrenos sin dato de padrón devuelven 0 = desconocido (no se los excluye).
+// m² CONSTRUIDOS REALES (cubierto + semicubierto) para FILTRAR (Juan 2026-11-11). Datos viejos sin m2_cub: el que hay.
+// El homogeneizado (m2_homog, con el patio ponderado) es para ANALIZAR, no para filtrar.
+function metrosConstruidos(c) { return c.m2_cub != null ? c.m2_cub : (c.m2_homog != null ? c.m2_homog : null); }
+function metrosConstruidosMax(c) {
+  var mx = c.m2_cub != null ? c.m2_cub_max : c.m2_homog_max;
+  return mx != null ? mx : metrosConstruidos(c);
+}
 function metrosTotales(c) {
   if (c.m2_padron) return c.m2_padron;
   return tipoCat(c.tipo) === "apto" ? (c.m2_total || c.m2_homog || 0) : 0;
@@ -302,9 +309,9 @@ function pasa(c, f, slugActual, conNoActivas) {
   if (f.precioMinUsd != null && pHi != null && pHi < f.precioMinUsd) return false;
   if (f.precioMaxUsd != null && c.precio_usd != null && c.precio_usd > f.precioMaxUsd) return false;
   // m² construidos que FALTAN (null) no descartan: aparece con "Falta dato" (un terreno con 0 sí es un dato).
-  var mHi = c.m2_homog_max != null ? c.m2_homog_max : c.m2_homog;
+  var mc = metrosConstruidos(c), mHi = metrosConstruidosMax(c);
   if (f.cubMin != null && mHi != null && mHi < f.cubMin) return false;
-  if (f.cubMax != null && c.m2_homog != null && c.m2_homog > f.cubMax) return false;
+  if (f.cubMax != null && mc != null && mc > f.cubMax) return false;
   // Temporario: el precio es por un período (día/semana/quincena/mes) → solo se comparan iguales. Desconocido: entra.
   if (f.periodo && f.operacion === "temporal" && c.periodo && c.periodo !== f.periodo) return false;
   // Padrón desconocido (0 = el robot no lo pudo leer) NO excluye; solo compara si hay valor real.
@@ -515,7 +522,7 @@ function fmtPrecio(c) {
 function faltantes(c, f) {
   var r = [];
   if ((f.precioMinUsd != null || f.precioMaxUsd != null) && c.precio_usd == null) r.push("precio");
-  if ((f.cubMin != null || f.cubMax != null) && c.m2_homog == null) r.push("m² construidos");
+  if ((f.cubMin != null || f.cubMax != null) && metrosConstruidos(c) == null) r.push("m² construidos");
   if (f.periodo && f.operacion === "temporal" && !c.periodo) r.push("período");
   if ((f.padronMin != null || f.padronMax != null) && !metrosTotales(c)) r.push("padrón");
   if ((f.cochera === "si" || f.cochera === "no") && c.cochera == null) r.push("cochera");
@@ -563,8 +570,8 @@ function resumen(c) {
   var t = tipoCat(c.tipo);
   var tipoTxt = t === "apto" ? "apto" : (t === "casa" ? "casa" : (t === "terreno" ? "terreno" : "propiedad"));
   var med;
-  if (t === "terreno") med = c.m2_padron ? c.m2_padron + " m²" : (c.m2_homog ? c.m2_homog + " m²" : "");
-  else med = (c.dorm != null) ? c.dorm + " dorm" : (c.m2_homog ? c.m2_homog + " m²" : "");
+  if (t === "terreno") med = c.m2_padron ? c.m2_padron + " m²" : (metrosConstruidos(c) ? metrosConstruidos(c) + " m²" : "");
+  else med = (c.dorm != null) ? c.dorm + " dorm" : (metrosConstruidos(c) ? metrosConstruidos(c) + " m²" : "");
   return [oper, tipoTxt, med, fmtK(c.precio, c.moneda)].filter(Boolean).join(" · ");
 }
 // Título de la tarjeta: operación · tipo · dorm (o m² si terreno) · barrio · precio.
@@ -817,7 +824,7 @@ function render(res, total, aflojados, fuera, yaNoEntra) {
     var foto = _fu ? '<img class="foto" src="' + esc(_fu) + '" alt="" loading="lazy">'
                    : '<div class="foto ph">🏠</div>';
     var chips = [];
-    if (c.m2_homog) chips.push(c.m2_homog + " m²");
+    if (metrosConstruidos(c)) chips.push(metrosConstruidos(c) + " m²");   // metros reales (lo techado)
     if (c.cochera === true) chips.push("🚗 cochera");
     if (c.estado === "a_estrenar") chips.push("a estrenar");
     if (c.renta === true) chips.push("con renta");
@@ -1008,7 +1015,7 @@ function rellenar(c) {
   // precio: sin mínimo (más barato sirve), máximo +15%. m²: ±25%.
   $("f-precio-min").value = "";
   $("f-precio-max").value = c.precio ? fmtMiles(String(Math.round(c.precio * 1.15))) : "";
-  setRango("f-cub", c.m2_homog);
+  setRango("f-cub", metrosConstruidos(c));   // metros reales (el filtro compara reales)
   setRango("f-padron", tc === "apto" ? 0 : c.m2_padron);   // aptos: sin padrón (RE/MAX no lo usa)
   SELBARRIOS = c.barrio ? [c.barrio] : [];   // 1 barrio → busca similares (su grupo)
   $("f-barrio").value = ""; renderChips(); pintarGrupo();
@@ -1188,6 +1195,7 @@ function fromDetalle(det, slug) {
     // Departamento = último tramo del geo.label (para la región: no mezclar ciudades).
     depto: (((det.geo || {}).label || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean).pop()) || "",
     m2_homog: homog(det.dimensionCovered, det.dimensionTotalBuilt, det.dimensionLand, esApto, det.dimensionSemicovered, det.dimensionUncovered),
+    m2_cub: ((det.dimensionCovered || 0) + (det.dimensionSemicovered || 0)) || null,
     m2_padron: _land,
     cochera: (park != null) ? (park > 0) : null,
     estado: aEstrenar ? "a_estrenar" : "usada",

@@ -151,6 +151,32 @@ def caso_datos_absurdos_quedan_como_falta_dato():
     assert normal["m2_homog"] and normal["precio_usd"] == 150000 and normal["lat"] is not None, "lo normal no se toca"
 
 
+# ---------------- m² reales (Juan 2026-11-11: los filtros usan metros REALES, no homogeneizados) ----------------
+def caso_guarda_los_m2_construidos_reales():
+    pde = R._fila(item(), ficha(dimensionCovered=204, dimensionTotalBuilt=204, dimensionLand=1657, dimensionUncovered=0), 41.25)
+    assert pde["m2_cub"] == 204, f"casa de Punta del Este: 204 m² construidos reales: {pde.get('m2_cub')}"
+    lag = R._fila(item(), ficha(dimensionCovered=97, dimensionSemicovered=14, dimensionTotalBuilt=111, dimensionLand=388), 41.25)
+    assert lag["m2_cub"] == 111, f"Lagomar: 97 cubiertos + 14 semicubiertos = 111: {lag.get('m2_cub')}"
+    apto = R._fila(item(type={"value": "departamento_estandar"}), ficha(dimensionCovered=62, dimensionSemicovered=4.8, dimensionTotalBuilt=66.8, dimensionLand=0), 41.25)
+    assert apto["m2_cub"] == 66.8, f"apto: 62 + 4,8 = 66,8: {apto.get('m2_cub')}"
+    vacia = R._fila(item(), ficha(dimensionCovered=0, dimensionSemicovered=0, dimensionTotalBuilt=0, dimensionLand=0), 41.25)
+    assert vacia["m2_cub"] is None, "casa sin m²: falta el dato"
+    it = item(slug="the-corner", entrepreneurship=True, type={"value": "departamento_estandar"}, price=0, bedrooms=0, bathrooms=0)
+    emp = R._fila(it, EMP, 41.25)
+    assert (emp["m2_cub"], emp["m2_cub_max"]) == (70, 128), f"emprendimiento: 60+10 a 108+20: {emp.get('m2_cub')}, {emp.get('m2_cub_max')}"
+
+
+def caso_padron_de_complejo_es_dato_dudoso():
+    """Pando: 'alquiler 1 dormitorio en complejo cerrado', 53 m² construidos y 812 de terreno (el del complejo entero)."""
+    f = R._fila(item(title="Alquiler 1 dormitorio en complejo cerrado en Pando"),
+                ficha(dimensionCovered=53, dimensionLand=812, description="Casa en complejo cerrado"), 41.25)
+    assert not f["m2_padron"], f"el terreno es del complejo, no de la unidad → falta el dato: {f['m2_padron']}"
+    casa = R._fila(item(title="Casa con gran jardín"), ficha(dimensionCovered=204, dimensionLand=1657), 41.25)
+    assert casa["m2_padron"] == 1657, "una casa común con terreno grande se respeta"
+    bp = R._fila(item(title="Casa en barrio privado San Rafael"), ficha(dimensionCovered=132, dimensionLand=930), 41.25)
+    assert bp["m2_padron"] == 930, "barrio privado: el lote es de la casa"
+
+
 # ---------------- repetidos ----------------
 def caso_sin_repetidos():
     filas = [{"slug": "a", "n": 1}, {"slug": "b"}, {"slug": "a", "n": 2}]
@@ -162,7 +188,8 @@ CASOS = [caso_rescata_propiedades_de_todo_el_pais, caso_no_rescata_lo_que_cae_fu
          caso_elige_el_barrio_mas_largo_y_no_un_departamento, caso_emprendimiento_usa_su_propia_ficha,
          caso_emprendimiento_guarda_rangos, caso_propiedad_comun_sin_rangos, caso_temporario_guarda_el_periodo,
          caso_hectareas_no_se_aplican_a_apartamentos, caso_campo_grande_real_se_respeta,
-         caso_cochera_por_texto_sin_falsos_positivos, caso_datos_absurdos_quedan_como_falta_dato, caso_sin_repetidos]
+         caso_cochera_por_texto_sin_falsos_positivos, caso_datos_absurdos_quedan_como_falta_dato, caso_sin_repetidos,
+         caso_guarda_los_m2_construidos_reales, caso_padron_de_complejo_es_dato_dudoso]
 
 
 def main():

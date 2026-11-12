@@ -120,10 +120,13 @@ def cumple(c, cfg, ctx):
         return False
     if hi is not None and p is not None and p > hi:
         return False
-    # m² construidos (homogeneizados): sin dato (null) → entra con "Falta dato"; 0 es un dato (terreno)
+    # m² construidos: sin dato (null) → entra con "Falta dato"; 0 es un dato (terreno)
     lo, hi = rango(cfg, "cubmin", "cubmax")
-    m = c.get("m2_homog")
-    m_hi = c.get("m2_homog_max") if c.get("m2_homog_max") is not None else m
+    # METROS REALES (cubierto + semicubierto = m2_cub), no el homogeneizado (Juan 2026-11-11). Datos viejos: m2_homog.
+    real = c.get("m2_cub") is not None
+    m = c.get("m2_cub") if real else c.get("m2_homog")
+    m_hi = c.get("m2_cub_max" if real else "m2_homog_max")
+    m_hi = m_hi if m_hi is not None else m
     if lo is not None and m_hi is not None and m_hi < lo:
         return False
     if hi is not None and m is not None and m > hi:

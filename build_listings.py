@@ -441,6 +441,18 @@ def es_multiunidad(texto: str):
     return False
 
 
+# Terreno de un COMPLEJO/condominio: el padrón es de todo el conjunto, no de la unidad (ej. 1 dorm de 53 m² con
+# "812 m² de terreno"). Si el texto lo dice y el terreno es más de 8 veces lo construido → dato dudoso (vacío).
+COMPLEJO_RE = re.compile(r"\b(complejo|condominio)\b", re.I)
+
+
+def _m2(x):
+    """m² prolijos: entero si es redondo, si no con 1 decimal; None si no hay dato."""
+    if not x or x <= 0:
+        return None
+    return int(x) if float(x).is_integer() else round(x, 1)
+
+
 def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     tipo = (it.get("type") or {}).get("value") or ""
     es_apto = tipo.startswith("departamento") or tipo == "ph" or "penthouse" in tipo
@@ -465,6 +477,9 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
     terreno = src.get("dimensionLand")
     semi = det.get("dimensionSemicovered") if det else None
     descub = det.get("dimensionUncovered") if det else None
+    if _padron and cubiertos and _padron > 8 * cubiertos and COMPLEJO_RE.search(
+            _sin_acentos((it.get("title") or "") + " " + ((det.get("description") or "") if det else ""))):
+        _padron = None   # el terreno es del complejo entero → falta el dato (la app no la descarta)
     conds = [str((c or {}).get("value", "")).lower()
              for c in (det.get("conditions") or [])] if det else []
     a_estrenar = any("estrenar" in c or "construccion" in c for c in conds)
@@ -504,6 +519,9 @@ def _fila(it: dict, det: dict | None, rate: float | None = None) -> dict:
         "dorm": it.get("bedrooms"),
         "banos": banos_tot,   # baños + toilet (total)
         "multiunidad": es_multiunidad(texto),   # varias viviendas en un mismo padrón
+        # m² CONSTRUIDOS REALES (cubierto + semicubierto, lo techado): es lo que usan los FILTROS (Juan 2026-11-11).
+        # El homogeneizado (con el patio ponderado) queda para ANALIZAR (orden de parecidas, estimador de alquiler).
+        "m2_cub": _m2((cubiertos or 0) + (semi or 0)),
         "m2_homog": _homog(cubiertos, totales, terreno, es_apto, semi, descub),
         "m2_total": round(totales, 1) if isinstance(totales, (int, float)) and 0 < totales < 100000 else None,   # superficie total (para el filtro de m² de un apto)
         "m2_padron": _padron,   # el terreno del padrón (hectáreas → m² si RE/MAX lo infló)
@@ -572,6 +590,11 @@ def _rangos_emprendimiento(det: dict, es_apto: bool, rate, texto: str) -> dict:
     if h1:
         out["m2_homog"] = h1
         out["m2_homog_max"] = h2 if h2 > h1 else None
+    c1 = _m2((num("minDimensionCovered") or 0) + (num("minDimensionSemicovered") or 0))
+    c2 = _m2((num("maxDimensionCovered") or 0) + (num("maxDimensionSemicovered") or 0))
+    if c1:
+        out["m2_cub"] = c1
+        out["m2_cub_max"] = c2 if (c2 and c2 > c1) else None
     out["cochera"] = bool((num("maxParkingSpaces") or 0) > 0) or _dice_cochera(texto)
     return out
 
@@ -588,6 +611,9 @@ def _sanear(fila: dict, es_apto: bool, tipo: str) -> None:
     m = fila.get("m2_homog")
     if vivienda and (not m or (es_apto and m > 2000) or m > 20000):
         fila["m2_homog"] = None          # una vivienda con 0 m² es un dato que falta; 35.000 m² en un apto, un error
+    mc = fila.get("m2_cub")
+    if vivienda and (not mc or (es_apto and mc > 2000) or mc > 20000):
+        fila["m2_cub"] = None
     if es_apto and (fila.get("m2_total") or 0) > 2000:
         fila["m2_total"] = None
     if not _en_uruguay(fila.get("lat"), fila.get("lng")):
