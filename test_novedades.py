@@ -187,9 +187,28 @@ def caso_boton_previas_en_dorado_desde_la_ventanita(br):
     page.context.close()
 
 
+
+def caso_ventanitas_viejas_no_salen_nunca_mas(br):
+    """Limpieza 2026-11-12: las ventanitas de agosto (contacto del agente, avisos) se borraron. Antes, cuando
+    vencieran las actuales (11/01/2027), a quien no las había visto le podía saltar una de agosto."""
+    ctx = br.new_context(service_workers="block", viewport={"width": 420, "height": 900})
+    page = ctx.new_page()
+    page.clock.set_fixed_time("2027-01-11T10:00:00")
+    page.goto(f"http://127.0.0.1:{PUERTO}/", wait_until="load")
+    page.wait_for_function("DATA.length > 0", timeout=20000)
+    page.evaluate("() => { localStorage.clear(); localStorage.setItem('parecidas_busquedas_x', '1'); localStorage.setItem('parecidas_nv_iniciado', '1'); }")
+    recargar(page)
+    abiertas = page.evaluate("""Array.prototype.filter.call(document.querySelectorAll('[id^="news"]'), function (e) {
+        return getComputedStyle(e).display !== 'none'; }).map(function (e) { return e.id; })""")
+    assert abiertas == [], f"no sale ninguna ventanita vieja: {abiertas}"
+    assert page.evaluate("['news', 'news-agente', 'news-avisos'].every(function (k) { return !document.getElementById(k); })"), "ya no existen"
+    page.context.close()
+
+
 CASOS = [caso_traer_en_dorado_hasta_el_primer_uso, caso_vence_en_unas_semanas, caso_la_ve_quien_ya_usaba_la_app, caso_la_vieja_no_existe_mas, caso_no_sale_a_quien_abre_la_app_por_primera_vez,
          caso_ajustes_en_dorado_hasta_abrirlo, caso_previas_no_sale_mientras_esta_la_otra, caso_previas_sale_cuando_vence_la_otra,
-         caso_previas_vence_en_unas_semanas, caso_boton_previas_en_dorado_desde_la_ventanita]
+         caso_previas_vence_en_unas_semanas, caso_boton_previas_en_dorado_desde_la_ventanita,
+         caso_ventanitas_viejas_no_salen_nunca_mas]
 
 
 def main():

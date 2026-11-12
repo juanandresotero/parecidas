@@ -3130,7 +3130,8 @@ function initSegs() {
   // versión "news-vincular" no quedaba clara → clave nueva para que la vean todos). La de temporarios + mapa se BORRÓ.
   // "news-mercado" (2026-11-12) = la misma + "📊 si está en precio y cuánto se alquila" (clave nueva: la ven todos).
   // "news-previas" (sale desde el 11/12/2026, cuando vence news-mercado) = ↶ volver a filtros anteriores.
-  var NEWS = ["news", "news-agente", "news-avisos", "news-mercado", "news-previas"];
+  // Las de agosto ("news", "news-agente", "news-avisos") se BORRARON (2026-11-12): ya no salen a nadie.
+  var NEWS = ["news-mercado", "news-previas"];
   if (!novedadVista("iniciado")) {
     if (esPrimeraVezEnLaApp()) NEWS.forEach(marcarNovedad);
     marcarNovedad("iniciado");
@@ -3153,22 +3154,10 @@ function initSegs() {
     newsPend.slice(0, -1).forEach(marcarNovedad);      // las viejas pendientes → dadas por vistas
     abrirOverlay(newsPend[newsPend.length - 1]);        // la más nueva se muestra (se marca al cerrarla)
   }
-  var cerrarNews = function () { marcarNovedad("news"); cerrarOverlay("news"); };
-  $("btn-news-ok").addEventListener("click", cerrarNews);
-  $("btn-news-x").addEventListener("click", cerrarNews);
-  $("news").addEventListener("click", function (e) { if (e.target === $("news")) cerrarNews(); });
   var cerrarNewsPrevias = function () { marcarNovedad("news-previas"); cerrarOverlay("news-previas"); };
   $("btn-news-previas-ok").addEventListener("click", cerrarNewsPrevias);
   $("btn-news-previas-x").addEventListener("click", cerrarNewsPrevias);
   $("news-previas").addEventListener("click", function (e) { if (e.target === $("news-previas")) cerrarNewsPrevias(); });
-  var cerrarNewsAgente = function () { marcarNovedad("news-agente"); cerrarOverlay("news-agente"); };
-  $("btn-news-agente-ok").addEventListener("click", cerrarNewsAgente);
-  $("btn-news-agente-x").addEventListener("click", cerrarNewsAgente);
-  $("news-agente").addEventListener("click", function (e) { if (e.target === $("news-agente")) cerrarNewsAgente(); });
-  var cerrarNewsAvisos = function () { marcarNovedad("news-avisos"); cerrarOverlay("news-avisos"); };
-  $("btn-news-avisos-ok").addEventListener("click", cerrarNewsAvisos);
-  $("btn-news-avisos-x").addEventListener("click", cerrarNewsAvisos);
-  $("news-avisos").addEventListener("click", function (e) { if (e.target === $("news-avisos")) cerrarNewsAvisos(); });
   var cerrarNewsVincular = function () { marcarNovedad("news-mercado"); cerrarOverlay("news-mercado"); };
   $("btn-news-vincular-ok").addEventListener("click", cerrarNewsVincular);
   $("btn-news-vincular-x").addEventListener("click", cerrarNewsVincular);

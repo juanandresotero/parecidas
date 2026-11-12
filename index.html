@@ -353,8 +353,6 @@
   .news-item{margin:0 0 14px}
   .news-tit{font-weight:800;font-size:15px;line-height:1.3;color:var(--ink);margin-bottom:4px}
   .news-item p{margin:0;font-size:13.5px;line-height:1.45;color:var(--muted)}
-  .news-list{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px;
-    font-size:14px;line-height:1.45;color:var(--ink)}
   .nuevo{background:#efab00 !important;color:#3a2a00 !important;border-color:#efab00 !important;
     box-shadow:0 0 0 3px rgba(239,171,0,.35)}
   .bi-btn{border:none;background:var(--brand);color:#fff;border-radius:9px;
@@ -496,46 +494,6 @@
       <p class="ajustes-msg" id="gb-msg"></p>
     </div>
   </div>
-  <div class="ajustes" id="news" style="display:none">
-    <div class="ajustes-card">
-      <div class="ajustes-head"><b>👋 Novedades</b><button id="btn-news-x" aria-label="Cerrar">✕</button></div>
-      <ul class="news-list">
-        <li>Para una <b>búsqueda nueva</b>, tocá el botón <b>🏠 Parecidas</b> (arriba a la izquierda).</li>
-        <li>En los <b>clientes guardados</b> hay un <b>temporizador</b> que te avisa cuando llega a cero.</li>
-        <li>Podés agregarle <b>notas</b> a cada cliente (tocá el lápiz ✎).</li>
-        <li>Al pegar un link de RE/MAX aparece <b>📇 Copiar contacto</b>: copia el nombre y celular del <b>agente que vende</b>, listo para pegar en WhatsApp.</li>
-        <li>🔔 La app puede <b>avisarte con la app cerrada</b> (propiedad en campaña que se reserva, o parecidas nuevas de un cliente). Se activa 1 vez en <b>⚙️ Ajustes</b>.</li>
-        <li>Las <b>novedades</b> están marcadas en <b>amarillo</b>; al tocarlas una vez, vuelven a lo normal.</li>
-      </ul>
-      <button class="btn btn-brand" id="btn-news-ok" style="width:100%;margin-top:14px">Entendido</button>
-    </div>
-  </div>
-
-  <div class="ajustes" id="news-agente" style="display:none">
-    <div class="ajustes-card">
-      <div class="ajustes-head"><b>👋 Novedad</b><button id="btn-news-agente-x" aria-label="Cerrar">✕</button></div>
-      <ul class="news-list">
-        <li>Cuando pegás un link de <b>RE/MAX</b> y tocás <b>Traer</b>, aparece un botón nuevo (en <b>amarillo</b>): <b>📇 Copiar contacto</b>.</li>
-        <li>Al tocarlo copia el <b>nombre y el celular del agente que vende</b> esa propiedad, listo para <b>pegar en cualquier WhatsApp</b> (ej: <i>Karina Giacosa +59891240303</i>).</li>
-        <li>El contacto sale <b>de la propiedad</b>, así que aunque el link tenga tu código de associate pegado, <b>siempre da el número del que la vende</b> — nunca el tuyo ni el de un compañero.</li>
-      </ul>
-      <button class="btn btn-brand" id="btn-news-agente-ok" style="width:100%;margin-top:14px">Entendido</button>
-    </div>
-  </div>
-
-  <div class="ajustes" id="news-avisos" style="display:none">
-    <div class="ajustes-card">
-      <div class="ajustes-head"><b>👋 Novedades</b><button id="btn-news-avisos-x" aria-label="Cerrar">✕</button></div>
-      <ul class="news-list">
-        <li>🔔 Ahora la app te <b>avisa con la app cerrada</b>. Se activa <b>una sola vez</b>: entrá a <b>⚙️ Ajustes</b> (arriba, en amarillo) → <b>Activar avisos</b>.</li>
-        <li>📣 Al guardar una búsqueda de un link de RE/MAX, tildá <b>"La estoy publicitando"</b> → te avisa si esa propiedad se <b>reserva</b>, entra en <b>negociación</b> o <b>se baja</b>.</li>
-        <li>🔎 Te avisa cuando aparecen <b>parecidas nuevas</b> para un cliente guardado.</li>
-        <li>📇 Con un link de RE/MAX, <b>"Copiar contacto"</b> copia el nombre y celular del <b>agente que vende</b>.</li>
-      </ul>
-      <button class="btn btn-brand" id="btn-news-avisos-ok" style="width:100%;margin-top:14px">Entendido</button>
-    </div>
-  </div>
-
   <div class="ajustes" id="news-mercado" style="display:none">
     <div class="ajustes-card">
       <div class="ajustes-head"><b>👋 Novedades</b><button id="btn-news-vincular-x" aria-label="Cerrar">✕</button></div>
@@ -596,7 +554,7 @@
   <div class="ajustes" id="limpiar" style="display:none">
     <div class="ajustes-card">
       <div class="ajustes-head"><b>🧹 Limpiar cliente</b><button id="btn-limpiar-cerrar" aria-label="Cerrar">✕</button></div>
-      <p class="hint" style="margin:0 0 8px">Tildá las categorías que querés sacar de la lista de este cliente. Se pueden restaurar.</p>
+      <p class="hint" style="margin:0 0 8px">Tildá las categorías que querés sacar de la pantalla. No se borra nada: al tocar Buscar vuelve todo lo que coincide con los filtros.</p>
       <div class="val-lista" id="limpiar-lista"></div>
       <button class="btn btn-brand" id="btn-limpiar-borrar" style="width:100%;margin-top:12px">Borrar lo tildado</button>
     </div>

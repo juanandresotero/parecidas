@@ -125,6 +125,8 @@ def caso_ya_no_hay_boton_restaurar(br):
     page = pagina_nueva(br)
     cliente_con_busqueda_angosta(page)
     assert page.evaluate("document.getElementById('btn-limpiar-restaurar') === null"), "ya no hay nada que restaurar"
+    txt = page.evaluate("$('limpiar').textContent")
+    assert "restaurar" not in txt.lower(), f"el cartel de Limpiar no promete restaurar (desde 2026-10 no oculta nada): {txt[:200]}"
 
 
 ANGOSTA_MAS = "setStep('f-dmin', 2); setStep('f-dmax', 2); $('f-precio-max').value = '100000';"
