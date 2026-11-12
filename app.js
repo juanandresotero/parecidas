@@ -1666,7 +1666,8 @@ function renderBusquedas() {
     if (b.campana) {
       var foto = fotoCampana(b);
       var av = document.createElement("div"); av.className = "bi-avatar";
-      if (foto) { av.style.backgroundImage = "url('" + foto + "')"; }
+      // Imagen (no fondo CSS): a un fondo Chrome le manda el origen igual y RE/MAX la rechaza (403).
+      if (foto) { var im = document.createElement("img"); im.src = foto; im.alt = ""; im.referrerPolicy = "no-referrer"; im.loading = "lazy"; av.appendChild(im); }
       else { av.className += " sinfoto"; av.textContent = "📣"; }
       item.appendChild(av);
     }

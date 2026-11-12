@@ -84,7 +84,21 @@ def caso_el_mapa_sigue_diciendo_de_donde_viene(br):
     page.context.close()
 
 
-CASOS = [caso_fotos_de_las_tarjetas_cargan, caso_fotos_de_la_vista_previa_cargan, caso_el_mapa_sigue_diciendo_de_donde_viene]
+def caso_foto_de_la_busqueda_guardada_carga(br):
+    """Juan 2026-11-11: en 'Búsquedas guardadas', las que vienen de un link (campaña) quedaban con la foto en blanco:
+    se dibujaba como FONDO (CSS) y Chrome manda el origen igual → RE/MAX la rechaza."""
+    page, ped = pagina(br)
+    page.evaluate("""() => { limpiarTodo(); setSeg('f-oper', 'sale'); buscar(); guardarBusquedaActual('Otero', '099', '', true);
+        var arr = cargarBusquedas(), c = DATA.filter(function (x) { return x.foto; })[0];
+        arr[0].campana = true; arr[0].campSlug = c.slug; arr[0].slugActual = c.slug; guardarBusquedas(arr); $('btn-busquedas').click(); }""")
+    page.wait_for_function("document.querySelector('.bi-avatar img') && document.querySelector('.bi-avatar img').complete", timeout=5000)
+    ok = page.evaluate("document.querySelector('.bi-avatar img').naturalWidth > 0")
+    assert ok, "la foto de la búsqueda guardada tiene que cargar"
+    assert ped["fotos_con_origen"] == 0, f"{ped['fotos_con_origen']} fotos se pidieron diciendo de dónde venimos"
+    page.context.close()
+
+
+CASOS = [caso_foto_de_la_busqueda_guardada_carga, caso_fotos_de_las_tarjetas_cargan, caso_fotos_de_la_vista_previa_cargan, caso_el_mapa_sigue_diciendo_de_donde_viene]
 
 
 def main():
