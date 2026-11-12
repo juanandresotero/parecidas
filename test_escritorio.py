@@ -393,6 +393,27 @@ def caso_vista_previa_en_la_compu_tiene_toda_la_descripcion(br):
     cel.context.close()
 
 
+def caso_barra_de_arriba_ordenada_en_la_compu(br):
+    """Juan 2026-11-11: en la compu, Búsquedas guardadas / Vista / Ajustes juntos a un costado, con su nombre
+    escrito y bien espaciados (ni pegados ni desparramados)."""
+    page = pagina_mapa(br, 1440, 900)
+    ids = ["btn-busquedas", "btn-vista", "btn-ajustes"]
+    cajas = [caja(page, "#" + i) for i in ids]
+    assert "Búsquedas guardadas" in page.evaluate("$('btn-busquedas').textContent"), "el botón dice 'Búsquedas guardadas'"
+    assert "Ajustes" in page.evaluate("$('btn-ajustes').textContent"), "el botón dice 'Ajustes'"
+    for a_, b_ in zip(cajas, cajas[1:]):
+        hueco = b_["x"] - a_["r"]
+        assert 8 <= hueco <= 24, f"separación prolija entre botones (8 a 24 px): {hueco}"
+    assert cajas[0]["x"] > 1440 / 2, "los tres van juntos sobre el costado derecho"
+    alturas = {round(c["h"]) for c in cajas}
+    assert max(alturas) - min(alturas) <= 2, f"misma altura los tres: {alturas}"
+    page.context.close()
+    cel = pagina(br, 420, 900, tactil=True)
+    assert caja(cel, "#btn-busquedas")["w"] <= 57 and caja(cel, "#btn-ajustes")["w"] <= 40, "en el celu siguen siendo iconitos"
+    assert cel.evaluate("$('btn-busquedas').innerText.indexOf('Búsquedas') < 0"), "en el celu sin texto"
+    cel.context.close()
+
+
 CASOS = [caso_compu_se_detecta_sola, caso_celular_nunca_cambia, caso_tablet_tactil_ancha_sigue_como_celular,
          caso_compu_con_ventana_angosta_sigue_como_celular, caso_el_boton_cambia_y_se_acuerda,
          caso_en_el_celu_el_boton_de_arriba_no_estorba_pero_hay_ajustes, caso_forzar_celular_en_compu_y_auto_vuelve,
@@ -404,7 +425,8 @@ CASOS = [caso_compu_se_detecta_sola, caso_celular_nunca_cambia, caso_tablet_tact
          caso_tocar_otra_parte_no_abre_el_aviso, caso_tocar_la_foto_abre_la_galeria,
          caso_vista_previa_de_la_tarjeta_reemplaza_el_mapa, caso_vista_previa_del_pin_tambien_en_la_columna,
          caso_en_el_celu_la_tarjeta_sigue_igual, caso_cartel_de_campanas_fuera_de_los_filtros,
-         caso_ajustes_equilibrado_en_la_compu, caso_vista_previa_en_la_compu_tiene_toda_la_descripcion]
+         caso_ajustes_equilibrado_en_la_compu, caso_vista_previa_en_la_compu_tiene_toda_la_descripcion,
+         caso_barra_de_arriba_ordenada_en_la_compu]
 
 
 def main():

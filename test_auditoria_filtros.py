@@ -328,7 +328,7 @@ def main():
         for f in fallos[:40]:
             print(json.dumps(f, ensure_ascii=False, default=str)[:900])
         return 1
-    print("\n100%% de coincidencia: la app y el robot de avisos encuentran exactamente lo que dicen las reglas.")
+    print("\n100% de coincidencia: la app y el robot de avisos encuentran exactamente lo que dicen las reglas.")
     return 0
 
 

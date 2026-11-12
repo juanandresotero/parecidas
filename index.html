@@ -59,6 +59,13 @@
   .vista-btn{width:auto;padding:0 12px;border-radius:17px;font-size:12.5px;font-weight:700;white-space:nowrap}
   /* VISTA DE ESCRITORIO: solo si el JS pone body.vista-pc Y la ventana mide 900 px o más. Un celular
      nunca la usa (si algo falla, queda la vista de celular de siempre). */
+  .btn-txt{display:none}
+  /* Barra de arriba en la compu: Búsquedas guardadas · Vista · Ajustes juntos a la derecha, con su nombre */
+  body.pc-ancho .barra{gap:14px}
+  body.pc-ancho .barra .ajustes-btn{margin-left:0;width:auto;height:38px;padding:0 16px;border-radius:19px;
+    font-size:13.5px;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center}
+  body.pc-ancho #btn-busquedas{margin-left:auto}
+  body.pc-ancho .btn-txt{display:inline;margin-left:7px}
   .col-mapa{display:none}
   .card-pin,.card-vp{display:none}
   /* El JS pone body.pc-ancho (escritorio y ventana ≥ 900 px) y body.pc-mapa (escritorio y ventana ≥ 1200 px). */
@@ -390,9 +397,9 @@
     <button class="marca" id="marca" title="Tocá para empezar de cero">
       <span class="logo">🏠</span><span class="marca-txt">Parecidas</span>
     </button>
-    <button class="ajustes-btn busq-btn" id="btn-busquedas" title="Búsquedas guardadas" aria-label="Búsquedas guardadas">🗃️<span class="busq-badge" id="busq-badge" style="display:none">0</span></button>
+    <button class="ajustes-btn busq-btn" id="btn-busquedas" title="Búsquedas guardadas" aria-label="Búsquedas guardadas">🗃️<span class="btn-txt">Búsquedas guardadas</span><span class="busq-badge" id="busq-badge" style="display:none">0</span></button>
     <button class="ajustes-btn vista-btn" id="btn-vista" style="display:none" title="Cambiar la forma de ver la app">🖥️ Vista escritorio</button>
-    <button class="ajustes-btn" id="btn-ajustes" title="Ajustes" aria-label="Ajustes">⚙️</button>
+    <button class="ajustes-btn" id="btn-ajustes" title="Ajustes" aria-label="Ajustes">⚙️<span class="btn-txt">Ajustes</span></button>
   </div>
 
   <!-- Aviso si los datos quedaron viejos (el robot diario dejó de actualizar) -->
