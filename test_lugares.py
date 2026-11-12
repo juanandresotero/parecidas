@@ -208,7 +208,7 @@ def caso_la_captura_del_colega(page):
         and (x.get("precio_usd") is None or x["precio_usd"] <= 57500)   # sin precio entra con "Falta dato" (Juan 2026-10-16)
         and x.get("dorm") is not None and 1 <= x["dorm"] <= 3
         and x.get("banos") is not None and 1 <= x["banos"] <= 3
-        and x.get("m2_homog") is not None and x["m2_homog"] <= 100
+        and (x.get("m2_cub") or x.get("m2_homog")) is not None and (x.get("m2_cub") or x.get("m2_homog")) <= 100   # m² REALES (cub+semi), no homogeneizados (2026-11-12)
         and (x.get("renta") in (True, False) or x.get("multiunidad") is True))
     obtenido = set(page.evaluate("""() => {
         limpiarTodo(); SELBARRIOS = ['Montevideo', 'Canelones', 'Ciudad de la Costa']; renderChips(); pintarGrupo();

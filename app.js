@@ -492,15 +492,22 @@ function recordarLista(lista, b) {
 // "descartada por filtro" (🚫). Las favoritas NO se tocan (se preservan).
 function reconciliarDescartes(res, b) {
   var nuevos = res.map(function (c) { return c.slug; });
-  if (!window.__ultimaVista) { window.__ultimaVista = nuevos; return []; }
   var enNuevo = {}; nuevos.forEach(function (s) { enNuevo[s] = 1; });
   var arr = cargarBusquedas();
   var bb = arr.filter(function (x) { return x.id === b.id; })[0];
-  var dropped = [];
+  var dropped = [], cambio = false;
+  // La que volvió a coincidir es una más: se le saca el 🚫 (Juan 2026-11-12, "Otero compra").
+  if (bb && bb.estados) Object.keys(bb.estados).forEach(function (slug) {
+    if (enNuevo[slug] && bb.estados[slug] === "descartada_filtro") { delete bb.estados[slug]; cambio = true; }
+  });
+  if (!window.__ultimaVista) {
+    window.__ultimaVista = nuevos;
+    if (cambio) guardarBusquedas(arr);
+    return [];
+  }
   if (bb) {
     bb.estados = bb.estados || {};
     var aFavor = { a_enviar: 1, favorita: 1, enviada: 1 };
-    var cambio = false;
     window.__ultimaVista.forEach(function (slug) {
       if (enNuevo[slug] || aFavor[bb.estados[slug]]) return;
       bb.estados[slug] = "descartada_filtro";

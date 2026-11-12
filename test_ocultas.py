@@ -127,8 +127,44 @@ def caso_ya_no_hay_boton_restaurar(br):
     assert page.evaluate("document.getElementById('btn-limpiar-restaurar') === null"), "ya no hay nada que restaurar"
 
 
+ANGOSTA_MAS = "setStep('f-dmin', 2); setStep('f-dmax', 2); $('f-precio-max').value = '100000';"
+CON_CARTEL = "RENDER_RES.filter(c => valDe(busquedaActiva(), c.slug) === 'descartada_filtro').map(c => c.slug)"
+
+
+def caso_la_que_vuelve_a_coincidir_pierde_el_cartel(br):
+    """Juan 2026-11-12 ("Otero compra"): achicó un filtro → unas quedaron 🚫 "ya no entra"; volvió a aflojarlo y
+    aparecían de nuevo PERO con el 🚫, aunque sí coincidían. Si vuelve a coincidir, es una más: sin cartel."""
+    page = pagina_nueva(br)
+    cliente_con_busqueda_angosta(page)
+    page.evaluate("buscar()")
+    cambiar_filtros_y_buscar(page, ANGOSTA_MAS)
+    assert page.evaluate(CON_CARTEL), "al achicar el filtro, las que salen se marcan 🚫 (una vez)"
+    cambiar_filtros_y_buscar(page, ANGOSTA)
+    assert page.evaluate(CON_CARTEL) == [], f"las que vuelven a coincidir no llevan 🚫: {len(page.evaluate(CON_CARTEL))}"
+    guardadas = page.evaluate("Object.values(busquedaActiva().estados || {}).filter(v => v === 'descartada_filtro').length")
+    assert guardadas == 0, f"tampoco queda guardado el 🚫: {guardadas}"
+
+
+def caso_limpiada_que_no_coincide_no_vuelve(br):
+    """Juan 2026-11-12: limpio las 🚫 y al Buscar solo vienen las que coinciden (y mis 🔴 no se tocan)."""
+    page = pagina_nueva(br)
+    cliente_con_busqueda_angosta(page)
+    page.evaluate("buscar()")
+    roja = page.evaluate("RENDER_RES[RENDER_RES.length - 1].slug")
+    page.evaluate("(s) => setVal(s, 'descarte_1')", roja)
+    cambiar_filtros_y_buscar(page, ANGOSTA_MAS)
+    page.evaluate("""() => { $('btn-limpiar').click();
+        document.querySelectorAll('#limpiar-lista .lm-chk').forEach(c => c.checked = (c.getAttribute('data-clave') === 'descartada_filtro'));
+        $('btn-limpiar-borrar').click(); }""")
+    page.evaluate("$('btn-buscar').click()")
+    no_coinciden = page.evaluate("RENDER_RES.filter(c => !pasa(c, leerFiltros(), null, true)).length")
+    assert no_coinciden == 0, f"al Buscar solo vienen las que coinciden: {no_coinciden} no coinciden"
+    assert page.evaluate("(s) => valDe(busquedaActiva(), s)", roja) == "descarte_1", "mis 🔴 no se tocan"
+
+
 CASOS = [caso_limpiar_despeja_y_buscar_trae_todo_de_nuevo, caso_limpiar_y_cambiar_filtros_trae_todo,
-         caso_limpiar_solo_lo_tildado, caso_cliente_viejo_con_ocultas_guardadas, caso_ya_no_hay_boton_restaurar]
+         caso_limpiar_solo_lo_tildado, caso_cliente_viejo_con_ocultas_guardadas, caso_ya_no_hay_boton_restaurar,
+         caso_la_que_vuelve_a_coincidir_pierde_el_cartel, caso_limpiada_que_no_coincide_no_vuelve]
 
 
 def main():
