@@ -289,6 +289,48 @@ def rescatar_sin_zona(listado: list, props_uy: list, traer_ficha, coords_de) -> 
     return rescatadas
 
 
+# ------------------------- HISTORIAL (Juan 2026-11-11) -------------------------
+# Las reservadas / en negociación son precios casi cerrados, y las que DEJAN DE PUBLICARSE estando así son, casi
+# seguro, una venta o alquiler concretado: el dato más valioso para el análisis de mercado. Se guardan en
+# historial.json (aparte de listings.json, para que la app arranque liviana) y la información crece con el tiempo.
+CAMPOS_HISTORIAL = ("operacion", "tipo", "barrio", "depto", "direccion", "lat", "lng", "estado_pub", "precio", "moneda",
+                    "precio_usd", "periodo", "gastos_usd", "m2_homog", "m2_cub", "m2_total", "m2_padron", "dorm", "banos",
+                    "cochera", "estado", "renta", "multiunidad")
+DIAS_HISTORIAL = 3 * 365
+
+
+def _para_historial(f: dict) -> dict:
+    return {k: f.get(k) for k in CAMPOS_HISTORIAL}
+
+
+def actualizar_historial(prev: dict, filas: list, hoy: str) -> dict:
+    """- reservada / en negociación → se guarda (o actualiza) con `desde` (1ª vez) y `visto` (última vez);
+    - vuelve a estar DISPONIBLE → se borra (la reserva se cayó: ese precio no se concretó);
+    - deja de publicarse estando reservada / en negociación → `cerrada` = hoy (venta o alquiler concretado);
+    - más de 3 años desde la última vez vista → se descarta."""
+    hist = {k: dict(v) for k, v in (prev or {}).items()}
+    vistos = {f.get("slug"): f for f in filas if f.get("slug")}
+    for slug, f in vistos.items():
+        if f.get("estado_pub") in ("reserved", "negotiation"):
+            h = hist.get(slug, {})
+            desde = h.get("desde") or hoy
+            al_reservar = h.get("precio_al_reservar") if "precio_al_reservar" in h else f.get("precio_usd")
+            h.update(_para_historial(f))
+            h["desde"], h["visto"], h["precio_al_reservar"] = desde, hoy, al_reservar   # si baja negociando, queda
+            h.pop("cerrada", None)
+            hist[slug] = h
+        elif slug in hist:
+            del hist[slug]
+    corte = (datetime.date.fromisoformat(hoy) - datetime.timedelta(days=DIAS_HISTORIAL)).isoformat()
+    for slug in list(hist):
+        h = hist[slug]
+        if slug not in vistos and not h.get("cerrada"):
+            h["cerrada"] = hoy
+        if (h.get("visto") or h.get("desde") or hoy) < corte:
+            del hist[slug]
+    return hist
+
+
 def sin_repetidos(filas: list) -> list:
     """RE/MAX a veces tiene 2 avisos con la MISMA dirección web (slug): se deja el primero."""
     vistos, out = set(), []
@@ -715,6 +757,18 @@ def main():
                 json.dump(_mapa, _f, ensure_ascii=False)
         except Exception:
             pass
+
+    try:
+        with open("historial.json", encoding="utf-8") as _f:
+            _hist_prev = json.load(_f)
+    except Exception:
+        _hist_prev = {}
+    historial = actualizar_historial(_hist_prev, filas, _hoy)
+    if not dry:
+        with open("historial.json", "w", encoding="utf-8") as _f:
+            json.dump(historial, _f, ensure_ascii=False)
+    print(f"Historial: {sum(1 for h in historial.values() if h.get('cerrada'))} cerradas, "
+          f"{sum(1 for h in historial.values() if not h.get('cerrada'))} reservadas/en negociación", file=sys.stderr)
 
     # `generado_at` = cuándo se armó el archivo. La app avisa si esto quedó viejo (robot caído).
     out = {"listings": filas, "usd_rate": rate, "total": len(filas), "generado_at": _hoy}

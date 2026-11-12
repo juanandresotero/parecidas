@@ -194,6 +194,47 @@ def caso_gastos_absurdos_quedan_vacios():
     assert f["gastos"] is None and f["gastos_moneda"] == "", "sin rastros del dato roto"
 
 
+# ---------------- historial de reservadas / en negociación / cerradas (Juan 2026-11-11) ----------------
+def fila_h(slug, est, precio=150000):
+    return {"slug": slug, "estado_pub": est, "operacion": "sale", "tipo": "casa", "barrio": "Pocitos", "depto": "Montevideo",
+            "precio": precio, "moneda": "USD", "precio_usd": precio, "m2_homog": 100, "m2_cub": 90, "dorm": 3, "banos": 2,
+            "cochera": True, "estado": "usada", "direccion": "Lecocq 1500", "foto": "x.jpg", "agente": "Ana"}
+
+
+def caso_historial_guarda_las_reservadas():
+    h = R.actualizar_historial({}, [fila_h("a", "reserved"), fila_h("b", "negotiation"), fila_h("c", "active")], "2026-11-11")
+    assert set(h) == {"a", "b"}, f"se guardan las reservadas y en negociación (no las disponibles): {set(h)}"
+    assert h["a"]["desde"] == "2026-11-11" and h["a"]["precio_usd"] == 150000 and h["a"]["m2_homog"] == 100
+    assert "foto" not in h["a"] and "agente" not in h["a"], "solo lo necesario para comparar (archivo liviano)"
+    for k in ("m2_padron", "m2_total", "gastos_usd", "lat", "lng", "periodo", "renta", "multiunidad"):
+        assert k in h["a"], f"dato útil para analizar precios guardado: {k}"
+    assert h["a"]["precio_al_reservar"] == 150000
+    h = R.actualizar_historial(h, [fila_h("a", "reserved", 145000), fila_h("b", "negotiation")], "2026-11-20")
+    assert h["a"]["desde"] == "2026-11-11" and h["a"]["visto"] == "2026-11-20" and h["a"]["precio_usd"] == 145000, "se actualiza, conserva desde cuándo"
+    assert h["a"]["precio_al_reservar"] == 150000, "queda el precio con el que se reservó (bajó 5.000 en la negociación)"
+
+
+def caso_historial_reserva_caida_se_borra():
+    h = R.actualizar_historial({}, [fila_h("a", "reserved")], "2026-11-11")
+    h = R.actualizar_historial(h, [fila_h("a", "active")], "2026-11-12")
+    assert "a" not in h, "volvió a estar disponible: la reserva se cayó, ese precio no se concretó"
+
+
+def caso_historial_marca_cerrada_si_deja_de_publicarse():
+    h = R.actualizar_historial({}, [fila_h("a", "reserved"), fila_h("b", "negotiation")], "2026-11-11")
+    h = R.actualizar_historial(h, [fila_h("b", "negotiation")], "2026-12-01")
+    assert h["a"]["cerrada"] == "2026-12-01", "desapareció estando reservada → cerrada (venta/alquiler concretado)"
+    h = R.actualizar_historial(h, [fila_h("b", "negotiation")], "2026-12-05")
+    assert h["a"]["cerrada"] == "2026-12-01", "la fecha de cierre no se pisa"
+    assert "cerrada" not in h["b"]
+
+
+def caso_historial_descarta_lo_muy_viejo():
+    h = {"viejo": dict(R._para_historial(fila_h("viejo", "reserved")), desde="2022-01-01", visto="2022-02-01", cerrada="2022-02-02")}
+    h = R.actualizar_historial(h, [], "2026-11-11")
+    assert "viejo" not in h, "más de 3 años: ya no sirve de referencia"
+
+
 # ---------------- repetidos ----------------
 def caso_sin_repetidos():
     filas = [{"slug": "a", "n": 1}, {"slug": "b"}, {"slug": "a", "n": 2}]
@@ -206,7 +247,9 @@ CASOS = [caso_rescata_propiedades_de_todo_el_pais, caso_no_rescata_lo_que_cae_fu
          caso_emprendimiento_guarda_rangos, caso_propiedad_comun_sin_rangos, caso_temporario_guarda_el_periodo,
          caso_hectareas_no_se_aplican_a_apartamentos, caso_campo_grande_real_se_respeta,
          caso_cochera_por_texto_sin_falsos_positivos, caso_datos_absurdos_quedan_como_falta_dato, caso_sin_repetidos,
-         caso_guarda_los_m2_construidos_reales, caso_padron_de_complejo_es_dato_dudoso, caso_gastos_absurdos_quedan_vacios]
+         caso_guarda_los_m2_construidos_reales, caso_padron_de_complejo_es_dato_dudoso, caso_gastos_absurdos_quedan_vacios,
+         caso_historial_guarda_las_reservadas, caso_historial_reserva_caida_se_borra,
+         caso_historial_marca_cerrada_si_deja_de_publicarse, caso_historial_descarta_lo_muy_viejo]
 
 
 def main():

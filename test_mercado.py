@@ -51,11 +51,24 @@ def caso_veredicto_en_precio_y_buen_precio(page):
 def caso_solo_comparables_que_corresponden(page):
     malos = [prop("otro-barrio", 100000, 100, barrio="Cordón"), prop("otro-depto", 100000, 100, depto="Maldonado"),
              prop("grande", 100000, 200), prop("nuevo", 100000, 100, estado="a_estrenar"),
-             prop("reservada", 100000, 100, estado_pub="reserved"), prop("casa", 100000, 100, tipo="casa"),
+             prop("casa", 100000, 100, tipo="casa"),
              prop("alquiler", 1000, 100, operacion="rent"), prop("base", 100000, 100), prop("penthouse", 100000, 100, tipo="departamento_penthouse"),
              prop("pesos", 8000000, 100, moneda="UYU", precio_usd=194000)]
     r = analizar(page, BASE, COMPS + malos)
     assert r["n"] == 5 and r["ref"] == 1800, f"solo los 5 correctos (barrio, depto, porte, estado, disponible, tipo, operación, no ella): {r}"
+
+
+def caso_usa_reservadas_en_negociacion_y_cerradas(page):
+    """Juan 2026-11-11: también las reservadas / en negociación (precio casi cerrado) y las que dejaron de publicarse
+    estando así (venta/alquiler concretado) — las 'cerradas' del último año."""
+    hoy = page.evaluate("new Date().toISOString().slice(0, 10)")
+    viejo = page.evaluate("new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10)")
+    lista = [prop("a1", 180000, 100), prop("a2", 180000, 100), prop("r1", 170000, 100, estado_pub="reserved"),
+             prop("n1", 170000, 100, estado_pub="negotiation"), prop("x1", 160000, 100, estado_pub="reserved", cerrada=hoy),
+             prop("x2", 100000, 100, estado_pub="reserved", cerrada=viejo)]
+    r = analizar(page, BASE, lista)
+    assert r["n"] == 5 and (r["n_disp"], r["n_res"], r["n_cerr"]) == (2, 2, 1),         f"2 disponibles + 2 reservadas/en negociación + 1 cerrada (la de hace más de un año no): {r['n']} {r.get('n_disp')} {r.get('n_res')} {r.get('n_cerr')}"
+    assert r["ref"] == 1700, f"mediana de 1.800, 1.800, 1.700, 1.700, 1.600 = 1.700: {r['ref']}"
 
 
 def caso_prioriza_mismos_dormitorios(page):
@@ -110,11 +123,13 @@ def caso_se_ve_al_traer_un_link(page):
     page.evaluate("$('pm-ver').click()")
     filas = page.evaluate("document.querySelectorAll('#pm-lista .pm-fila:not(.pm-excl)').length")
     assert filas == n, f"la lista muestra las {n} comparables: {filas}"
+    assert page.evaluate("typeof HIST === 'object'"), "el historial se carga (aunque esté vacío)"
     page.evaluate("limpiarTodo(); buscar()")
     assert page.evaluate("$('precio-mercado').style.display") == "none", "sin link no hay análisis"
 
 
 CASOS = [caso_veredicto_caro, caso_veredicto_en_precio_y_buen_precio, caso_solo_comparables_que_corresponden,
+         caso_usa_reservadas_en_negociacion_y_cerradas,
          caso_prioriza_mismos_dormitorios, caso_ajuste_por_cochera, caso_zona_inve, caso_sin_datos_no_inventa,
          caso_alquiler_en_pesos, caso_se_ve_al_traer_un_link]
 

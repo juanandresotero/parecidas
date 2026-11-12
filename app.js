@@ -766,6 +766,20 @@ function mediana(xs) {
   var a = xs.slice().sort(function (x, y) { return x - y; }), n = a.length;
   return n ? (n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2) : null;
 }
+// Historial del robot (historial.json): reservadas / en negociación que DEJARON de publicarse = ventas o alquileres
+// concretados ("cerradas"). Se carga aparte y una sola vez (la app arranca liviana). Juan 2026-11-11.
+var HIST = null, DIAS_CERRADAS = 365;
+function cargarHistorial() {
+  if (HIST) return;
+  HIST = {};
+  fetch("historial.json").then(function (r) { return r.ok ? r.json() : {}; })
+    .then(function (d) { HIST = d || {}; renderPrecioMercado(); }).catch(function () {});
+}
+function cerradasRecientes() {
+  var corte = new Date(Date.now() - DIAS_CERRADAS * 86400000).toISOString().slice(0, 10);
+  return Object.keys(HIST || {}).filter(function (s) { return HIST[s].cerrada && HIST[s].cerrada >= corte; })
+    .map(function (s) { var h = HIST[s], c = { slug: s }; for (var k in h) c[k] = h[k]; return c; });
+}
 function analisisMercado(base, lista) {
   if (!base) return null;
   var cat = tipoCat(base.tipo), op = base.operacion;
@@ -774,8 +788,11 @@ function analisisMercado(base, lista) {
   var tam = base.m2_homog, pu = base.precio_usd, bn = norm(base.barrio), dn = norm(base.depto);
   if (!tam || !pu || !bn) return null;
   var bolsa = bolsaDe(base), objInve = zonaInve(base), coch = op === "sale" ? valorCochera(base) : null;
-  var cands = (lista || DATA).filter(function (c) {
-    return c.slug !== base.slug && (!c.estado_pub || c.estado_pub === "active") && c.operacion === op &&
+  // Disponibles + reservadas / en negociación (precio casi cerrado) + cerradas del último año (venta concretada).
+  var corte = new Date(Date.now() - DIAS_CERRADAS * 86400000).toISOString().slice(0, 10);
+  var cands = (lista || DATA.concat(cerradasRecientes())).filter(function (c) {
+    if (c.cerrada && c.cerrada < corte) return false;
+    return c.slug !== base.slug && c.operacion === op &&
       norm(c.barrio) === bn && (!dn || norm(c.depto) === dn) && bolsaDe(c) === bolsa && c.precio_usd > 0 &&
       c.m2_homog > 0 && (op !== "sale" || String(c.moneda || "USD").toUpperCase() === "USD") && mismoPorte(tam, c.m2_homog);
   });
@@ -803,6 +820,9 @@ function analisisMercado(base, lista) {
   return {
     pct: pct, nivel: pct < -PM_BANDA_PCT ? "barato" : (pct > PM_BANDA_PCT ? "caro" : "justo"),
     fuerte: Math.abs(pct) >= PM_FUERTE_PCT, n: usados.length,
+    n_cerr: usados.filter(function (s) { return s.c.cerrada; }).length,
+    n_res: usados.filter(function (s) { return !s.c.cerrada && s.c.estado_pub && s.c.estado_pub !== "active"; }).length,
+    n_disp: usados.filter(function (s) { return !s.c.cerrada && (!s.c.estado_pub || s.c.estado_pub === "active"); }).length,
     valor: Math.round(valor * k), ref: Math.round(ref * k),
     unidad: enPesos ? "$U/m² por mes" : (op === "rent" ? "US$/m² por mes" : "US$/m²"),
     comparables: sims.slice().sort(function (a, b) { return (a.excluido - b.excluido) || (a.v - b.v); })
@@ -813,6 +833,7 @@ var PM_ETIQ = { barato: "BUEN PRECIO", justo: "EN PRECIO", caro: "CARO" };
 function renderPrecioMercado() {
   var el = $("precio-mercado");
   if (!el) return;
+  if (window.__base) cargarHistorial();
   var r = analisisMercado(window.__base);
   if (!r) { el.style.display = "none"; el.innerHTML = ""; return; }
   el.style.display = "";
@@ -827,7 +848,10 @@ function renderPrecioMercado() {
     '<div class="pm-barra"><span class="pm-aguja" style="left:' + pos + '%"></span></div>' +
     '<div class="pm-eje"><span>Buen precio</span><span>En precio</span><span>Caro</span></div>' +
     '<div class="ea-nota">Esta: <b>' + m2(r.valor) + '</b> · promedio de <b>' + r.n + '</b> parecida' + (r.n > 1 ? "s" : "") +
-    ' disponible' + (r.n > 1 ? "s" : "") + ': <b>' + m2(r.ref) + '</b> (mismo barrio, tipo, tamaño' +
+    ' (' + [r.n_disp ? r.n_disp + " disponible" + (r.n_disp > 1 ? "s" : "") : "",
+            r.n_res ? r.n_res + " reservada" + (r.n_res > 1 ? "s" : "") + " o en negociación" : "",
+            r.n_cerr ? r.n_cerr + " cerrada" + (r.n_cerr > 1 ? "s" : "") + " en el último año" : ""].filter(Boolean).join(" · ") +
+    '): <b>' + m2(r.ref) + '</b> (mismo barrio, tipo, tamaño' +
     (r.unidad.indexOf("mes") > 0 ? "" : " y estado") + ').' + (r.n < 3 ? ' <b class="ea-warn">Pocas: tomalo como referencia gruesa.</b>' : '') + '</div>' +
     '<button type="button" class="pm-ver" id="pm-ver">Ver ' + (r.n > 1 ? "las " + r.n + " comparables" : "la comparable") + ' ▾</button>' +
     '<div id="pm-lista" style="display:none"></div>';
@@ -835,10 +859,12 @@ function renderPrecioMercado() {
   r.comparables.forEach(function (x) {
     var f = document.createElement("button");
     f.type = "button"; f.className = "pm-fila" + (x.excluido ? " pm-excl" : "");
-    f.innerHTML = '<span class="pm-f-tit">' + esc(resumenCard(x.c)) + '</span><b>' + m2(x.v) + '</b>' +
-      (x.excluido ? '<span class="pm-f-nota">zona INVE · fuera del promedio</span>' : '');
-    f.title = "Ver ficha";
-    f.onclick = function () { abrirVistaPrevia(x.c); };
+    var tag = x.c.cerrada ? "✅ cerrada " + x.c.cerrada.slice(5, 7) + "/" + x.c.cerrada.slice(0, 4)
+      : (x.c.estado_pub === "reserved" ? "🔒 reservada" : (x.c.estado_pub === "negotiation" ? "🤝 en negociación" : ""));
+    f.innerHTML = '<span class="pm-f-tit">' + esc(resumenCard(x.c)) + (tag ? ' <span class="pm-tag">' + tag + '</span>' : '') +
+      '</span><b>' + m2(x.v) + '</b>' + (x.excluido ? '<span class="pm-f-nota">zona INVE · fuera del promedio</span>' : '');
+    if (!x.c.cerrada) { f.title = "Ver ficha"; f.onclick = function () { abrirVistaPrevia(x.c); }; }   // la cerrada ya no está publicada
+    else f.style.cursor = "default";
     lista.appendChild(f);
   });
   $("pm-ver").onclick = function () {
