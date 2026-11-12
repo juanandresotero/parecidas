@@ -895,6 +895,27 @@ function ubicacionDe(b) {
   return null;
 }
 function mapsLink(u) { return "https://www.google.com/maps?q=" + u.lat + "," + u.lng; }
+// Renglón de la dirección que va arriba del link al copiar la ubicación (Juan 2026-11-11). RE/MAX redondea el
+// número de puerta (los 2 últimos en 00) → "Sobre calle X al 1500". Si los 2 últimos NO son 00, alguien puso la
+// dirección exacta → "Dirección: Lecocq 1545". Número 0 = sin número. Sin número al final: tal cual.
+var CALLE_CON_NOMBRE = /^(calle|av\b|av\.|avda|avenida|bulevar|boulevard|bvar|bv\b|bv\.|rambla|camino|ruta|pasaje|diagonal|ramal|paralela|peatonal)/i;
+function lineaDireccion(dir) {
+  var t = String(dir || "").replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  var m = /^(.*\D)\s(\d+)$/.exec(t);
+  if (!m) return "📍 " + t;
+  var calle = m[1].replace(/[\s,]+$/, ""), num = parseInt(m[2], 10);
+  var sobre = "📍 Sobre " + (CALLE_CON_NOMBRE.test(calle) ? "" : "calle ") + calle;
+  if (num === 0) return sobre;
+  if (num % 100 === 0) return sobre + " al " + num;
+  return "📍 Dirección: " + calle + " " + num;
+}
+// Lo que se copia: la dirección (la que se guardó con la búsqueda o, si no, la de la propiedad) + el link del mapa.
+function textoUbicacion(b, u) {
+  var p = b && BY_SLUG[b.slugActual || b.campSlug];
+  var linea = lineaDireccion((b && b.direccion) || (p && p.direccion) || "");
+  return (linea ? linea + "\n" : "") + mapsLink(u);
+}
 // Guarda las coords en las búsquedas viejas (que se guardaron antes de esta función),
 // mientras la propiedad siga en el listado del día. Así sobreviven si después se reserva.
 function backfillUbicaciones() {
@@ -907,17 +928,17 @@ function backfillUbicaciones() {
   });
   if (cambio) guardarBusquedas(arr);
 }
-// Copia un link de Google Maps con las coordenadas (al pegarlo en WhatsApp muestra el
-// mapita). NO usa el texto de la dirección (que a veces sale con ceros de más). Si no hay
+// Copia la dirección (ver lineaDireccion) + un link de Google Maps con las coordenadas (al pegarlo en WhatsApp
+// muestra el mapita). El MAPA sale de las coordenadas, no del texto (que a veces sale con ceros de más). Si no hay
 // coords guardadas (la prop ya salió del listado), las busca EN VIVO en RE/MAX por slug.
 function copiarUbicacion(b, btn) {
   var u = ubicacionDe(b);
-  if (u) { copiarTexto(mapsLink(u), btn, "📍"); return; }
+  if (u) { copiarTexto(textoUbicacion(b, u), btn, "📍"); return; }
   if (btn) btn.textContent = "…";
   var guardar = function (lat, lng) {
     var arr = cargarBusquedas(), bb = arr.filter(function (x) { return x.id === b.id; })[0];
     if (bb) { bb.lat = lat; bb.lng = lng; guardarBusquedas(arr); }   // guardo para la próxima
-    copiarTexto(mapsLink({ lat: lat, lng: lng }), btn, "📍");
+    copiarTexto(textoUbicacion(b, { lat: lat, lng: lng }), btn, "📍");
   };
   var fallar = function () { if (btn) btn.textContent = "📍"; alert("No pude encontrar la ubicación de esta propiedad."); };
   // Último recurso: geocodificar la dirección con OpenStreetMap → coords aproximadas.
