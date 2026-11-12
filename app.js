@@ -1318,8 +1318,9 @@ function renderChips() {
     chip.appendChild(x); cont.appendChild(chip);
   });
 }
+var MAX_LUGARES = 20;   // barrios + balnearios + zonas + departamentos (Juan 2026-11-11: antes 10)
 function addBarrio(nm) {
-  if (SELBARRIOS.length >= 10) return;
+  if (SELBARRIOS.length >= MAX_LUGARES) return;
   if (barriosSel().indexOf(norm(nm)) >= 0) return;
   SELBARRIOS.push(nm);
   renderChips(); pintarGrupo();

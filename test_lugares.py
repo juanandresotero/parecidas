@@ -221,6 +221,17 @@ def caso_la_captura_del_colega(page):
     assert obtenido == esperado, f"captura del colega: esperado {len(esperado)}, la app da {len(obtenido)}"
 
 
+def caso_se_pueden_elegir_hasta_20_lugares(page):
+    """Juan 2026-11-11: antes el tope era 10; ahora hasta 20 entre barrios, balnearios y departamentos."""
+    n = page.evaluate("""() => { limpiarTodo();
+        var nombres = BARRIOS_ALL.filter(function (b) { return tipoLugar(b) === 'barrio'; }).slice(0, 18).concat(['Maldonado', 'Ciudad de la Costa', 'Rocha']);
+        nombres.forEach(function (n) { addBarrio(n); });
+        return SELBARRIOS.length; }""")
+    assert n == 20, f"se tienen que poder elegir 20 lugares (y no más): quedaron {n}"
+    f = page.evaluate("leerFiltros()")
+    assert f["deptos"] and f["zonas"] and len(f["grupo"]) == 18, "los 20 cuentan en la búsqueda (18 barrios + departamento + zona)"
+
+
 CASOS_APP = [
     caso_departamento_entero, caso_varios_departamentos, caso_departamento_mas_barrio_de_otro,
     caso_zona_ciudad_de_la_costa_sola, caso_sin_resultados_dobles, caso_zona_mas_otro_barrio,
@@ -228,7 +239,7 @@ CASOS_APP = [
     caso_sin_lugar_busca_todo_el_pais, caso_departamento_explicito_gana_a_la_region_del_link,
     caso_link_y_sin_barrio_busca_todo_el_pais, caso_el_link_no_restringe_los_barrios_elegidos,
     caso_ubicacion_de_colinas_paso_y_carmel, caso_autocompletado_ofrece_departamento_y_zona, caso_se_guarda_y_se_restaura,
-    caso_cliente_viejo_sin_deptos, caso_la_captura_del_colega,
+    caso_cliente_viejo_sin_deptos, caso_la_captura_del_colega, caso_se_pueden_elegir_hasta_20_lugares,
 ]
 
 
