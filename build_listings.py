@@ -289,6 +289,58 @@ def _fetch_ficha(it: dict):
         return None
 
 
+# ------------------------- FICHAS: pocas por día (2026-11-24) -------------------------
+# Con la barrera nueva, RE/MAX corta después de ~680 fichas seguidas (el 24/11 quedaron 2.903 sin ficha). Y no hace
+# falta pedirlas todas: metros, cochera, gastos o dirección casi nunca cambian (precio y estado vienen en el LISTADO,
+# que se baja entero cada día). Se piden las NUEVAS + las más viejas hasta el cupo (todas se renuevan en ~1 semana);
+# el resto sale de los datos de ayer. Más liviano para RE/MAX y para el robot.
+CUPO_FICHAS = 500
+FALLAS_PARA_CORTAR = 3
+CAMPOS_FICHA = ("m2_cub", "m2_homog", "m2_total", "m2_padron", "lat", "lng", "direccion", "multiunidad", "renta",
+                "cochera", "gastos", "gastos_moneda", "gastos_usd", "estado", "periodo", "banos",
+                "dorm_max", "banos_max", "precio_max_usd", "m2_homog_max", "m2_cub_max")
+
+
+def completar_con_anterior(fila: dict, prev: dict | None) -> dict:
+    """Fila sin ficha hoy → los datos de la ficha salen de la fila de ayer (si ayer sí la tenía)."""
+    if fila.get("detalle_ok") or not prev or not prev.get("detalle_ok"):
+        return fila
+    for k in CAMPOS_FICHA:
+        if k in ("lat", "lng") and fila.get(k) is not None:
+            continue   # la ubicación también viene en el listado: la de hoy manda
+        if k in prev:
+            fila[k] = prev[k]
+    if prev.get("dorm_max") is not None or prev.get("precio_max_usd") is not None:
+        fila["dorm"] = prev.get("dorm")   # emprendimiento: el "desde" de dormitorios sale de su ficha
+    fila["detalle_ok"] = True
+    return fila
+
+
+def elegir_fichas(props: list, tenidas: set, fechas: dict, cupo: int) -> set:
+    """Qué fichas pedir hoy: primero las que no tenemos; después las más viejas; hasta el cupo."""
+    slugs = [it.get("slug") for it in props if it.get("slug")]
+    nuevas = [s for s in slugs if s not in tenidas]
+    viejas = sorted((s for s in slugs if s in tenidas), key=lambda s: fechas.get(s) or "")
+    return set((nuevas + viejas)[:cupo])
+
+
+def bajar_fichas(props: list, elegidas: set, traer, pausa: float = 0.25) -> dict:
+    """slug → ficha (o None). Solo pide las elegidas; tras FALLAS_PARA_CORTAR fallas seguidas deja de pedir."""
+    out, seguidas, pedidas = {}, 0, 0
+    for it in props:
+        s, det = it.get("slug"), None
+        if s in elegidas and seguidas < FALLAS_PARA_CORTAR:
+            det = traer(it)
+            pedidas += 1
+            seguidas = 0 if det is not None else seguidas + 1
+            if seguidas == FALLAS_PARA_CORTAR:
+                print(f"RE/MAX dejó de dar fichas ({pedidas} pedidas): el resto sale de los datos anteriores.", file=sys.stderr)
+            if pausa:
+                time.sleep(pausa)   # amable con la API
+        out[s] = det
+    return out
+
+
 def _coords_item(it: dict):
     c = ((it or {}).get("location") or {}).get("coordinates")
     return (c[1], c[0]) if (isinstance(c, list) and len(c) >= 2) else None
@@ -784,16 +836,32 @@ def main():
         print(f"(prueba: solo {len(props_uy)})", file=sys.stderr)
     rate = _usd_rate()
     print(f"Dólar: {rate}", file=sys.stderr)
-    filas, fallidos = [], 0
-    for i, it in enumerate(props_uy, 1):
-        det = _fetch_ficha(it)   # emprendimientos: su propia ficha
-        if det is None:
-            fallidos += 1
-        filas.append(_fila(it, det, rate))
-        if i % 100 == 0:
-            print(f"  detalle {i}/{len(props_uy)} (fallidos {fallidos})",
-                  file=sys.stderr)
-        time.sleep(0.25)   # amable con la API
+    _hoy_f = datetime.date.today().isoformat()
+    try:
+        with open("listings.json", encoding="utf-8") as _f:
+            _ayer = {r.get("slug"): r for r in json.load(_f).get("listings", [])}
+    except Exception:
+        _ayer = {}
+    try:
+        with open("fichas_al.json", encoding="utf-8") as _f:
+            fichas_al = json.load(_f)
+    except Exception:
+        fichas_al = {}
+    _tenidas = {s for s, r in _ayer.items() if r.get("detalle_ok")}
+    _elegidas = elegir_fichas(props_uy, _tenidas, fichas_al, CUPO_FICHAS)
+    print(f"Fichas: pido {len(_elegidas)} (nuevas o más viejas); el resto sale de ayer", file=sys.stderr)
+    _dets = bajar_fichas(props_uy, _elegidas, _fetch_ficha)   # emprendimientos: su propia ficha
+    filas = []
+    for it in props_uy:
+        det = _dets.get(it.get("slug"))
+        fila = _fila(it, det, rate)
+        if det is not None:
+            fichas_al[fila["slug"]] = _hoy_f
+        else:
+            completar_con_anterior(fila, _ayer.get(fila["slug"]))
+        filas.append(fila)
+    fallidos = sum(1 for f in filas if not f.get("detalle_ok"))
+    fichas_al = {f["slug"]: fichas_al[f["slug"]] for f in filas if f.get("slug") in fichas_al}
     # ⚠️ RED DE SEGURIDAD: si el listado vino sospechosamente chico (un hipo de la API de
     # RE/MAX: responde 200 pero vacío/truncado), NO pisar el listings.json bueno NI borrar
     # el historial de primera_vez.json. Abortamos: mañana reintenta con los datos de ayer
@@ -853,6 +921,8 @@ def main():
     if dry:
         print(f"DRY RUN OK: {len(filas)} propiedades (prueba, no se escribió nada)")
         return
+    with open("fichas_al.json", "w", encoding="utf-8") as f:   # solo para el robot (la app no lo baja)
+        json.dump(fichas_al, f)
     with open("listings.json", "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False)
     print(f"OK: {len(filas)} propiedades ({fallidos} sin detalle) -> listings.json")

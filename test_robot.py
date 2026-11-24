@@ -341,6 +341,53 @@ def caso_otros_errores_no_abren_navegador():
         R._NAVEGADOR = None
 
 
+
+# ---------------- Fichas: pedir pocas por día (RE/MAX corta después de ~680 seguidas, 2026-11-24) ----------------
+def caso_sin_ficha_usa_la_de_ayer():
+    """Si hoy no se pidió (o falló) la ficha, los datos de la ficha salen de ayer; lo del listado (precio, estado) es de hoy."""
+    ayer = R._fila(item(slug="a", price=150000), ficha(dimensionCovered=100, parkingSpaces=1, expensesPrice=3000,
+                                                       expensesCurrency={"value": "UYU"}, displayAddress="Lecocq 1500"), 40.0)
+    assert ayer["detalle_ok"] and ayer["cochera"] is True and ayer["m2_cub"] == 100
+    hoy = R._fila(item(slug="a", price=140000, listingStatus={"value": "reserved"}), None, 40.0)
+    assert not hoy["detalle_ok"] and hoy["cochera"] is None
+    R.completar_con_anterior(hoy, ayer)
+    assert hoy["detalle_ok"] and hoy["cochera"] is True and hoy["m2_cub"] == 100 and hoy["gastos"] == 3000
+    assert hoy["direccion"] == "Lecocq 1500" and hoy["estado"] == "usada"
+    assert hoy["precio"] == 140000 and hoy["estado_pub"] == "reserved", "precio y estado: los de HOY"
+
+
+def caso_sin_ficha_ni_ayer_queda_sin_detalle():
+    hoy = R._fila(item(slug="n"), None, 40.0)
+    R.completar_con_anterior(hoy, None)
+    assert not hoy["detalle_ok"]
+    viejo_sin = R._fila(item(slug="n"), None, 40.0)
+    R.completar_con_anterior(hoy, viejo_sin)
+    assert not hoy["detalle_ok"], "si ayer tampoco tenía ficha, no inventa"
+
+
+def caso_elige_primero_las_nuevas_y_despues_las_mas_viejas():
+    props = [item(slug=s) for s in ("nueva1", "vieja", "reciente", "media", "nueva2")]
+    tenidas = {"vieja", "reciente", "media"}
+    fechas = {"vieja": "2026-11-01", "reciente": "2026-11-23", "media": "2026-11-10"}
+    assert R.elegir_fichas(props, tenidas, fechas, 4) == {"nueva1", "nueva2", "vieja", "media"}
+    assert R.elegir_fichas(props, tenidas, fechas, 1) == {"nueva1"}
+
+
+def caso_si_remax_corta_deja_de_pedir():
+    """Tras 3 fallas seguidas no sigue pidiendo (no martillar): el resto sale de ayer."""
+    pedidos = []
+
+    def ficha_falla(it):
+        pedidos.append(it["slug"])
+        return None
+    props = [item(slug="p%d" % i) for i in range(20)]
+    det = R.bajar_fichas(props, {it["slug"] for it in props}, ficha_falla, pausa=0)
+    assert len(pedidos) == 3 and all(v is None for v in det.values()), f"para después de 3 fallas: {len(pedidos)}"
+    pedidos.clear()
+    ok = R.bajar_fichas(props, {"p1", "p2"}, lambda it: (pedidos.append(it["slug"]) or ficha()), pausa=0)
+    assert sorted(pedidos) == ["p1", "p2"] and ok["p1"] and ok["p0"] is None, "solo pide las elegidas"
+
+
 CASOS = [caso_usa_la_lista_de_barrios_de_la_app, caso_rescata_propiedades_de_todo_el_pais, caso_no_rescata_lo_que_cae_fuera_de_uruguay,
          caso_elige_el_barrio_mas_largo_y_no_un_departamento, caso_emprendimiento_usa_su_propia_ficha,
          caso_emprendimiento_guarda_rangos, caso_propiedad_comun_sin_rangos, caso_temporario_guarda_el_periodo,
@@ -350,7 +397,9 @@ CASOS = [caso_usa_la_lista_de_barrios_de_la_app, caso_rescata_propiedades_de_tod
          caso_historial_guarda_las_reservadas, caso_historial_reserva_caida_se_borra,
          caso_historial_marca_cerrada_si_deja_de_publicarse, caso_historial_descarta_lo_muy_viejo,
          caso_patio_se_deduce_siempre_para_analizar,
-         caso_si_remax_rechaza_sigue_con_navegador, caso_si_remax_deja_pasar_no_abre_navegador, caso_otros_errores_no_abren_navegador]
+         caso_si_remax_rechaza_sigue_con_navegador, caso_si_remax_deja_pasar_no_abre_navegador, caso_otros_errores_no_abren_navegador,
+         caso_sin_ficha_usa_la_de_ayer, caso_sin_ficha_ni_ayer_queda_sin_detalle, caso_elige_primero_las_nuevas_y_despues_las_mas_viejas,
+         caso_si_remax_corta_deja_de_pedir]
 
 
 def main():
