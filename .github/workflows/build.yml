@@ -25,6 +25,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Navegador (RE/MAX rechaza los pedidos que no vienen de un navegador, desde 2026-11-14)
+        run: pip install playwright==1.49.1 && python -m playwright install --with-deps chromium
       - name: Prueba del robot (sin escribir)
         run: LIMIT=3 DRY_RUN=1 python build_listings.py
 
@@ -37,6 +39,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Navegador (RE/MAX rechaza los pedidos que no vienen de un navegador, desde 2026-11-14)
+        run: pip install playwright==1.49.1 && python -m playwright install --with-deps chromium
       - name: Bajar propiedades de RE/MAX
         run: python build_listings.py
       - name: Guardar el archivo actualizado

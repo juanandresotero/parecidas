@@ -20,6 +20,7 @@ import re
 import sys
 import time
 import unicodedata
+import urllib.error
 import urllib.request
 
 # "Con renta" = vendida CON inquilino adentro (OCUPACIÓN real), no potencial de renta.
@@ -106,10 +107,57 @@ LISTING_URL = "https://www.remax.com.uy/listings/"
 PAGE_SIZE = 100
 
 
-def _http_json(url: str, timeout: float = 30.0):
+def _http_json_directo(url: str, timeout: float = 30.0):
     req = urllib.request.Request(url, headers={"User-Agent": "parecidas/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
+
+
+# Desde el 2026-11-14 RE/MAX rechaza (403) los pedidos que no vienen de un navegador. Plan B (decisión de Juan
+# 2026-11-24): si el pedido directo da 403, se abre UNA vez un Chromium, se entra a remax.com.uy y desde ahí se
+# piden los MISMOS datos, al mismo ritmo pausado. Si algún día RE/MAX vuelve a dejar pasar, no se abre nada.
+_NAVEGADOR = None   # función (url, timeout) -> dict, una vez abierto
+REMAX_WEB = "https://www.remax.com.uy/"
+
+
+def _abrir_navegador():
+    global _NAVEGADOR
+    import atexit
+    from playwright.sync_api import sync_playwright
+    pw = sync_playwright().start()
+    br = pw.chromium.launch()
+    ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+          f"Chrome/{br.version} Safari/537.36")
+    page = br.new_context(locale="es-UY", user_agent=ua).new_page()
+    page.goto(REMAX_WEB, wait_until="domcontentloaded", timeout=60000)
+    atexit.register(lambda: (br.close(), pw.stop()))
+    js = """async ([u, ms]) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
+        try { const r = await fetch(u, { signal: c.signal }); return { status: r.status, text: await r.text() }; }
+        finally { clearTimeout(t); } }"""
+
+    def pedir(url, timeout):
+        for intento in (1, 2):
+            r = page.evaluate(js, [url, int(timeout * 1000)])
+            if r["status"] == 403 and intento == 1:   # la "entrada" venció: se vuelve a entrar a RE/MAX y se reintenta
+                page.goto(REMAX_WEB, wait_until="domcontentloaded", timeout=60000)
+                continue
+            if r["status"] >= 400:
+                raise urllib.error.HTTPError(url, r["status"], "navegador", None, None)
+            return json.loads(r["text"])
+
+    _NAVEGADOR = pedir
+
+
+def _http_json(url: str, timeout: float = 30.0):
+    if _NAVEGADOR is None:
+        try:
+            return _http_json_directo(url, timeout)
+        except urllib.error.HTTPError as e:
+            if e.code != 403:
+                raise
+            print("RE/MAX rechazó el pedido directo (403): sigo con un navegador.", file=sys.stderr)
+            _abrir_navegador()
+    return _NAVEGADOR(url, timeout)
 
 
 def _unwrap(d):

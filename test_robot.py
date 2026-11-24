@@ -276,6 +276,71 @@ def caso_sin_repetidos():
     assert [f["slug"] for f in out] == ["a", "b"] and out[0]["n"] == 1
 
 
+
+# ---------------- RE/MAX bloquea a los robots (2026-11-14): plan B con navegador ----------------
+def _con_red_falsa(directo, navegador_resp):
+    """Arma un robot con la red simulada: `directo` = lo que pasa al pedir directo; el navegador devuelve navegador_resp."""
+    import urllib.error
+    llamadas = {"directo": 0, "abrir": 0, "navegador": 0}
+
+    def fake_directo(url, timeout):
+        llamadas["directo"] += 1
+        if isinstance(directo, int):
+            raise urllib.error.HTTPError(url, directo, "x", None, None)
+        return directo
+
+    def fake_abrir():
+        llamadas["abrir"] += 1
+
+        def nav(url, timeout):
+            llamadas["navegador"] += 1
+            return navegador_resp
+        R._NAVEGADOR = nav
+
+    R._NAVEGADOR = None
+    R._http_json_directo, R._abrir_navegador = fake_directo, fake_abrir
+    return llamadas
+
+
+def caso_si_remax_rechaza_sigue_con_navegador():
+    orig = (R._http_json_directo, R._abrir_navegador)
+    try:
+        ll = _con_red_falsa(403, {"data": "ok"})
+        assert R._http_json("https://x/1") == {"data": "ok"}, "con 403 sigue por el navegador"
+        assert R._http_json("https://x/2") == {"data": "ok"}
+        assert ll == {"directo": 1, "abrir": 1, "navegador": 2}, f"el navegador se abre UNA vez y después no reintenta directo: {ll}"
+    finally:
+        R._http_json_directo, R._abrir_navegador = orig
+        R._NAVEGADOR = None
+
+
+def caso_si_remax_deja_pasar_no_abre_navegador():
+    orig = (R._http_json_directo, R._abrir_navegador)
+    try:
+        ll = _con_red_falsa({"data": "directo"}, None)
+        assert R._http_json("https://x/1") == {"data": "directo"}
+        assert ll["abrir"] == 0, "si el pedido directo anda, no se abre ningún navegador (más rápido y liviano)"
+    finally:
+        R._http_json_directo, R._abrir_navegador = orig
+        R._NAVEGADOR = None
+
+
+def caso_otros_errores_no_abren_navegador():
+    import urllib.error
+    orig = (R._http_json_directo, R._abrir_navegador)
+    try:
+        ll = _con_red_falsa(500, None)
+        try:
+            R._http_json("https://x/1")
+            assert False, "un error que no es 'prohibido' se informa igual que antes"
+        except urllib.error.HTTPError as e:
+            assert e.code == 500
+        assert ll["abrir"] == 0
+    finally:
+        R._http_json_directo, R._abrir_navegador = orig
+        R._NAVEGADOR = None
+
+
 CASOS = [caso_usa_la_lista_de_barrios_de_la_app, caso_rescata_propiedades_de_todo_el_pais, caso_no_rescata_lo_que_cae_fuera_de_uruguay,
          caso_elige_el_barrio_mas_largo_y_no_un_departamento, caso_emprendimiento_usa_su_propia_ficha,
          caso_emprendimiento_guarda_rangos, caso_propiedad_comun_sin_rangos, caso_temporario_guarda_el_periodo,
@@ -284,7 +349,8 @@ CASOS = [caso_usa_la_lista_de_barrios_de_la_app, caso_rescata_propiedades_de_tod
          caso_guarda_los_m2_construidos_reales, caso_padron_de_complejo_es_dato_dudoso, caso_gastos_absurdos_quedan_vacios,
          caso_historial_guarda_las_reservadas, caso_historial_reserva_caida_se_borra,
          caso_historial_marca_cerrada_si_deja_de_publicarse, caso_historial_descarta_lo_muy_viejo,
-         caso_patio_se_deduce_siempre_para_analizar]
+         caso_patio_se_deduce_siempre_para_analizar,
+         caso_si_remax_rechaza_sigue_con_navegador, caso_si_remax_deja_pasar_no_abre_navegador, caso_otros_errores_no_abren_navegador]
 
 
 def main():
