@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .wrangler/
 worker/.wrangler/
+.venv/
+robot_pc.log
